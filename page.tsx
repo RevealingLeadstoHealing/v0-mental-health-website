@@ -249,7 +249,7 @@ function ClientChart({ savedAssessments = [], savedNotes = [] }) {
         <Card className="p-6 space-y-4">
           <div>
             <h2 className="text-2xl font-bold">{clientChart.name}</h2>
-            <p className="text-sm text-slate-500">DOB: {clientChart.dob} â€¢ Phone: {clientChart.phone}</p>
+            <p className="text-sm text-slate-500">DOB: {clientChart.dob} • Phone: {clientChart.phone}</p>
           </div>
           <div className="rounded-2xl border p-4">
             <p className="font-semibold">Presenting Problem</p>
@@ -353,7 +353,7 @@ function Intake() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900">Client Intake</h1>
-      <p className="mt-2 text-slate-600">Revealing Leads to Healing Wellness Services LLC â€¢ EHR Proprietary System</p>
+      <p className="mt-2 text-slate-600">Revealing Leads to Healing Wellness Services LLC • EHR Proprietary System</p>
       {submitted && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">Intake saved to secure chart.</div>}
       <Card className="mt-6 p-6 space-y-5">
         <div className="grid gap-4 md:grid-cols-2">
@@ -371,7 +371,7 @@ function Intake() {
   );
 }
 
-function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) {
+function Assessments({ savedAssessments = [], setSavedAssessments = (_updater: unknown) => {} }) {
   const phqQuestions = [
     "Little interest or pleasure in doing things",
     "Feeling down, depressed, or hopeless",
@@ -669,11 +669,11 @@ function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) 
               <h2 className="text-xl font-bold">Clinical Actions</h2>
               <button onClick={saveAssessment} className="w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Save Assessment to Chart</button>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                Use the dark Save Assessment button above to send this screening into Client Chart â†’ Assessment History.
+                Use the dark Save Assessment button above to send this screening into Client Chart ? Assessment History.
               </div>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note â€” coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake â€” coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary — coming next</button>
             </Card>
           </div>
         </div>
@@ -787,11 +787,11 @@ function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) 
               <h2 className="text-xl font-bold">Clinical Actions</h2>
               <button onClick={saveAssessment} className="w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Save Assessment to Chart</button>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                Use the dark Save Assessment button above to send this screening into Client Chart â†’ Assessment History.
+                Use the dark Save Assessment button above to send this screening into Client Chart ? Assessment History.
               </div>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note â€” coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake â€” coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary — coming next</button>
             </Card>
           </div>
         </div>
@@ -825,7 +825,7 @@ function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) 
   );
 }
 
-function ProgressNotes({ savedAssessments = [], savedNotes = [], setSavedNotes = () => {} }) {
+function ProgressNotes({ savedAssessments = [], savedNotes = [], setSavedNotes = (_updater: unknown) => {} }) {
   const [noteType, setNoteType] = useState("SOAP Progress Note");
   const [modality, setModality] = useState("Individual Therapy");
   const modalityCptMap = {
@@ -1139,7 +1139,7 @@ function ProgressNotes({ savedAssessments = [], savedNotes = [], setSavedNotes =
             {latestAssessment ? (
               <div className="rounded-2xl border p-4 text-sm">
                 <p className="font-semibold">{latestAssessment.name}</p>
-                <p className="mt-1 text-slate-600">Score: {latestAssessment.score} â€¢ {latestAssessment.severity}</p>
+                <p className="mt-1 text-slate-600">Score: {latestAssessment.score} • {latestAssessment.severity}</p>
                 <p className="mt-1 text-slate-600">Risk: {latestAssessment.riskFlag || "None"}</p>
               </div>
             ) : (
@@ -1178,7 +1178,7 @@ function Documents() {
   );
 }
 
-function Telehealth({ setSavedNotes = () => {} }) {
+function Telehealth({ setSavedNotes = (_updater: unknown) => {} }) {
   const [session, setSession] = useState({
     clientName: "Demo Client",
     sessionDate: "",
@@ -1209,7 +1209,7 @@ function Telehealth({ setSavedNotes = () => {} }) {
       ? "Risk-relevant language was detected in the transcript and requires provider review before finalizing the note."
       : "No automatic high-risk language was detected in the transcript preview.";
 
-    const noteText = `SOAP Telehealth Progress Note\n\nClient: ${session.clientName}\nSession Type: ${session.sessionType}\nDate: ${session.sessionDate || "Not entered"}\nInterpreter: ${session.interpreterService}${session.interpreterLanguage ? ` â€” ${session.interpreterLanguage}` : ""}\nCaller ID / Dialer Display: ${session.callerId || "Not entered"}\nSpruce Connected: ${session.spruceEnabled}\nSpruce Channel: ${session.spruceChannel}\nSpruce Conversation ID: ${session.spruceConversationId || "Not entered"}\n\nS: Client participated in a telehealth session and discussed symptoms, stressors, treatment needs, and functional impact. Transcript-derived content included: ${cleanTranscript}\n\nO: Client was present through ${session.sessionType}. Provider documented telehealth consent, privacy considerations, interpreter/language needs if applicable, and technical/session access details.\n\nA: Clinical material reviewed during the session suggests ongoing behavioral health symptoms requiring continued therapeutic support, monitoring, and treatment planning. ${riskText}\n\nP: Continue treatment as clinically indicated. Provider to review transcript-derived draft for accuracy, update risk assessment as needed, document interventions used, assign homework if appropriate, and follow up during the next scheduled session.`;
+    const noteText = `SOAP Telehealth Progress Note\n\nClient: ${session.clientName}\nSession Type: ${session.sessionType}\nDate: ${session.sessionDate || "Not entered"}\nInterpreter: ${session.interpreterService}${session.interpreterLanguage ? ` — ${session.interpreterLanguage}` : ""}\nCaller ID / Dialer Display: ${session.callerId || "Not entered"}\nSpruce Connected: ${session.spruceEnabled}\nSpruce Channel: ${session.spruceChannel}\nSpruce Conversation ID: ${session.spruceConversationId || "Not entered"}\n\nS: Client participated in a telehealth session and discussed symptoms, stressors, treatment needs, and functional impact. Transcript-derived content included: ${cleanTranscript}\n\nO: Client was present through ${session.sessionType}. Provider documented telehealth consent, privacy considerations, interpreter/language needs if applicable, and technical/session access details.\n\nA: Clinical material reviewed during the session suggests ongoing behavioral health symptoms requiring continued therapeutic support, monitoring, and treatment planning. ${riskText}\n\nP: Continue treatment as clinically indicated. Provider to review transcript-derived draft for accuracy, update risk assessment as needed, document interventions used, assign homework if appropriate, and follow up during the next scheduled session.`;
 
     setGeneratedNote(noteText);
   };
@@ -1272,7 +1272,7 @@ function Telehealth({ setSavedNotes = () => {} }) {
               <input className="rounded-2xl border p-3" value={session.callerId} onChange={(e) => updateSession("callerId", e.target.value)} placeholder="Generic caller ID display" />
               <input className="rounded-2xl border p-3" value={session.callbackNumber} onChange={(e) => updateSession("callbackNumber", e.target.value)} placeholder="Callback / dialer number" />
             </div>
-            <button className="rounded-2xl border px-4 py-3 font-semibold hover:bg-white">Place Call â€” vendor connection required</button>
+            <button className="rounded-2xl border px-4 py-3 font-semibold hover:bg-white">Place Call — vendor connection required</button>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 space-y-3">
@@ -1305,7 +1305,7 @@ function Telehealth({ setSavedNotes = () => {} }) {
             <h3 className="font-bold">Consent / Recording / Booking Handoff</h3>
             <select className="rounded-2xl border p-3 w-full" value={session.recordingConsent} onChange={(e) => updateSession("recordingConsent", e.target.value)}>
               <option>No</option>
-              <option>Yes â€” explicit consent documented</option>
+              <option>Yes — explicit consent documented</option>
             </select>
             <textarea className="min-h-24 w-full rounded-2xl border p-3" value={session.telehealthConsent} onChange={(e) => updateSession("telehealthConsent", e.target.value)} placeholder="Telehealth consent verbiage" />
             <div className="grid gap-3 md:grid-cols-2">
@@ -1336,7 +1336,7 @@ function Telehealth({ setSavedNotes = () => {} }) {
         </Card>
 
         <Card className="p-6 space-y-4">
-          <h2 className="text-xl font-bold">Audio Transcript â†’ Clinical Documentation</h2>
+          <h2 className="text-xl font-bold">Audio Transcript ? Clinical Documentation</h2>
           <p className="text-sm text-slate-500">Production audio recording/transcription requires a HIPAA-capable transcription vendor and explicit consent. This preview uses pasted transcript text.</p>
           <textarea className="min-h-44 w-full rounded-2xl border p-3" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste audio transcription or session summary here after the session..." />
           <div className="grid gap-2 sm:grid-cols-2">
