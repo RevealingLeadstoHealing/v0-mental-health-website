@@ -10,9 +10,6 @@ export default function Home() {
             src="/logo.png"
             alt="Revealing Leads to Healing logo"
             className="site-logo"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
           />
         </div>
         <a href="/" className="brand">
