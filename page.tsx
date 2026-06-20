@@ -5,6 +5,16 @@ export default function Home() {
     <>
       {/* ── HEADER ── */}
       <header className="site-header">
+        <div className="site-logo-wrap">
+          <img
+            src="/logo.png"
+            alt="Revealing Leads to Healing logo"
+            className="site-logo"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
         <a href="/" className="brand">
           Revealing Leads to Healing Wellness Services, LLC
         </a>
@@ -14,6 +24,7 @@ export default function Home() {
           <a href="#our-services">Our Services</a>
           <a href="#faqs">FAQs</a>
           <a href="#contact">Contact</a>
+          <a href="/ehr">EHR Login</a>
         </nav>
       </header>
 
@@ -35,7 +46,8 @@ export default function Home() {
               service. Join us as we grow and succeed together. We&apos;re glad
               you&apos;re here to be a part of our story.
             </p>
-            <a href="/contact" className="btn">Start Here</a>
+            <a href="#contact" className="btn">Start Here</a>
+            <a href="/ehr" className="btn">Client & Provider EHR Login</a>
           </div>
         </div>
 
@@ -108,7 +120,7 @@ export default function Home() {
               depression, and substance use disorders, helping clients uncover
               the path to healing.
             </p>
-            <a href="/about-us" className="btn">About Us</a>
+            <a href="#about-us" className="btn">About Us</a>
           </div>
         </div>
 
