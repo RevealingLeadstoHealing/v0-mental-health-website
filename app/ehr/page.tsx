@@ -369,7 +369,7 @@ function Intake() {
   );
 }
 
-function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) {
+function Assessments({ savedAssessments = [], setSavedAssessments = (_updater: unknown) => {} }) {
   const phqQuestions = [
     "Little interest or pleasure in doing things",
     "Feeling down, depressed, or hopeless",
