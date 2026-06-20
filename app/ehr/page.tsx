@@ -235,7 +235,7 @@ function Dashboard({ page, setPage, savedAssessments, setSavedAssessments, saved
   if (page === "documents") return <Documents />;
   if (page === "telehealth") return <Telehealth setSavedNotes={setSavedNotes} />;
 
-  return <PlaceholderPage page={page} setPage={setPage} />;
+  return <PlaceholderPage page={page} />;
 }
 
 function ClientChart({ savedAssessments = [], savedNotes = [] }) {
