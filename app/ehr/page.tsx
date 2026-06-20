@@ -183,21 +183,19 @@ function LoginPage({ onLogin }) {
 
 function Dashboard({ page, setPage, savedAssessments, setSavedAssessments, savedNotes, setSavedNotes }) {
   const statCards = [
-    [Users, "Clients", "1", "Private professional client list"],
-    [FileText, "Notes", String(savedNotes.length), "Saved provider notes"],
-    [ClipboardList, "Assessments", String(savedAssessments.length), "Saved screening results"],
-    [BookOpen, "Homework", "1", "Assigned client activity"],
+    { Icon: Users, title: "Clients", value: "1", helper: "Private professional client list" },
+    { Icon: FileText, title: "Notes", value: String(savedNotes.length), helper: "Saved provider notes" },
+    { Icon: ClipboardList, title: "Assessments", value: String(savedAssessments.length), helper: "Saved screening results" },
+    { Icon: BookOpen, title: "Homework", value: "1", helper: "Assigned client activity" },
   ];
-
   if (page === "dashboard") {
     return (
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Provider Dashboard</h1>
         <p className="mt-2 text-slate-600">Professional EHR workspace for Revealing Leads to Healing Wellness Services LLC.</p>
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {statCards.map(([Icon, title, value, helper]) => (
-            <Card key={title} className="p-5">
-              <div className="flex items-start justify-between">
+          {statCards.map(({ Icon, title, value, helper }) => (
+            <Card key={title} className="p-5">              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-slate-500">{title}</p>
                   <p className="mt-1 text-3xl font-bold text-slate-900">{value}</p>
