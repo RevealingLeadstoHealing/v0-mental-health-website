@@ -535,7 +535,7 @@ function Assessments({ savedAssessments = [], setSavedAssessments = () => {} }) 
 
   const getGenericScore = (moduleName) => {
     const values = Object.values(genericResponses[moduleName] || {});
-    return values.reduce((total, value) => total + Number(value || 0), 0);
+    return values.reduce<number>((total, value) => total + Number(value || 0), 0);
   };
 
   const getGenericRiskLevel = (score) => {
