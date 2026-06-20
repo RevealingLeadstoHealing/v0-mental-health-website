@@ -823,7 +823,7 @@ function Assessments({ savedAssessments = [], setSavedAssessments = (_updater: u
   );
 }
 
-function ProgressNotes({ savedAssessments = [], savedNotes = [], setSavedNotes = () => {} }) {
+function ProgressNotes({ savedAssessments = [], savedNotes = [],  }) {
   const [noteType, setNoteType] = useState("SOAP Progress Note");
   const [modality, setModality] = useState("Individual Therapy");
   const modalityCptMap = {
@@ -1176,7 +1176,7 @@ function Documents() {
   );
 }
 
-function Telehealth({ setSavedNotes = () => {} }) {
+function Telehealth({  }) {
   const [session, setSession] = useState({
     clientName: "Demo Client",
     sessionDate: "",
