@@ -40,6 +40,7 @@ const modules = [
   { key: "clients", label: "Client Management", icon: Users },
   { key: "chart", label: "Client Chart", icon: FileText },
   { key: "intake", label: "Intake", icon: ClipboardList },
+  { key: "treatment", label: "Treatment Plan", icon: ClipboardList },
   { key: "notes", label: "Progress Notes", icon: FileText },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
   { key: "documents", label: "Document Library", icon: Lock },
@@ -48,6 +49,18 @@ const modules = [
   { key: "messages", label: "Messages", icon: MessageSquare },
   { key: "schedule", label: "Scheduling", icon: Calendar },
 ];
+
+const clientModules = [
+  { key: "dashboard", label: "Client Home", icon: Shield },
+  { key: "homework", label: "Homework", icon: BookOpen },
+  { key: "telehealth", label: "Telehealth", icon: Video },
+  { key: "messages", label: "Messages", icon: MessageSquare },
+  { key: "schedule", label: "Scheduling", icon: Calendar },
+  { key: "documents", label: "Documents", icon: Lock },
+  { key: "affirmations", label: "Affirmations", icon: Sparkles },
+];
+
+const providerOnlyPages = new Set(["clients", "chart", "intake", "treatment", "notes", "assessments"]);
 
 const STORAGE_KEYS = {
   assessments: "rlth:ehr:savedAssessments",
@@ -96,10 +109,17 @@ function Badge({ children }) {
   );
 }
 
-function LoginPage({ onLogin }) {
-  const [email, setEmail] = useState("provider@rlth.demo");
+function LoginPage({ onLogin, roleHint = "provider" }) {
+  const preferredAccount = roleHint === "client" ? demoClient : demoProvider;
+  const [email, setEmail] = useState(preferredAccount.email);
   const [password, setPassword] = useState("demo123");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const account = roleHint === "client" ? demoClient : demoProvider;
+    setEmail(account.email);
+    setPassword(account.password);
+  }, [roleHint]);
 
   const handleLogin = () => {
     const account = [demoProvider, demoClient].find((u) => u.email === email && u.password === password);
@@ -149,7 +169,9 @@ function LoginPage({ onLogin }) {
 
         <Card className="p-6 lg:p-8">
           <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
-          <p className="mt-2 text-sm text-slate-500">Preview credentials are already filled in.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            {roleHint === "client" ? "Patient access is selected." : "Provider access is selected."} Preview credentials are already filled in.
+          </p>
 
           <div className="mt-6 space-y-4">
             <input
@@ -181,7 +203,12 @@ function LoginPage({ onLogin }) {
   );
 }
 
-function Dashboard({ page, setPage, savedAssessments, setSavedAssessments, savedNotes, setSavedNotes }) {
+function Dashboard({ user, page, setPage, savedAssessments, setSavedAssessments, savedNotes, setSavedNotes }) {
+  if (user.role === "client") {
+    if (providerOnlyPages.has(page)) return <AccessBoundary />;
+    if (page === "dashboard") return <ClientDashboard setPage={setPage} />;
+  }
+
   const statCards = [
     { Icon: Users, title: "Clients", value: "1", helper: "Private professional client list" },
     { Icon: FileText, title: "Notes", value: String(savedNotes.length), helper: "Saved provider notes" },
@@ -195,7 +222,8 @@ function Dashboard({ page, setPage, savedAssessments, setSavedAssessments, saved
         <p className="mt-2 text-slate-600">Professional EHR workspace for Revealing Leads to Healing Wellness Services LLC.</p>
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {statCards.map(({ Icon, title, value, helper }) => (
-            <Card key={title} className="p-5">              <div className="flex items-start justify-between">
+            <Card key={title} className="p-5">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-slate-500">{title}</p>
                   <p className="mt-1 text-3xl font-bold text-slate-900">{value}</p>
@@ -230,12 +258,62 @@ function Dashboard({ page, setPage, savedAssessments, setSavedAssessments, saved
 
   if (page === "chart") return <ClientChart savedAssessments={savedAssessments} savedNotes={savedNotes} />;
   if (page === "intake") return <Intake />;
+  if (page === "treatment") return <TreatmentPlan />;
   if (page === "assessments") return <Assessments savedAssessments={savedAssessments} setSavedAssessments={setSavedAssessments} />;
   if (page === "notes") return <ProgressNotes savedAssessments={savedAssessments} savedNotes={savedNotes} setSavedNotes={setSavedNotes} />;
   if (page === "documents") return <Documents />;
+  if (page === "homework") return <Homework />;
   if (page === "telehealth") return <Telehealth setSavedNotes={setSavedNotes} />;
+  if (page === "messages") return <Messages />;
+  if (page === "schedule") return <Schedule />;
+  if (page === "affirmations") return <Affirmations />;
 
   return <PlaceholderPage page={page} />;
+}
+
+function AccessBoundary() {
+  return (
+    <Card className="p-6">
+      <h1 className="text-3xl font-bold text-slate-900">Access Restricted</h1>
+      <p className="mt-2 text-slate-600">
+        This area is reserved for provider clinical workflow. Patient access is limited to homework,
+        telehealth, messages, scheduling, documents, and affirmations after login.
+      </p>
+    </Card>
+  );
+}
+
+function ClientDashboard({ setPage }) {
+  const quickLinks = [
+    ["homework", "View Homework", "Review assigned grounding practice and client-facing activities."],
+    ["telehealth", "Telehealth", "Prepare for secure video or audio sessions."],
+    ["messages", "Messages", "Send a brief portal message to the provider."],
+    ["schedule", "Scheduling", "Review appointment and session format details."],
+    ["affirmations", "Affirmations", "Open supportive prompts for between-session care."],
+  ];
+
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Patient Portal</h1>
+      <p className="mt-2 text-slate-600">
+        Secure client-facing access for Revealing Leads to Healing Wellness Services LLC.
+      </p>
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {quickLinks.map(([key, title, helper]) => (
+          <Card key={key} className="p-5">
+            <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+            <p className="mt-2 text-sm text-slate-600">{helper}</p>
+            <button
+              onClick={() => setPage(key)}
+              className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+            >
+              Open
+            </button>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ClientChart({ savedAssessments = [], savedNotes = [] }) {
@@ -247,7 +325,7 @@ function ClientChart({ savedAssessments = [], savedNotes = [] }) {
         <Card className="p-6 space-y-4">
           <div>
             <h2 className="text-2xl font-bold">{clientChart.name}</h2>
-            <p className="text-sm text-slate-500">DOB: {clientChart.dob} • Phone: {clientChart.phone}</p>
+            <p className="text-sm text-slate-500">DOB: {clientChart.dob} â€¢ Phone: {clientChart.phone}</p>
           </div>
           <div className="rounded-2xl border p-4">
             <p className="font-semibold">Presenting Problem</p>
@@ -351,7 +429,7 @@ function Intake() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900">Client Intake</h1>
-      <p className="mt-2 text-slate-600">Revealing Leads to Healing Wellness Services LLC • EHR Proprietary System</p>
+      <p className="mt-2 text-slate-600">Revealing Leads to Healing Wellness Services LLC â€¢ EHR Proprietary System</p>
       {submitted && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">Intake saved to secure chart.</div>}
       <Card className="mt-6 p-6 space-y-5">
         <div className="grid gap-4 md:grid-cols-2">
@@ -669,9 +747,9 @@ function Assessments({ savedAssessments = [], setSavedAssessments = (_updater: u
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 Use the dark Save Assessment button above to send this screening into Client Chart ? Assessment History.
               </div>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note — coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake — coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary â€” coming next</button>
             </Card>
           </div>
         </div>
@@ -787,9 +865,9 @@ function Assessments({ savedAssessments = [], setSavedAssessments = (_updater: u
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 Use the dark Save Assessment button above to send this screening into Client Chart ? Assessment History.
               </div>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note — coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake — coming next</button>
-              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary — coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Progress Note â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Copy to Intake â€” coming next</button>
+              <button className="w-full rounded-2xl border px-4 py-3 font-semibold text-slate-500">Generate Clinical Summary â€” coming next</button>
             </Card>
           </div>
         </div>
@@ -1137,7 +1215,7 @@ function ProgressNotes({ savedAssessments = [], savedNotes = [], setSavedNotes =
             {latestAssessment ? (
               <div className="rounded-2xl border p-4 text-sm">
                 <p className="font-semibold">{latestAssessment.name}</p>
-                <p className="mt-1 text-slate-600">Score: {latestAssessment.score} • {latestAssessment.severity}</p>
+                <p className="mt-1 text-slate-600">Score: {latestAssessment.score} â€¢ {latestAssessment.severity}</p>
                 <p className="mt-1 text-slate-600">Risk: {latestAssessment.riskFlag || "None"}</p>
               </div>
             ) : (
@@ -1207,7 +1285,7 @@ function Telehealth({ setSavedNotes = (_updater: unknown) => {} }) {
       ? "Risk-relevant language was detected in the transcript and requires provider review before finalizing the note."
       : "No automatic high-risk language was detected in the transcript preview.";
 
-    const noteText = `SOAP Telehealth Progress Note\n\nClient: ${session.clientName}\nSession Type: ${session.sessionType}\nDate: ${session.sessionDate || "Not entered"}\nInterpreter: ${session.interpreterService}${session.interpreterLanguage ? ` — ${session.interpreterLanguage}` : ""}\nCaller ID / Dialer Display: ${session.callerId || "Not entered"}\nSpruce Connected: ${session.spruceEnabled}\nSpruce Channel: ${session.spruceChannel}\nSpruce Conversation ID: ${session.spruceConversationId || "Not entered"}\n\nS: Client participated in a telehealth session and discussed symptoms, stressors, treatment needs, and functional impact. Transcript-derived content included: ${cleanTranscript}\n\nO: Client was present through ${session.sessionType}. Provider documented telehealth consent, privacy considerations, interpreter/language needs if applicable, and technical/session access details.\n\nA: Clinical material reviewed during the session suggests ongoing behavioral health symptoms requiring continued therapeutic support, monitoring, and treatment planning. ${riskText}\n\nP: Continue treatment as clinically indicated. Provider to review transcript-derived draft for accuracy, update risk assessment as needed, document interventions used, assign homework if appropriate, and follow up during the next scheduled session.`;
+    const noteText = `SOAP Telehealth Progress Note\n\nClient: ${session.clientName}\nSession Type: ${session.sessionType}\nDate: ${session.sessionDate || "Not entered"}\nInterpreter: ${session.interpreterService}${session.interpreterLanguage ? ` â€” ${session.interpreterLanguage}` : ""}\nCaller ID / Dialer Display: ${session.callerId || "Not entered"}\nSpruce Connected: ${session.spruceEnabled}\nSpruce Channel: ${session.spruceChannel}\nSpruce Conversation ID: ${session.spruceConversationId || "Not entered"}\n\nS: Client participated in a telehealth session and discussed symptoms, stressors, treatment needs, and functional impact. Transcript-derived content included: ${cleanTranscript}\n\nO: Client was present through ${session.sessionType}. Provider documented telehealth consent, privacy considerations, interpreter/language needs if applicable, and technical/session access details.\n\nA: Clinical material reviewed during the session suggests ongoing behavioral health symptoms requiring continued therapeutic support, monitoring, and treatment planning. ${riskText}\n\nP: Continue treatment as clinically indicated. Provider to review transcript-derived draft for accuracy, update risk assessment as needed, document interventions used, assign homework if appropriate, and follow up during the next scheduled session.`;
 
     setGeneratedNote(noteText);
   };
@@ -1270,7 +1348,7 @@ function Telehealth({ setSavedNotes = (_updater: unknown) => {} }) {
               <input className="rounded-2xl border p-3" value={session.callerId} onChange={(e) => updateSession("callerId", e.target.value)} placeholder="Generic caller ID display" />
               <input className="rounded-2xl border p-3" value={session.callbackNumber} onChange={(e) => updateSession("callbackNumber", e.target.value)} placeholder="Callback / dialer number" />
             </div>
-            <button className="rounded-2xl border px-4 py-3 font-semibold hover:bg-white">Place Call — vendor connection required</button>
+            <button className="rounded-2xl border px-4 py-3 font-semibold hover:bg-white">Place Call â€” vendor connection required</button>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 space-y-3">
@@ -1303,7 +1381,7 @@ function Telehealth({ setSavedNotes = (_updater: unknown) => {} }) {
             <h3 className="font-bold">Consent / Recording / Booking Handoff</h3>
             <select className="rounded-2xl border p-3 w-full" value={session.recordingConsent} onChange={(e) => updateSession("recordingConsent", e.target.value)}>
               <option>No</option>
-              <option>Yes — explicit consent documented</option>
+              <option>Yes â€” explicit consent documented</option>
             </select>
             <textarea className="min-h-24 w-full rounded-2xl border p-3" value={session.telehealthConsent} onChange={(e) => updateSession("telehealthConsent", e.target.value)} placeholder="Telehealth consent verbiage" />
             <div className="grid gap-3 md:grid-cols-2">
@@ -1356,6 +1434,113 @@ function Telehealth({ setSavedNotes = (_updater: unknown) => {} }) {
   );
 }
 
+function TreatmentPlan() {
+  const [saved, setSaved] = useState(false);
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Treatment Plan</h1>
+      <p className="mt-2 text-slate-600">Provider-only treatment plan workspace connected to the client chart.</p>
+      {saved && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">Treatment plan saved to chart preview.</div>}
+      <Card className="mt-6 p-6 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <input className="rounded-2xl border p-3" defaultValue="Demo Client" placeholder="Client name" />
+          <input className="rounded-2xl border p-3" defaultValue={clientChart.primaryDiagnosis} placeholder="Primary diagnosis" />
+        </div>
+        <textarea className="min-h-28 w-full rounded-2xl border p-3" defaultValue={clientChart.goals} placeholder="Treatment goals" />
+        <textarea className="min-h-28 w-full rounded-2xl border p-3" placeholder="Interventions: EMDR, DBT skills, CBT, trauma-informed stabilization, relapse-prevention supports" />
+        <textarea className="min-h-28 w-full rounded-2xl border p-3" placeholder="Homework / between-session plan" />
+        <button onClick={() => setSaved(true)} className="rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Save Treatment Plan</button>
+      </Card>
+    </div>
+  );
+}
+
+function Homework() {
+  const [completed, setCompleted] = useState(false);
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Homework</h1>
+      <p className="mt-2 text-slate-600">Assigned client activities and provider-visible completion status.</p>
+      <Card className="mt-6 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">Grounding Practice</h2>
+            <p className="mt-2 text-sm text-slate-600">Practice 5-4-3-2-1 grounding once in the morning and once in the evening.</p>
+          </div>
+          <Badge>{completed ? "Completed" : "Assigned"}</Badge>
+        </div>
+        <textarea className="mt-4 min-h-28 w-full rounded-2xl border p-3" placeholder="Client reflection or provider note..." />
+        <button onClick={() => setCompleted(true)} className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Mark Complete</button>
+      </Card>
+    </div>
+  );
+}
+
+function Messages() {
+  const [sent, setSent] = useState(false);
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Messages</h1>
+      <p className="mt-2 text-slate-600">Secure messaging preview for patient-provider communication.</p>
+      {sent && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">Message saved in preview thread.</div>}
+      <Card className="mt-6 p-6 space-y-4">
+        <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+          <p className="font-semibold">Provider</p>
+          <p className="mt-1">Welcome to your client portal. Please complete your journal reflection this week.</p>
+        </div>
+        <textarea className="min-h-32 w-full rounded-2xl border p-3" placeholder="Write a brief secure message..." />
+        <button onClick={() => setSent(true)} className="rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Send Message</button>
+      </Card>
+    </div>
+  );
+}
+
+function Schedule() {
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Scheduling</h1>
+      <p className="mt-2 text-slate-600">Appointment details and session-format workflow.</p>
+      {confirmed && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">Appointment status updated.</div>}
+      <Card className="mt-6 p-6 space-y-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          <input className="rounded-2xl border p-3" type="date" />
+          <input className="rounded-2xl border p-3" type="time" />
+          <select className="rounded-2xl border p-3" defaultValue="Telehealth">
+            <option>Telehealth</option>
+            <option>In-Person</option>
+          </select>
+        </div>
+        <button onClick={() => setConfirmed(true)} className="rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white">Update Appointment</button>
+      </Card>
+    </div>
+  );
+}
+
+function Affirmations() {
+  const affirmations = [
+    "I can move through this moment with steadiness and care.",
+    "Healing is not linear, and my effort still counts.",
+    "I am allowed to slow down and reconnect to myself.",
+    "My emotions carry information, not failure.",
+    "I can practice one helpful step at a time.",
+  ];
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-slate-900">Affirmations</h1>
+      <p className="mt-2 text-slate-600">Client-facing supportive prompts for between-session care.</p>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        {affirmations.map((affirmation) => (
+          <Card key={affirmation} className="p-5">
+            <Sparkles className="h-5 w-5 text-slate-700" />
+            <p className="mt-3 font-medium text-slate-800">{affirmation}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PlaceholderPage({ page }) {
   const label = modules.find((m) => m.key === page)?.label || "Module";
   return (
@@ -1375,6 +1560,7 @@ function AppMain({ user, onLogout }) {
   const [page, setPage] = useState("dashboard");
   const [savedAssessments, setSavedAssessments] = useState([]);
   const [savedNotes, setSavedNotes] = useState([]);
+  const activeModules = user.role === "provider" ? modules : clientModules;
 
   useEffect(() => {
     try {
@@ -1409,6 +1595,12 @@ function AppMain({ user, onLogout }) {
     }
   }, [savedNotes]);
 
+  useEffect(() => {
+    if (!activeModules.some((module) => module.key === page)) {
+      setPage("dashboard");
+    }
+  }, [activeModules, page]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
@@ -1426,7 +1618,7 @@ function AppMain({ user, onLogout }) {
             <div className="mt-2"><Badge>{user.role}</Badge></div>
           </div>
           <nav className="mt-6 space-y-1">
-            {modules.map(({ key, label, icon: Icon }) => (
+            {activeModules.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setPage(key)}
@@ -1441,7 +1633,7 @@ function AppMain({ user, onLogout }) {
           </button>
         </aside>
         <main className="p-5 lg:p-8">
-          <Dashboard page={page} setPage={setPage} savedAssessments={savedAssessments} setSavedAssessments={setSavedAssessments} savedNotes={savedNotes} setSavedNotes={setSavedNotes} />
+          <Dashboard user={user} page={page} setPage={setPage} savedAssessments={savedAssessments} setSavedAssessments={setSavedAssessments} savedNotes={savedNotes} setSavedNotes={setSavedNotes} />
         </main>
       </div>
     </div>
@@ -1450,6 +1642,18 @@ function AppMain({ user, onLogout }) {
 
 export default function RevealingLeadsToHealingEHRMVP() {
   const [user, setUser] = useState(null);
-  return user ? <AppMain user={user} onLogout={() => setUser(null)} /> : <LoginPage onLogin={setUser} />;
+  const [roleHint, setRoleHint] = useState("provider");
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      setRoleHint(params.get("role") === "client" ? "client" : "provider");
+    } catch {
+      setRoleHint("provider");
+    }
+  }, []);
+
+  return user ? <AppMain user={user} onLogout={() => setUser(null)} /> : <LoginPage onLogin={setUser} roleHint={roleHint} />;
 }
+
 

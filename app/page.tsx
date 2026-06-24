@@ -1,10 +1,12 @@
-────────────—────©–import Image from "next/image";
+import Image from "next/image";
 
 export default function Home() {
   return (
     <>
-      {/* ── HEADER ── */}
       <header className="site-header">
+        <a href="/" className="brand">
+          Revealing Leads to Healing Wellness Services, LLC
+        </a>
         <div className="site-logo-wrap">
           <img
             src="/logo.png"
@@ -12,48 +14,41 @@ export default function Home() {
             className="site-logo"
           />
         </div>
-        <a href="/" className="brand">
-          Revealing Leads to Healing Wellness Services, LLC
-        </a>
-        <nav>
+        <nav aria-label="Primary navigation">
           <a href="#home" className="active">Home</a>
           <a href="#about-us">About Us</a>
           <a href="#our-services">Our Services</a>
           <a href="#faqs">FAQs</a>
           <a href="#contact">Contact</a>
-          <a href="/ehr">EHR Login</a>
+          <a href="/ehr?role=client">Patient Access</a>
+          <a href="/ehr?role=provider">Provider Access</a>
         </nav>
       </header>
 
-      {/* ── HERO BANNER ── */}
       <section id="home" className="hero">
         <h1>Revealing Leads to Healing Wellness Services, LLC</h1>
       </section>
 
-      {/* ── MAIN CONTENT ── */}
       <main className="main-content">
-
-        {/* Welcome */}
         <div className="section-shell">
           <div className="content-card">
             <h2>Welcome</h2>
             <p>
               This is where our journey begins. Get to know our practice and
-              what we do, and how we're committed to quality and great
-              service. Join us as we grow and succeed together. We're glad
-              you're here to be a part of our story.
+              what we do, and how we're committed to quality and great service.
+              Join us as we grow and succeed together. We're glad you're here
+              to be a part of our story.
             </p>
             <a href="#contact" className="btn">Start Here</a>
-            <a href="/ehr" className="btn">Client & Provider EHR Login</a>
+            <a href="/ehr?role=client" className="btn">Patient Access</a>
+            <a href="/ehr?role=provider" className="btn">Provider Access</a>
           </div>
         </div>
 
-        {/* Our Services */}
         <div id="our-services" className="section-shell">
           <div className="content-card">
             <h1>Our Services</h1>
             <div className="service-grid">
-
               <div className="service-block">
                 <h2>Trauma &amp; PTSD Recovery</h2>
                 <p>
@@ -69,11 +64,11 @@ export default function Home() {
               <div className="service-block">
                 <h2>Addiction &amp; Substance Use Support</h2>
                 <p>
-                  Master-level expertise{" "}
-                  <strong>(CASAC-M)</strong> in treating alcohol and substance
-                  use disorders. I provide a compassionate, non-judgmental space
-                  for individuals and families focusing on recovery, harm
-                  reduction, and co-occurring mental health challenges.
+                  Master-level expertise <strong>(CASAC-M)</strong> in treating
+                  alcohol and substance use disorders. I provide a
+                  compassionate, non-judgmental space for individuals and
+                  families focusing on recovery, harm reduction, and
+                  co-occurring mental health challenges.
                 </p>
               </div>
 
@@ -91,12 +86,10 @@ export default function Home() {
                   to treat the whole person.
                 </p>
               </div>
-
             </div>
           </div>
         </div>
 
-        {/* Meet Kay */}
         <div id="about-us" className="section-shell">
           <div className="content-card">
             <h1>Meet Kay Carpenter, MA, LMSW, CASAC-T</h1>
@@ -121,23 +114,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Your Path to Wellness */}
         <div className="section-shell">
           <div className="content-card">
             <h1>Your Path to Wellness Starts Here</h1>
             <p>
               At Revealing Leads to Healing Wellness Services, LLC, I believe
               that emotional wellness is a journey we navigate together. Whether
-              you are seeking deep trauma processing, navigating the complexities
-              of recovery, or looking to break through anxiety and grief, you
-              deserve a space that respects your unique story.
+              you are seeking deep trauma processing, navigating the
+              complexities of recovery, or looking to break through anxiety and
+              grief, you deserve a space that respects your unique story.
             </p>
             <p>
               To ensure your care fits seamlessly into your life, I provide
               flexible options tailored to your comfort. You can choose to meet
               with me for dedicated, face-to-face sessions at my Yonkers office,
-              or connect securely from anywhere across New York State through our
-              premier <strong>Telehealth</strong> platform.
+              or connect securely from anywhere across New York State through
+              our premier <strong>Telehealth</strong> platform.
             </p>
             <p>
               Healing is entirely possible, and you do not have to take the
@@ -153,7 +145,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* FAQ */}
         <div id="faqs" className="section-shell">
           <div className="content-card">
             <h3>FAQ</h3>
@@ -169,7 +160,7 @@ export default function Home() {
             <details>
               <summary>Do you offer telehealth / video visits?</summary>
               <p>
-                Yes — we are now offering video visits for your convenience and
+                Yes - we are now offering video visits for your convenience and
                 safety.
               </p>
             </details>
@@ -190,52 +181,32 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Testimonials */}
         <div className="section-shell">
           <div className="testimonials">
             <h3>What Our Clients Say</h3>
             <div className="testimonial-grid">
               <div className="testimonial-card">
-                <p>
-                  &ldquo;I can't say enough about the outstanding care I
-                  received. Truly life-changing.&rdquo;
-                </p>
+                <p>&ldquo;I can't say enough about the outstanding care I received. Truly life-changing.&rdquo;</p>
               </div>
               <div className="testimonial-card">
-                <p>
-                  &ldquo;RTH has been an incredible help. The support I've
-                  received has been phenomenal.&rdquo;
-                </p>
+                <p>&ldquo;RTH has been an incredible help. The support I've received has been phenomenal.&rdquo;</p>
               </div>
               <div className="testimonial-card">
-                <p>
-                  &ldquo;RTH is helping me deal with things I've never
-                  been able to address before.&rdquo;
-                </p>
+                <p>&ldquo;RTH is helping me deal with things I've never been able to address before.&rdquo;</p>
               </div>
               <div className="testimonial-card">
-                <p>
-                  &ldquo;Very thoughtful therapist who truly listens and helps
-                  you grow.&rdquo;
-                </p>
+                <p>&ldquo;Very thoughtful therapist who truly listens and helps you grow.&rdquo;</p>
               </div>
               <div className="testimonial-card">
-                <p>
-                  &ldquo;Kay challenges my thinking, which has helped me make
-                  real progress.&rdquo;
-                </p>
+                <p>&ldquo;Kay challenges my thinking, which has helped me make real progress.&rdquo;</p>
               </div>
               <div className="testimonial-card">
-                <p>
-                  &ldquo;Kay is helping me so much. She genuinely cares about
-                  her clients.&rdquo;
-                </p>
+                <p>&ldquo;Kay is helping me so much. She genuinely cares about her clients.&rdquo;</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Contact */}
         <div id="contact" className="section-shell">
           <div className="content-card">
             <h1>Contact Us</h1>
@@ -277,12 +248,10 @@ export default function Home() {
             </form>
           </div>
         </div>
-
       </main>
 
-      {/* ── FOOTER ── */}
       <footer className="site-footer">
-        <p>© 2024 – 2025 Revealing Leads to Healing Wellness Services</p>
+        <p>Copyright 2024 - 2025 Revealing Leads to Healing Wellness Services</p>
         <p>
           Powered by{" "}
           <a href="https://www.webador.com/" rel="noopener noreferrer">
@@ -292,4 +261,4 @@ export default function Home() {
       </footer>
     </>
   );
-            }export { default } from "./ehr/page";
+}
