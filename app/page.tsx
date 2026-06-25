@@ -1,23 +1,23 @@
-import Image from "next/image";
+const practiceName = "Revealing Leads to Healing Wellness Services, LLC";
 
 export default function Home() {
   return (
     <>
-      <header className="site-header">
-        <a href="/" className="brand">
-          Revealing Leads to Healing Wellness Services, LLC
+      <header className="rlth-header">
+        <a href="/" className="rlth-practice-name">
+          {practiceName}
         </a>
-        <div className="site-logo-wrap">
+        <div className="rlth-logo-space">
           <img
             src="/logo.png"
-            alt="Revealing Leads to Healing logo"
-            className="site-logo"
+            alt="Revealing Leads to Healing Wellness Services logo"
+            className="rlth-logo"
           />
         </div>
-        <nav aria-label="Primary navigation">
-          <a href="#home" className="active">Home</a>
-          <a href="#about-us">About Us</a>
-          <a href="#our-services">Our Services</a>
+        <nav className="rlth-nav" aria-label="Primary navigation">
+          <a href="#home">Home</a>
+          <a href="#about">About Us</a>
+          <a href="#approach">Therapy Approach</a>
           <a href="#faqs">FAQs</a>
           <a href="#contact">Contact</a>
           <a href="/ehr?role=client">Patient Access</a>
@@ -25,239 +25,110 @@ export default function Home() {
         </nav>
       </header>
 
-      <section id="home" className="hero">
-        <h1>Revealing Leads to Healing Wellness Services, LLC</h1>
-      </section>
-
-      <main className="main-content">
-        <div className="section-shell">
-          <div className="content-card">
-            <h2>Welcome</h2>
-            <p>
-              This is where our journey begins. Get to know our practice and
-              what we do, and how we're committed to quality and great service.
-              Join us as we grow and succeed together. We're glad you're here
-              to be a part of our story.
-            </p>
-            <a href="#contact" className="btn">Start Here</a>
-            <a href="/ehr?role=client" className="btn">Patient Access</a>
-            <a href="/ehr?role=provider" className="btn">Provider Access</a>
+      <main id="home" className="rlth-page">
+        <section className="rlth-hero" aria-label={practiceName}>
+          <div className="rlth-hero-logo">
+            <img src="/logo.png" alt="" />
           </div>
-        </div>
+        </section>
 
-        <div id="our-services" className="section-shell">
-          <div className="content-card">
-            <h1>Our Services</h1>
-            <div className="service-grid">
-              <div className="service-block">
-                <h2>Trauma &amp; PTSD Recovery</h2>
-                <p>
-                  Specialized clinical care for individuals navigating trauma,
-                  profound grief, loss, and life transitions. Utilizing my
-                  credentials as a{" "}
-                  <strong>Certified Clinical Trauma Professional (CCTP)</strong>,
-                  we work together to process past experiences and build a path
-                  toward lasting emotional freedom.
-                </p>
-              </div>
+        <section id="about" className="rlth-section rlth-white">
+          <h1>Meet Kenseener &quot;Kay&quot; Carpenter, MA, LCSW, CASAC-M</h1>
+          <p className="rlth-lead">
+            Dedicated Psychotherapist, Trauma Specialist, and Practice Founder.
+          </p>
+          <p>
+            Welcome to Revealing Leads to Healing Wellness Services, LLC. I am
+            Kenseener &quot;Kay&quot; Carpenter, a licensed clinical social worker and
+            credentialed master-level substance use counselor with over a decade
+            of dedicated experience in the mental health field.
+          </p>
+          <p>
+            My work is rooted in trauma recovery, mental health, addiction
+            support, complex grief, loss, anxiety, and major life transitions.
+          </p>
+        </section>
 
-              <div className="service-block">
-                <h2>Addiction &amp; Substance Use Support</h2>
-                <p>
-                  Master-level expertise <strong>(CASAC-M)</strong> in treating
-                  alcohol and substance use disorders. I provide a
-                  compassionate, non-judgmental space for individuals and
-                  families focusing on recovery, harm reduction, and
-                  co-occurring mental health challenges.
-                </p>
-              </div>
-
-              <div className="service-block">
-                <h2>Integrative &amp; Evidence-Based Modalities</h2>
-                <p>
-                  A holistic approach to healing that incorporates powerful,
-                  proven clinical interventions tailored to you. My practice
-                  actively integrates{" "}
-                  <strong>
-                    Eye Movement Desensitization and Reprocessing (EMDR),
-                    Dialectical Behavior Therapy (DBT), and Cognitive Behavioral
-                    Therapy (CBT)
-                  </strong>{" "}
-                  to treat the whole person.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div id="about-us" className="section-shell">
-          <div className="content-card">
-            <h1>Meet Kay Carpenter, MA, LMSW, CASAC-T</h1>
-            <div className="portrait">
-              <Image
-                src="/kenseener-carpenter-headshot.jpg"
-                alt="Kay Carpenter, MA, LMSW, CASAC-T"
-                width={480}
-                height={600}
-                style={{ width: "min(100%, 480px)", height: "auto" }}
-                priority
-              />
-            </div>
-            <p>
-              Kay Carpenter is a licensed clinical social worker and certified
-              addiction counselor dedicated to providing compassionate,
-              culturally sensitive care. Kay specializes in trauma, anxiety,
-              depression, and substance use disorders, helping clients uncover
-              the path to healing.
-            </p>
-            <a href="#about-us" className="btn">About Us</a>
-          </div>
-        </div>
-
-        <div className="section-shell">
-          <div className="content-card">
-            <h1>Your Path to Wellness Starts Here</h1>
-            <p>
-              At Revealing Leads to Healing Wellness Services, LLC, I believe
-              that emotional wellness is a journey we navigate together. Whether
-              you are seeking deep trauma processing, navigating the
-              complexities of recovery, or looking to break through anxiety and
-              grief, you deserve a space that respects your unique story.
-            </p>
-            <p>
-              To ensure your care fits seamlessly into your life, I provide
-              flexible options tailored to your comfort. You can choose to meet
-              with me for dedicated, face-to-face sessions at my Yonkers office,
-              or connect securely from anywhere across New York State through
-              our premier <strong>Telehealth</strong> platform.
-            </p>
-            <p>
-              Healing is entirely possible, and you do not have to take the
-              first step alone. Let's work together to build the resilience,
-              coping strategies, and insights necessary to reclaim your life.
-            </p>
-            <a
-              href="mailto:intake@revealing-leads-to-healing-wellness-services.org"
-              className="btn btn-cta"
-            >
-              Book a Complimentary Telehealth Consultation
-            </a>
-          </div>
-        </div>
-
-        <div id="faqs" className="section-shell">
-          <div className="content-card">
-            <h3>FAQ</h3>
-            <details>
-              <summary>How do I contact for an appointment?</summary>
+        <section id="approach" className="rlth-section rlth-charcoal">
+          <h2>An Integrative, Holistic Path to Healing</h2>
+          <p>
+            True healing requires looking at the whole person: mind, body, and
+            spirit. Care is warm, person-centered, trauma-informed, and paced
+            around your readiness.
+          </p>
+          <div className="rlth-service-list">
+            <article>
+              <h3>Trauma &amp; PTSD Recovery</h3>
               <p>
-                Use the contact form or call us at{" "}
-                <a href="tel:9149432501">914-943-2501</a> to schedule an
-                appointment, or use the booking link provided on the Contact
-                page.
+                Specialized clinical care for individuals navigating trauma,
+                profound grief, loss, and life transitions.
               </p>
-            </details>
-            <details>
-              <summary>Do you offer telehealth / video visits?</summary>
+            </article>
+            <article>
+              <h3>Addiction &amp; Substance Use Support</h3>
               <p>
-                Yes - we are now offering video visits for your convenience and
-                safety.
+                Master-level CASAC-M expertise for alcohol and substance use
+                disorders, recovery support, harm reduction, and co-occurring
+                mental health challenges.
               </p>
-            </details>
-            <details>
-              <summary>What insurance do you accept?</summary>
+            </article>
+            <article>
+              <h3>EMDR, DBT &amp; CBT</h3>
               <p>
-                Please contact us directly for current insurance and payment
-                information.
+                Evidence-based interventions are integrated into a holistic
+                clinical plan tailored to the whole person.
               </p>
-            </details>
-            <details>
-              <summary>What areas do you serve?</summary>
-              <p>
-                We are based in Yonkers, New York, and serve clients throughout
-                the greater New York area via telehealth.
-              </p>
-            </details>
+            </article>
           </div>
-        </div>
+        </section>
 
-        <div className="section-shell">
-          <div className="testimonials">
-            <h3>What Our Clients Say</h3>
-            <div className="testimonial-grid">
-              <div className="testimonial-card">
-                <p>&ldquo;I can't say enough about the outstanding care I received. Truly life-changing.&rdquo;</p>
-              </div>
-              <div className="testimonial-card">
-                <p>&ldquo;RTH has been an incredible help. The support I've received has been phenomenal.&rdquo;</p>
-              </div>
-              <div className="testimonial-card">
-                <p>&ldquo;RTH is helping me deal with things I've never been able to address before.&rdquo;</p>
-              </div>
-              <div className="testimonial-card">
-                <p>&ldquo;Very thoughtful therapist who truly listens and helps you grow.&rdquo;</p>
-              </div>
-              <div className="testimonial-card">
-                <p>&ldquo;Kay challenges my thinking, which has helped me make real progress.&rdquo;</p>
-              </div>
-              <div className="testimonial-card">
-                <p>&ldquo;Kay is helping me so much. She genuinely cares about her clients.&rdquo;</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <section id="faqs" className="rlth-section rlth-gold">
+          <h2>Frequently Asked Questions</h2>
+          <details>
+            <summary>What session formats do you offer?</summary>
+            <p>
+              In-person sessions are available in Yonkers, New York, with secure
+              telehealth across New York State.
+            </p>
+          </details>
+          <details>
+            <summary>How do I access the secure portal?</summary>
+            <p>
+              Patients receive portal access after login credentials are issued.
+              Providers use a separate secured provider access point.
+            </p>
+          </details>
+        </section>
 
-        <div id="contact" className="section-shell">
-          <div className="content-card">
-            <h1>Contact Us</h1>
-            <ul className="contact-details">
-              <li>
-                <strong>Office Location:</strong>{" "}
-                119 DeHaven Dr, Yonkers, NY 10703
-              </li>
-              <li>
-                <strong>Phone:</strong>{" "}
-                <a href="tel:9149432501">914-943-2501</a>
-              </li>
-              <li>
-                <strong>Email:</strong>{" "}
-                <a href="mailto:intake@revealing-leads-to-healing-wellness-services.org">
-                  intake@revealing-leads-to-healing-wellness-services.org
-                </a>
-              </li>
-              <li>
-                <strong>Availability:</strong>{" "}
-                In-Person Sessions in Yonkers &amp; Secure Telehealth Services
-                across New York State.
-              </li>
-            </ul>
-            <form className="contact-form" action="#" method="POST">
-              <input type="text" placeholder="Your Name" name="name" required />
-              <input
-                type="email"
-                placeholder="Your Email"
-                name="email"
-                required
-              />
-              <textarea
-                placeholder="Your Message"
-                name="message"
-                required
-              ></textarea>
-              <button type="submit">Send Message</button>
-            </form>
+        <section id="contact" className="rlth-section rlth-white">
+          <h2>Reach Out Today</h2>
+          <p>
+            Please share brief contact details only. Specific clinical
+            information will be gathered safely during confidential intake.
+          </p>
+          <ul className="rlth-contact-list">
+            <li>
+              <strong>Office Location:</strong> 119 DeHaven Dr, Yonkers, NY 10703
+            </li>
+            <li>
+              <strong>Phone:</strong> <a href="tel:9149432501">914-943-2501</a>
+            </li>
+            <li>
+              <strong>Email:</strong>{" "}
+              <a href="mailto:intake@revealing-leads-to-healing-wellness-services.org">
+                intake@revealing-leads-to-healing-wellness-services.org
+              </a>
+            </li>
+          </ul>
+          <div className="rlth-actions">
+            <a href="/ehr?role=client">Patient Access</a>
+            <a href="/ehr?role=provider">Provider Access</a>
           </div>
-        </div>
+        </section>
       </main>
 
-      <footer className="site-footer">
-        <p>Copyright 2024 - 2025 Revealing Leads to Healing Wellness Services</p>
-        <p>
-          Powered by{" "}
-          <a href="https://www.webador.com/" rel="noopener noreferrer">
-            Webador
-          </a>
-        </p>
+      <footer className="rlth-footer">
+        <p>Copyright 2024 - 2026 Revealing Leads to Healing Wellness Services</p>
       </footer>
     </>
   );
