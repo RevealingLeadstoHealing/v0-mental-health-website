@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 "use client";
 
 import React, { Component, createContext, useContext, useEffect, useMemo, useState } from "react";
@@ -41,6 +41,10 @@ function cn(...classes) {
 const motion = {
   div: ({ initial, animate, transition, children, ...props }) => <div {...props}>{children}</div>,
 };
+
+const EHR_DEMO_ENABLED = process.env.NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED === "true";
+const EHR_PRODUCTION_LOCK_REASON =
+  "Live clinical EHR use is locked until secure authentication, BAA-supported backend storage, database access rules, immutable audit logging, backups, and operational HIPAA controls are configured.";
 
 function Card({ children, className = "", ...props }) {
   return <div className={cn("rounded-2xl border border-stone-200 bg-white shadow-sm", className)} {...props}>{children}</div>;
@@ -590,6 +594,10 @@ function AuthProvider({ children }) {
   const [store, setStore] = useState(() => normalizeStore(mockSeed));
   const [currentUser, setCurrentUser] = useState(null);
   useEffect(() => {
+    if (!EHR_DEMO_ENABLED) {
+      setHydrated(true);
+      return;
+    }
     const initialStore = readStore();
     const id = initialStore.currentUserId;
     setStore(initialStore);
@@ -597,9 +605,12 @@ function AuthProvider({ children }) {
     setHydrated(true);
   }, []);
   useEffect(() => {
-    if (hydrated) writeStore(store);
+    if (hydrated && EHR_DEMO_ENABLED) writeStore(store);
   }, [store, hydrated]);
   const login = (email, password) => {
+    if (!EHR_DEMO_ENABLED) {
+      throw new Error("Clinical EHR access is locked until production auth and BAA-backed storage are configured.");
+    }
     const found = mockUsers.find((u) => u.email === email && u.password === password);
     if (!found) {
       throw new Error("Invalid email or password.");
@@ -609,6 +620,9 @@ function AuthProvider({ children }) {
     setCurrentUser({ id: found.id, ...next.users[found.id].profile });
   };
   const signup = ({ fullName, email, password, role }) => {
+    if (!EHR_DEMO_ENABLED) {
+      throw new Error("Self-registration is disabled until production auth and identity verification are configured.");
+    }
     if (!fullName || !email || !password || !role) {
       throw new Error("All registration fields are required.");
     }
@@ -770,8 +784,52 @@ function PageProvider({ children }) {
     </PageContext.Provider>
   );
 }
+function ProductionReadinessLock() {
+  const checklist = [
+    "BAA-supported hosting/backend selected and signed",
+    "Real auth with MFA, role claims, password reset, and session timeout",
+    "Database rules that isolate each client chart and provider assignment",
+    "Append-only audit logs for logins, chart access, edits, signatures, exports, and record requests",
+    "Encrypted storage, backup/retention policy, incident response, and legal/compliance review",
+  ];
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-3xl rounded-3xl shadow-sm border-slate-200">
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <div className="p-3 rounded-2xl bg-slate-900 text-white"><Lock className="h-6 w-6" /></div>
+            <div>
+              <CardTitle>Production EHR access locked</CardTitle>
+              <CardDescription>{EHR_PRODUCTION_LOCK_REASON}</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            Do not enter real client names, clinical notes, recordings, diagnoses, billing details, signatures, or PHI into this EHR until the production controls below are completed.
+          </div>
+          <div className="grid gap-3">
+            {checklist.map((item) => (
+              <div key={item} className="rounded-2xl border bg-white p-3 text-sm text-slate-700 flex gap-2">
+                <Shield className="h-4 w-4 text-slate-700 mt-0.5" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
+            Temporary demo mode can be enabled only for non-PHI testing with <code>NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED=true</code>. It must stay disabled for clinical use.
+          </div>
+          <a className="inline-flex min-h-10 items-center justify-center rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white" href="/">
+            Return to Website
+          </a>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 function AppShell() {
   const { currentUser } = useAuth();
+  if (!EHR_DEMO_ENABLED) return <ProductionReadinessLock />;
   return currentUser ? <MainApp /> : <AuthPage />;
 }
 function AuthPage() {
@@ -900,8 +958,7 @@ function AuthPage() {
             </Tabs>
             {error && <div className="text-sm text-red-600 rounded-2xl border border-red-200 bg-red-50 p-3">{error}</div>}
             <div className="rounded-2xl border p-4 text-xs text-slate-500">
-              This is an application starter. Production deployment still requires secure auth settings, Firebase rules,
-              BAA-supported cloud configuration, audit logs, operational HIPAA controls, and legal review.
+              Demo mode uses browser-local storage and is not approved for PHI. Production clinical use requires secure auth, BAA-supported backend storage, database rules, immutable audit logs, operational HIPAA controls, and legal review.
             </div>
           </CardContent>
         </Card>
