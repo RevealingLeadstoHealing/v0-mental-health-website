@@ -26,6 +26,7 @@ Recommended first production stack:
 - App-level append-only audit table for clinical audit events.
 - AWS Backup / PITR for disaster recovery.
 - Optional future AI: AWS Transcribe Medical / HealthScribe only if covered under the signed BAA and configured to avoid uncontrolled retention.
+- First infrastructure scaffold: `infra/aws/rlth-ehr-foundation.yaml`.
 
 ## Core Data Boundaries
 

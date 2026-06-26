@@ -53,3 +53,10 @@ This checklist turns the current prototype into a practice-first production EHR.
 - [ ] Add client invite flow.
 - [ ] Add production smoke tests.
 - [ ] Review with compliance/legal before first real client record.
+## Infrastructure Scaffold
+
+- [x] Add reviewable CloudFormation foundation template.
+- [x] Add backend implementation runbook.
+- [ ] Validate the template in the target AWS account.
+- [ ] Deploy only after AWS BAA is accepted in AWS Artifact.
+- [ ] Save stack outputs into production environment variables.

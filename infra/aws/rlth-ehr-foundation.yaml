@@ -1,0 +1,468 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: RLTH EHR production foundation for practice-first HIPAA-oriented backend infrastructure.
+
+Parameters:
+  PracticeSlug:
+    Type: String
+    Default: rlth
+    AllowedPattern: "^[a-z0-9-]+$"
+    Description: Lowercase practice slug used in AWS resource names.
+  EnvironmentName:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+      - staging
+      - dev
+    Description: Deployment environment.
+
+Resources:
+  EhrKmsKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "${PracticeSlug}-${EnvironmentName} RLTH EHR encryption key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowCloudTrailUseOfKey
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action:
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:*:${AWS::AccountId}:trail/*"
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  EhrKmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${PracticeSlug}/${EnvironmentName}/ehr"
+      TargetKeyId: !Ref EhrKmsKey
+
+  EhrUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-users"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: ON
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 14
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+        - Name: name
+          Required: true
+          Mutable: true
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+        - Name: practiceId
+          AttributeDataType: String
+          Mutable: false
+      UserPoolTags:
+        Application: RLTH-EHR
+        Environment: !Ref EnvironmentName
+
+  EhrUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-web"
+      UserPoolId: !Ref EhrUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 8
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: hours
+      SupportedIdentityProviders:
+        - COGNITO
+
+  OwnerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: owner
+      Description: Practice owner and system administrator.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 1
+
+  ProviderGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: provider
+      Description: Licensed provider with assigned chart access.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 2
+
+  ClinicalStaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: clinical_staff
+      Description: Clinical staff with delegated access.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 3
+
+  BillingStaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: billing_staff
+      Description: Billing staff with billing-workflow access.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 4
+
+  ClientGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: client
+      Description: Client portal user.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 5
+
+  AuditorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: auditor
+      Description: Compliance/audit reviewer.
+      UserPoolId: !Ref EhrUserPool
+      Precedence: 6
+
+  ClinicalRecordsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${PracticeSlug}-${EnvironmentName}-clinical-records"
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref EhrKmsKey
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ContainsPHI
+          Value: "true"
+
+  AuditEventsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${PracticeSlug}-${EnvironmentName}-audit-events"
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref EhrKmsKey
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: AppendOnly
+          Value: "true"
+
+  DocumentMetadataTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${PracticeSlug}-${EnvironmentName}-document-metadata"
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref EhrKmsKey
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ContainsPHI
+          Value: "true"
+
+  EhrDocumentsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-documents-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref EhrKmsKey
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ContainsPHI
+          Value: "true"
+
+  EhrDocumentsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EhrDocumentsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "${EhrDocumentsBucket.Arn}"
+              - !Sub "${EhrDocumentsBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  CloudTrailLogBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-cloudtrail-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref EhrKmsKey
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  CloudTrailLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailLogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt CloudTrailLogBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${CloudTrailLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "${CloudTrailLogBucket.Arn}"
+              - !Sub "${CloudTrailLogBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  EhrCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: CloudTrailLogBucketPolicy
+    Properties:
+      TrailName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-management-events"
+      S3BucketName: !Ref CloudTrailLogBucket
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+      KMSKeyId: !GetAtt EhrKmsKey.Arn
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  AwsRegion:
+    Description: AWS region for the deployed stack.
+    Value: !Ref AWS::Region
+  CognitoUserPoolId:
+    Description: Cognito user pool ID for EHR auth.
+    Value: !Ref EhrUserPool
+  CognitoUserPoolClientId:
+    Description: Cognito app client ID for the EHR web app.
+    Value: !Ref EhrUserPoolClient
+  ClinicalRecordsTableName:
+    Description: DynamoDB table for client charts and clinical records.
+    Value: !Ref ClinicalRecordsTable
+  AuditEventsTableName:
+    Description: DynamoDB table for append-only audit events.
+    Value: !Ref AuditEventsTable
+  DocumentMetadataTableName:
+    Description: DynamoDB table for document metadata.
+    Value: !Ref DocumentMetadataTable
+  DocumentsBucketName:
+    Description: Private S3 bucket for EHR documents.
+    Value: !Ref EhrDocumentsBucket
+  KmsKeyArn:
+    Description: KMS key ARN for EHR encryption.
+    Value: !GetAtt EhrKmsKey.Arn
+  CloudTrailName:
+    Description: CloudTrail trail for AWS management events.
+    Value: !Ref EhrCloudTrail
