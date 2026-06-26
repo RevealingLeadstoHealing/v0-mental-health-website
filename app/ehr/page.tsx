@@ -276,7 +276,7 @@ const VERSION = "EHR Proprietary System v2.0.25";
 const START_DATE = "2025-06-02";
 const ROADMAP_DATE = "2026-01-02";
 const PRACTITIONER_NAME = "Kenseener Carpenter";
-const STORAGE_KEY = "rlth-firebase-architecture-demo-v2-stable";
+const STORAGE_KEY = "rlth-ehr-demo-v3-stable";
 const affirmations = [
   "I can move through this moment with steadiness and care.",
   "Healing is not linear, and my effort still counts.",
@@ -867,7 +867,7 @@ function AuthPage() {
                 <p className="text-sm text-slate-500">Started {START_DATE}</p>
                 <h1 className="text-3xl font-semibold mt-1">{APP_NAME}</h1>
                 <p className="text-slate-600 mt-3 max-w-2xl">
-                  Firebase-oriented mental health well-being platform with role-based client and provider workflow,
+                  Standalone RLTH EHR preview with role-based client and provider workflow,
                   journaling, affirmations, psychoeducation, scheduling, communication, and future-ready EHR modules.
                 </p>
               </div>
@@ -896,8 +896,8 @@ function AuthPage() {
             <CardTitle>{mode === "login" ? "Sign in" : "Create account"}</CardTitle>
             <CardDescription>
               {isMockMode
-                ? "Preview is running in mock mode with Firebase-ready architecture."
-                : "Connected to Firebase."}
+                ? "Preview is running in non-PHI demo mode with production backend disabled."
+                : "Connected to production backend."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1177,7 +1177,7 @@ function DashboardPage() {
               <p className="mt-2"><span className="font-medium text-slate-800">Categorization:</span> Follow-up notes and professional documentation follow the internal clinical documentation standard.</p>
             </div>
             <div className="rounded-2xl border p-4 bg-amber-50 border-amber-200">
-              Production HIPAA readiness still requires Firebase security rules, BAA-backed cloud configuration,
+              Production HIPAA readiness still requires AWS-backed auth, API authorization, encrypted storage,
               access controls, encrypted workflows, audit logs, incident procedures, backups, and policy documentation.
             </div>
             <p className="text-xs text-slate-400">Roadmap date: {ROADMAP_DATE} | Practitioner: {PRACTITIONER_NAME}</p>
@@ -1362,7 +1362,7 @@ function PsychoeducationPage() {
     <div>
       <SectionHeader
         title="Psychoeducation"
-        description="Foundational education library for clients and providers. This can later pull from Firestore or another managed content source."
+        description="Foundational education library for clients and providers. This can later pull from the production content store."
         right={
           <div className="relative w-full lg:w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -4171,7 +4171,7 @@ function InfrastructurePage() {
           <TabsTrigger value="audit">Audit / Access</TabsTrigger>
           <TabsTrigger value="production">Production</TabsTrigger>
         </TabsList>
-        <TabsContent value="data-model" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>HIPAA data structure</CardTitle><CardDescription>Recommended Firestore / production EHR layout.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`/practices/{practiceId}
+        <TabsContent value="data-model" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>HIPAA data structure</CardTitle><CardDescription>Recommended AWS-backed production EHR layout.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`/practices/{practiceId}
 /providers/{providerId}
 /clients/{clientId}
 /profile
@@ -4188,32 +4188,17 @@ function InfrastructurePage() {
 /documents
 /record_requests
 /audit_logs`}</pre></CardContent></Card></TabsContent>
-        <TabsContent value="rules" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Security rules scaffold</CardTitle><CardDescription>Production rules still require real Firebase configuration.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`rules_version = '2';
-service cloud.firestore {
-match /databases/{database}/documents {
-function isProvider() { return request.auth != null && request.auth.token.role == 'provider'; }
-function isClient(clientId) { return request.auth != null && request.auth.uid == clientId; }
-match /practices/{practiceId}/clients/{clientId}/{document=**} {
-allow read: if isProvider() || isClient(clientId);
-allow write: if isProvider();
-}
-match /practices/{practiceId}/clients/{clientId}/messages/{messageId} {
-allow read: if isProvider() || isClient(clientId);
-allow create: if isProvider() || isClient(clientId);
-allow update, delete: if isProvider();
-}
-match /practices/{practiceId}/clients/{clientId}/psychotherapy_notes/{noteId} {
-allow read, write: if isProvider();
-}
-match /practices/{practiceId}/audit_logs/{logId} {
-allow create: if request.auth != null;
-allow read: if isProvider();
-allow update, delete: if false;
-}
-}
-}`}</pre></CardContent></Card></TabsContent>
+        <TabsContent value="rules" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authorization rules scaffold</CardTitle><CardDescription>Production authorization still requires real auth, API, and database enforcement.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`API authorization policy:
+- Require Cognito JWT on every EHR API request.
+- Require practiceId on every PHI record.
+- Providers may access only assigned client charts.
+- Clients may access only their own portal records.
+- Psychotherapy notes remain provider-only.
+- Audit log writes are append-only.
+- S3 documents are private and opened only through short-lived signed URLs after authorization checks.
+- Runtime logs must never contain PHI.`}</pre></CardContent></Card></TabsContent>
         <TabsContent value="audit" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Immutable audit and access logging</CardTitle><CardDescription>Prototype policy and production expectations.</CardDescription></CardHeader><CardContent className="space-y-3 text-sm text-slate-700"><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Immutable log policy</p><p className="mt-2">Audit events are append-only. Production logs should never be edited or deleted from the user interface.</p></div><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Access logging</p><p className="mt-2">Track who opened a chart, who viewed a document, who signed a form, and who released a record request.</p></div><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Document view tracking</p><p className="mt-2">Each document view should stamp actor, timestamp, client, and document title into audit logs.</p></div></CardContent></Card></TabsContent>
-        <TabsContent value="production" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Production completion checklist</CardTitle><CardDescription>What still exists beyond the prototype.</CardDescription></CardHeader><CardContent className="space-y-3 text-sm text-slate-700"><div className="rounded-2xl border p-4 bg-slate-50">Firebase Auth, Firestore, Storage, BAA-backed environment, encrypted backups, incident procedures, secure deployment, and legal/compliance review.</div><div className="rounded-2xl border p-4 bg-slate-50">Electronic signatures should be persisted with signer name, timestamp, IP or device metadata if appropriate, and document version.</div><div className="rounded-2xl border p-4 bg-slate-50">Document uploads should be moved from metadata-only preview mode to secure file storage with signed access URLs and role-based access rules.</div></CardContent></Card></TabsContent>
+        <TabsContent value="production" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Production completion checklist</CardTitle><CardDescription>What still exists beyond the prototype.</CardDescription></CardHeader><CardContent className="space-y-3 text-sm text-slate-700"><div className="rounded-2xl border p-4 bg-slate-50">Cognito auth, encrypted database, private S3 document storage, BAA-backed AWS account, encrypted backups, incident procedures, secure deployment, and legal/compliance review.</div><div className="rounded-2xl border p-4 bg-slate-50">Electronic signatures should be persisted with signer name, timestamp, IP or device metadata if appropriate, and document version.</div><div className="rounded-2xl border p-4 bg-slate-50">Document uploads should be moved from metadata-only preview mode to secure file storage with signed access URLs and role-based access rules.</div></CardContent></Card></TabsContent>
       </Tabs>
     </div>
   );
@@ -4460,7 +4445,7 @@ ${organization}`;
     </div>
   );
 }
-export default function RevealingLeadsToHealingFirebaseStarter() {
+export default function RevealingLeadsToHealingEhrApp() {
   return (
     <div className="ehr-ui">
       <EhrScopedStyles />

@@ -6,6 +6,7 @@ import { useEffect } from "react";
 export default function LogoutPage() {
   useEffect(() => {
     try {
+      localStorage.removeItem("rlth-ehr-demo-v3-stable");
       localStorage.removeItem("rlth-firebase-architecture-demo-v2-stable");
       localStorage.removeItem("rlth:ehr:savedAssessments");
       localStorage.removeItem("rlth:ehr:savedNotes");

@@ -35,3 +35,4 @@ Supporting files:
 - `docs/aws-production-checklist.md`
 - `lib/ehr/domain-model.ts`
 - `lib/ehr/audit-model.ts`
+- `lib/ehr/backend-contract.ts`

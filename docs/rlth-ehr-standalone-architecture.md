@@ -52,6 +52,10 @@ Records must not depend on browser localStorage, public URLs, query strings, ana
 9. Document metadata and private file storage.
 10. Audit log viewer for provider/admin.
 
+## Implementation Contract
+
+The code contract for the production backend lives in `lib/ehr/backend-contract.ts`. The current local demo must move behind that contract so production clinical data only flows through authenticated API calls, encrypted storage, private document access, and append-only audit logging.
+
 ## Future Leasing/SaaS Requirements
 
 Before leasing to other providers or practices:
