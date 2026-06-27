@@ -36,3 +36,9 @@ Capture the stack outputs and set the matching Vercel/AWS environment variables:
 - `RLTH_EHR_KMS_KEY_ID`
 
 The EHR lock should remain enabled until authentication, authorization checks, API handlers, audit writes, document signed URLs, backup policy, and production smoke tests are complete.
+
+## Security Operations Stack
+
+After the foundation stack is complete, deploy `rlth-ehr-security-operations.yaml` using the `KmsKeyArn` output from the foundation stack.
+
+See `infra/aws/security-operations.md` for the deploy command and operational notes.

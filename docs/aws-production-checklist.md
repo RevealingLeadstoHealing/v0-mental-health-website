@@ -53,6 +53,7 @@ This checklist turns the current prototype into a practice-first production EHR.
 - [ ] Add client invite flow.
 - [ ] Add production smoke tests.
 - [ ] Review with compliance/legal before first real client record.
+
 ## Infrastructure Scaffold
 
 - [x] Add reviewable CloudFormation foundation template.
@@ -60,3 +61,19 @@ This checklist turns the current prototype into a practice-first production EHR.
 - [ ] Validate the template in the target AWS account.
 - [ ] Deploy only after AWS BAA is accepted in AWS Artifact.
 - [ ] Save stack outputs into production environment variables.
+
+## Security Operations Stack
+
+- [x] Add CloudWatch encrypted log groups scaffold.
+- [x] Add AWS Backup vault/plan/selection scaffold.
+- [x] Add GuardDuty detector scaffold.
+- [x] Add Security Hub scaffold.
+- [x] Add AWS Config recorder and managed rules scaffold.
+- [x] Add IAM Access Analyzer scaffold.
+- [x] Add WAF WebACL scaffold.
+- [x] Add Secrets Manager runtime secret placeholder.
+- [x] Add Macie session scaffold.
+- [ ] Deploy security operations stack after foundation stack.
+- [ ] Associate WAF WebACL with API Gateway after API deployment.
+- [ ] Confirm CloudWatch logs do not contain PHI.
+- [ ] Confirm AWS Backup restore procedure.

@@ -1,0 +1,420 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: RLTH EHR security, monitoring, backup, and compliance operations stack.
+
+Parameters:
+  PracticeSlug:
+    Type: String
+    Default: rlth
+    AllowedPattern: "^[a-z0-9-]+$"
+    Description: Lowercase practice slug used in AWS resource names.
+  EnvironmentName:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+      - staging
+      - dev
+    Description: Deployment environment.
+  KmsKeyArn:
+    Type: String
+    Description: KMS key ARN from the RLTH EHR foundation stack output.
+
+Resources:
+  ApiRuntimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/rlth/${EnvironmentName}/ehr/api-runtime"
+      KmsKeyId: !Ref KmsKeyArn
+      RetentionInDays: 365
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: NoPHI
+          Value: "true"
+
+  AuthRuntimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/rlth/${EnvironmentName}/ehr/auth-runtime"
+      KmsKeyId: !Ref KmsKeyArn
+      RetentionInDays: 365
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: NoPHI
+          Value: "true"
+
+  DocumentRuntimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/rlth/${EnvironmentName}/ehr/document-runtime"
+      KmsKeyId: !Ref KmsKeyArn
+      RetentionInDays: 365
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: NoPHI
+          Value: "true"
+
+  EhrBackupVault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-backup-vault"
+      EncryptionKeyArn: !Ref KmsKeyArn
+      BackupVaultTags:
+        Application: RLTH-EHR
+        Environment: !Ref EnvironmentName
+        ContainsPHI: "true"
+
+  EhrBackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-backup-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  EhrBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-backup-plan"
+        BackupPlanRule:
+          - RuleName: DailyEncryptedBackups
+            TargetBackupVault: !Ref EhrBackupVault
+            ScheduleExpression: cron(0 6 ? * * *)
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 180
+            Lifecycle:
+              DeleteAfterDays: 2555
+          - RuleName: MonthlyLongTermBackups
+            TargetBackupVault: !Ref EhrBackupVault
+            ScheduleExpression: cron(0 7 1 * ? *)
+            StartWindowMinutes: 120
+            CompletionWindowMinutes: 360
+            Lifecycle:
+              MoveToColdStorageAfterDays: 90
+              DeleteAfterDays: 2555
+      BackupPlanTags:
+        Application: RLTH-EHR
+        Environment: !Ref EnvironmentName
+        ContainsPHI: "true"
+
+  EhrBackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref EhrBackupPlan
+      BackupSelection:
+        SelectionName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-tagged-resources"
+        IamRoleArn: !GetAtt EhrBackupRole.Arn
+        ListOfTags:
+          - ConditionType: STRINGEQUALS
+            ConditionKey: Application
+            ConditionValue: RLTH-EHR
+
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Properties:
+      EnableDefaultStandards: true
+      Tags:
+        Application: RLTH-EHR
+        Environment: !Ref EnvironmentName
+
+  AccountAccessAnalyzer:
+    Type: AWS::AccessAnalyzer::Analyzer
+    Properties:
+      AnalyzerName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-account-analyzer"
+      Type: ACCOUNT
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  MacieSession:
+    Type: AWS::Macie::Session
+    Properties:
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Status: ENABLED
+
+  EhrRuntimeSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "/${PracticeSlug}/${EnvironmentName}/ehr/runtime"
+      Description: RLTH EHR backend runtime secret placeholder. Do not store PHI in secrets.
+      KmsKeyId: !Ref KmsKeyArn
+      GenerateSecretString:
+        SecretStringTemplate: '{"purpose":"rlth-ehr-api-runtime"}'
+        GenerateStringKey: "generatedSecret"
+        PasswordLength: 32
+        ExcludePunctuation: true
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ContainsPHI
+          Value: "false"
+
+  ApiWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-api-web-acl"
+      Scope: REGIONAL
+      Description: Managed WAF rules for RLTH EHR API endpoints.
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-api-web-acl"
+        SampledRequestsEnabled: true
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 10
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 20
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesKnownBadInputsRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesAmazonIpReputationList
+          Priority: 30
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesAmazonIpReputationList
+            SampledRequestsEnabled: true
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KmsKeyArn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ContainsPHI
+          Value: "false"
+
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConfigBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ConfigBucket.Arn
+          - Sid: AWSConfigBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${ConfigBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "${ConfigBucket.Arn}"
+              - !Sub "${ConfigBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  ConfigRecorderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-recorder-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWS_ConfigRole
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-recorder"
+      RoleARN: !GetAtt ConfigRecorderRole.Arn
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    DependsOn: ConfigBucketPolicy
+    Properties:
+      Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-delivery"
+      S3BucketName: !Ref ConfigBucket
+
+  S3PublicReadProhibitedRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-s3-public-read-prohibited"
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED
+
+  S3PublicWriteProhibitedRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-s3-public-write-prohibited"
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_WRITE_PROHIBITED
+
+  DynamoDbPitrEnabledRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-dynamodb-pitr-enabled"
+      Source:
+        Owner: AWS
+        SourceIdentifier: DYNAMODB_PITR_ENABLED
+
+  RootAccountMfaEnabledRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-root-account-mfa-enabled"
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
+
+Outputs:
+  ApiRuntimeLogGroupName:
+    Description: CloudWatch log group for EHR API runtime logs. Do not log PHI.
+    Value: !Ref ApiRuntimeLogGroup
+  AuthRuntimeLogGroupName:
+    Description: CloudWatch log group for EHR auth runtime logs. Do not log PHI.
+    Value: !Ref AuthRuntimeLogGroup
+  DocumentRuntimeLogGroupName:
+    Description: CloudWatch log group for EHR document runtime logs. Do not log PHI.
+    Value: !Ref DocumentRuntimeLogGroup
+  BackupVaultName:
+    Description: AWS Backup vault for tagged RLTH EHR resources.
+    Value: !Ref EhrBackupVault
+  BackupPlanId:
+    Description: AWS Backup plan ID.
+    Value: !Ref EhrBackupPlan
+  GuardDutyDetectorId:
+    Description: GuardDuty detector ID.
+    Value: !Ref GuardDutyDetector
+  SecurityHubArn:
+    Description: Security Hub ARN.
+    Value: !Ref SecurityHub
+  AccessAnalyzerArn:
+    Description: IAM Access Analyzer ARN.
+    Value: !Ref AccountAccessAnalyzer
+  WafWebAclArn:
+    Description: Regional WAF WebACL ARN to associate with future API Gateway stage.
+    Value: !GetAtt ApiWebAcl.Arn
+  RuntimeSecretArn:
+    Description: Secrets Manager runtime secret ARN.
+    Value: !Ref EhrRuntimeSecret
+  ConfigBucketName:
+    Description: AWS Config delivery bucket.
+    Value: !Ref ConfigBucket

@@ -17,7 +17,14 @@ This is the next engineering sequence for moving the EHR from locked demo mode t
 3. Add outputs to environment variables.
 4. Keep `NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED=false` in production.
 
-## Phase 3: API Boundary
+## Phase 3: Security Operations Stack
+
+1. Deploy `infra/aws/rlth-ehr-security-operations.yaml` after the foundation stack.
+2. Enable and review GuardDuty, Security Hub, AWS Config, Access Analyzer, Macie, and AWS Backup findings.
+3. Confirm CloudWatch logs have retention and no PHI.
+4. Keep WAF ready for association with the future API Gateway stage.
+
+## Phase 4: API Boundary
 
 Build API handlers behind `lib/ehr/backend-contract.ts`:
 
@@ -38,7 +45,7 @@ Build API handlers behind `lib/ehr/backend-contract.ts`:
 
 Each API request must verify Cognito JWT claims, `practiceId`, role, assigned client access, and MFA status before touching PHI.
 
-## Phase 4: Data Layout
+## Phase 5: Data Layout
 
 Use tenant-safe keys from the start:
 
@@ -52,7 +59,7 @@ Use tenant-safe keys from the start:
 
 Psychotherapy notes must remain separated from routine medical record notes.
 
-## Phase 5: Production Unlock Criteria
+## Phase 6: Production Unlock Criteria
 
 The EHR can only move out of lock mode when all are true:
 
