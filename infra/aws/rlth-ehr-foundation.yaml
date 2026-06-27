@@ -67,7 +67,7 @@ Resources:
         - email
       AutoVerifiedAttributes:
         - email
-      MfaConfiguration: ON
+      MfaConfiguration: "ON"
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA
       AdminCreateUserConfig:
