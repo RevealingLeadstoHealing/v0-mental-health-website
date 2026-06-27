@@ -138,25 +138,6 @@ Resources:
             ConditionKey: Application
             ConditionValue: RLTH-EHR
 
-  GuardDutyDetector:
-    Type: AWS::GuardDuty::Detector
-    Properties:
-      Enable: true
-      FindingPublishingFrequency: FIFTEEN_MINUTES
-      Tags:
-        - Key: Application
-          Value: RLTH-EHR
-        - Key: Environment
-          Value: !Ref EnvironmentName
-
-  SecurityHub:
-    Type: AWS::SecurityHub::Hub
-    Properties:
-      EnableDefaultStandards: true
-      Tags:
-        Application: RLTH-EHR
-        Environment: !Ref EnvironmentName
-
   AccountAccessAnalyzer:
     Type: AWS::AccessAnalyzer::Analyzer
     Properties:
@@ -167,12 +148,6 @@ Resources:
           Value: RLTH-EHR
         - Key: Environment
           Value: !Ref EnvironmentName
-
-  MacieSession:
-    Type: AWS::Macie::Session
-    Properties:
-      FindingPublishingFrequency: FIFTEEN_MINUTES
-      Status: ENABLED
 
   EhrRuntimeSecret:
     Type: AWS::SecretsManager::Secret
@@ -400,12 +375,6 @@ Outputs:
   BackupPlanId:
     Description: AWS Backup plan ID.
     Value: !Ref EhrBackupPlan
-  GuardDutyDetectorId:
-    Description: GuardDuty detector ID.
-    Value: !Ref GuardDutyDetector
-  SecurityHubArn:
-    Description: Security Hub ARN.
-    Value: !Ref SecurityHub
   AccessAnalyzerArn:
     Description: IAM Access Analyzer ARN.
     Value: !Ref AccountAccessAnalyzer
