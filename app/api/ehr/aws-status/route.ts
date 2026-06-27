@@ -9,6 +9,7 @@ export async function GET() {
     ...getRlthAwsFoundationStatus(),
     runtimeCredentialsConfigured: runtime.runtimeCredentialsConfigured,
     apiRoutesInstalled: true,
+    authRoutesInstalled: true,
     resources: {
       clinicalRecordsTableName: rlthAwsFoundation.clinicalRecordsTableName,
       auditEventsTableName: rlthAwsFoundation.auditEventsTableName,
@@ -16,8 +17,8 @@ export async function GET() {
       documentsBucketName: rlthAwsFoundation.documentsBucketName,
     },
     nextRequiredStep: runtime.runtimeCredentialsConfigured
-      ? "Create Cognito users and connect the EHR UI to authenticated API calls."
+      ? "Update the Cognito app client auth flow in AWS if needed, create the first owner/provider user, complete first login/MFA setup, and verify authenticated API calls."
       : "Add AWS server runtime credentials or OIDC role access in Vercel before PHI can be stored.",
-    note: "AWS foundation and API routes are configured. Do not store PHI until production auth, server API authorization, IAM access, audit writes, backup verification, and signed compliance documentation are confirmed end-to-end.",
+    note: "AWS foundation, Cognito-aware auth routes, secure cookie sessions, and protected EHR API routes are configured. Do not store PHI until first-user login, server authorization, audit writes, backup verification, signed compliance documentation, and operating policies are confirmed end-to-end.",
   });
 }
