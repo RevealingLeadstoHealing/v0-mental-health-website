@@ -38,6 +38,7 @@ export default function LoginPage() {
   const [challenge, setChallenge] = useState<ChallengeState | null>(null);
   const [mfaSetupSession, setMfaSetupSession] = useState("");
   const [mfaSecret, setMfaSecret] = useState("");
+  const [mfaQrCodeUrl, setMfaQrCodeUrl] = useState("");
   const [apiResult, setApiResult] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,6 +47,43 @@ export default function LoginPage() {
     if (!mfaSecret || !email) return "";
     return `otpauth://totp/RLTH%20EHR:${encodeURIComponent(email)}?secret=${encodeURIComponent(mfaSecret)}&issuer=RLTH%20EHR`;
   }, [email, mfaSecret]);
+
+  useEffect(() => {
+    let active = true;
+    setMfaQrCodeUrl("");
+
+    if (!otpauthUrl) {
+      return () => {
+        active = false;
+      };
+    }
+
+    async function buildQrCode() {
+      try {
+        const qrCodeModule = await import("qrcode");
+        const toDataURL = qrCodeModule.toDataURL || qrCodeModule.default?.toDataURL;
+        if (!toDataURL) throw new Error("QR code generator unavailable.");
+        const dataUrl = await toDataURL(otpauthUrl, {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          width: 220,
+          color: {
+            dark: "#2b2926",
+            light: "#ffffff",
+          },
+        });
+        if (active) setMfaQrCodeUrl(dataUrl);
+      } catch {
+        if (active) setMfaQrCodeUrl("");
+      }
+    }
+
+    buildQrCode();
+
+    return () => {
+      active = false;
+    };
+  }, [otpauthUrl]);
 
   useEffect(() => {
     let active = true;
@@ -66,6 +104,7 @@ export default function LoginPage() {
       setChallenge(null);
       setMfaSecret("");
       setMfaSetupSession("");
+      setMfaQrCodeUrl("");
       setPassword("");
       setNewPassword("");
       setMfaCode("");
@@ -245,6 +284,10 @@ export default function LoginPage() {
         .rlth-login-alert { margin-top: 1rem; padding: .8rem; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; color: #7f1d1d; font-size: .9rem; }
         .rlth-login-panel { margin-top: 1rem; padding: .9rem; border: 1px solid #ddd3c1; border-radius: 8px; background: #f8f7f4; color: #514a41; font-size: .9rem; }
         .rlth-login-code { display: block; margin-top: .5rem; padding: .75rem; overflow-wrap: anywhere; border: 1px solid #ddd3c1; border-radius: 8px; background: #fff; color: #2b2926; font-family: Consolas, monospace; font-size: .82rem; }
+        .rlth-login-qr-wrap { width: 100%; margin-top: 1rem; padding: 1rem; display: flex; align-items: center; justify-content: center; border: 1px solid #ddd3c1; border-radius: 8px; background: #fff; }
+        .rlth-login-qr-wrap img { width: 220px; height: 220px; display: block; }
+        .rlth-login details { margin-top: 1rem; }
+        .rlth-login summary { cursor: pointer; color: #2b2926; font-weight: 700; }
         .rlth-login-success { margin-top: 1rem; padding: .9rem; border: 1px solid #bbf7d0; border-radius: 8px; background: #f0fdf4; color: #166534; font-size: .9rem; }
       `}</style>
       <section className="rlth-login-card">
@@ -280,15 +323,24 @@ export default function LoginPage() {
         {!user && challenge?.challengeName === "MFA_SETUP" && (
           <div className="rlth-login-panel">
             <strong>Set up authenticator MFA</strong>
-            <p>Use Microsoft Authenticator, Google Authenticator, or another TOTP app. Scan manually using the setup key below.</p>
+            <p>Use Microsoft Authenticator, Google Authenticator, or another TOTP app. Generate the QR code, scan it, then enter the 6-digit code from the app.</p>
             {!mfaSecret ? (
               <div className="rlth-login-actions">
-                <button type="button" disabled={busy} onClick={startMfaSetup}>Generate MFA setup key</button>
+                <button type="button" disabled={busy} onClick={startMfaSetup}>Generate MFA QR code</button>
               </div>
             ) : (
               <>
-                <span className="rlth-login-code">{mfaSecret}</span>
-                {otpauthUrl && <span className="rlth-login-code">{otpauthUrl}</span>}
+                <div className="rlth-login-qr-wrap">
+                  {mfaQrCodeUrl ? (
+                    <img src={mfaQrCodeUrl} alt="RLTH EHR authenticator setup QR code" />
+                  ) : (
+                    <span>Generating QR code...</span>
+                  )}
+                </div>
+                <details>
+                  <summary>Manual setup key if QR scan does not work</summary>
+                  <span className="rlth-login-code">{mfaSecret}</span>
+                </details>
                 <label>6-digit authenticator code</label>
                 <input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
                 <div className="rlth-login-actions">
