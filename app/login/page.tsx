@@ -249,7 +249,7 @@ export default function LoginPage() {
       `}</style>
       <section className="rlth-login-card">
         <p className="rlth-login-eyebrow">Revealing Leads to Healing EHR</p>
-        <h1>Secure Provider / Client Login</h1>
+        <h1>Secure EHR Login</h1>
         <p>Production login uses AWS Cognito with MFA and secure HttpOnly session cookies.</p>
 
         {!user && !challenge && (
