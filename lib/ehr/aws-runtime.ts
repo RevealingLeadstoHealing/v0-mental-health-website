@@ -3,7 +3,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 
-const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || rlthAwsFoundation.region;
+const region = process.env.NEXT_PUBLIC_AWS_REGION || rlthAwsFoundation.region || process.env.AWS_REGION;
 
 let dynamoDocumentClient: DynamoDBDocumentClient | null = null;
 let s3Client: S3Client | null = null;
