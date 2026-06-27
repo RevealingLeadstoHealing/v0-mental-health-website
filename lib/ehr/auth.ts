@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { NextResponse } from "next/server";
 import { getAwsRegion } from "./aws-runtime";
+import { readEhrIdCookie } from "./cognito-client";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 
 const issuer = `https://cognito-idp.${getAwsRegion()}.amazonaws.com/${rlthAwsFoundation.cognitoUserPoolId}`;
@@ -41,12 +42,20 @@ function normalizeRole(payload: JWTPayload, groups: string[]): EhrRole {
   return "client";
 }
 
-export async function requireEhrActor(request: Request): Promise<EhrActor> {
+function getRequestToken(request: Request) {
   const authorization = request.headers.get("authorization") || "";
-  const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+  const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+  if (bearerToken) return bearerToken;
+
+  const cookieHeader = request.headers.get("cookie") || "";
+  return readEhrIdCookie(cookieHeader);
+}
+
+export async function requireEhrActor(request: Request): Promise<EhrActor> {
+  const token = getRequestToken(request);
 
   if (!token) {
-    throw new ApiError(401, "Missing Cognito bearer token.");
+    throw new ApiError(401, "Missing Cognito bearer token or EHR session cookie.");
   }
 
   const { payload } = await jwtVerify(token, jwks, { issuer });
