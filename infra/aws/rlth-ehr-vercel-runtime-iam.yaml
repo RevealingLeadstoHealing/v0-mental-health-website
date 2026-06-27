@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: RLTH EHR least-privilege IAM user for Vercel server runtime access.
+
+Parameters:
+  PracticeSlug:
+    Type: String
+    Default: rlth
+    AllowedPattern: "^[a-z0-9-]+$"
+  EnvironmentName:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+      - staging
+      - dev
+  KmsKeyArn:
+    Type: String
+  CognitoUserPoolId:
+    Type: String
+  ClinicalRecordsTableName:
+    Type: String
+  AuditEventsTableName:
+    Type: String
+  DocumentMetadataTableName:
+    Type: String
+  DocumentsBucketName:
+    Type: String
+
+Resources:
+  VercelRuntimeUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "${PracticeSlug}-${EnvironmentName}-vercel-ehr-runtime"
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Purpose
+          Value: VercelRuntime
+
+  VercelRuntimePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${PracticeSlug}-${EnvironmentName}-vercel-ehr-runtime-policy"
+      Users:
+        - !Ref VercelRuntimeUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DynamoClinicalRecordsAccess
+            Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:Query
+              - dynamodb:DescribeTable
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ClinicalRecordsTableName}"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ClinicalRecordsTableName}/index/*"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTableName}"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AuditEventsTableName}/index/*"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DocumentMetadataTableName}"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DocumentMetadataTableName}/index/*"
+          - Sid: PrivateDocumentBucketAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:AbortMultipartUpload
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentsBucketName}/ehr-documents/*"
+          - Sid: PrivateDocumentBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentsBucketName}"
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - "ehr-documents/*"
+          - Sid: EHRKmsUse
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: !Ref KmsKeyArn
+          - Sid: CognitoUserPoolReadAndAdmin
+            Effect: Allow
+            Action:
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminCreateUser
+              - cognito-idp:AdminAddUserToGroup
+              - cognito-idp:AdminRemoveUserFromGroup
+              - cognito-idp:AdminUpdateUserAttributes
+              - cognito-idp:ListUsers
+            Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+
+Outputs:
+  RuntimeUserName:
+    Description: IAM user name for the Vercel EHR server runtime.
+    Value: !Ref VercelRuntimeUser
+  RuntimePolicyName:
+    Description: IAM policy attached to the Vercel EHR runtime user.
+    Value: !Ref VercelRuntimePolicy
