@@ -5,11 +5,16 @@ import { useEffect } from "react";
 
 export default function LogoutPage() {
   useEffect(() => {
+    fetch("/api/ehr/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
     try {
       localStorage.removeItem("rlth-ehr-demo-v3-stable");
       localStorage.removeItem("rlth-firebase-architecture-demo-v2-stable");
       localStorage.removeItem("rlth:ehr:savedAssessments");
       localStorage.removeItem("rlth:ehr:savedNotes");
+      sessionStorage.removeItem("rlth:ehr:idToken");
+      sessionStorage.removeItem("rlth:ehr:accessToken");
+      sessionStorage.removeItem("rlth:ehr:refreshToken");
+      sessionStorage.removeItem("rlth:ehr:user");
     } catch {
       // Keep logout usable if storage is unavailable.
     }
@@ -89,14 +94,14 @@ export default function LogoutPage() {
       <div className="ehr-logout-card">
         <p className="ehr-logout-eyebrow">Revealing Leads to Healing EHR</p>
         <h1>You are logged out</h1>
-        <p className="ehr-logout-copy">Return to the client/provider login when you are ready.</p>
+        <p className="ehr-logout-copy">Your EHR browser session has been cleared. Return to the client/provider login when you are ready.</p>
         <div className="ehr-logout-actions">
           <Link className="ehr-logout-link primary" href="/login">
-              Back to Login
-            </Link>
+            Back to Login
+          </Link>
           <Link className="ehr-logout-link" href="/">
-              Return to Website
-            </Link>
+            Return to Website
+          </Link>
         </div>
       </div>
     </main>
