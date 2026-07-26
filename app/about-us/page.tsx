@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AboutUsPage() {
-  redirect("/rlth-preferred.html");
+  redirect("/about-us.html");
 }
