@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import type { SiteContent, FaqItem, ServiceItem, TestimonialItem } from "../../lib/site-content";
+import type { SiteContent, FaqItem, ServiceItem } from "../../lib/site-content";
 
 type SessionUser = { id: string; email: string; fullName: string; role: string };
 
@@ -346,7 +346,7 @@ export default function AdminPage() {
         <h2 style={{ marginTop: 0, fontFamily: "Bevan, Georgia, serif" }}>Testimonials</h2>
         <TextField label="Section Heading" value={content.testimonialHeading} onChange={(v) => update("testimonialHeading", v)} />
 
-        {content.testimonials.map((t: TestimonialItem, i: number) => (
+        {content.testimonials.map((t, i) => (
           <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", marginBottom: "0.75rem" }}>
             <textarea
               style={{ ...TEXTAREA_STYLE, minHeight: "3.5rem", flex: 1 }}
