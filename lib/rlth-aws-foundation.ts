@@ -1,7 +1,7 @@
 export const rlthAwsFoundation = {
-  region: "us-east-2",
-  cognitoUserPoolId: "us-east-2_kSd3RAPsl",
-  cognitoUserPoolClientId: "64q7036m6i0sl68t9an6dqksnn",
+  region: "us-east-1",
+  cognitoUserPoolId: "us-east-1_BNbtAMN95",
+  cognitoUserPoolClientId: "20r3lfn9rtsh6qr3k2q3slk82u",
   clinicalRecordsTableName: "rlth-prod-clinical-records",
   auditEventsTableName: "rlth-prod-audit-events",
   documentMetadataTableName: "rlth-prod-document-metadata",
