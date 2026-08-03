@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+export default function HomePage() {
   return (
     <main style={{ padding: "2rem", fontFamily: "Arial, sans-serif" }}>
       <h1>Revealing Leads to Healing Wellness Services</h1>
