@@ -16,7 +16,7 @@ export default function Home() {
           you deserve.
         </p>
         <p>
-          I don&apos;t believe in a one-size-fits-all approach to mental health.
+          I do not believe in a one-size-fits-all approach to mental health.
           I blend advanced clinical specialties with holistic and spiritual
           guidance to treat the whole person. In our sessions, we will actively
           use transformative tools to address mental and behavioral health
