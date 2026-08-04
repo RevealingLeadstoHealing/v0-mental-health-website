@@ -1,1 +1,5 @@
-export { default } from "./rlth-preferred/page";
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/rlth-preferred.html");
+}
