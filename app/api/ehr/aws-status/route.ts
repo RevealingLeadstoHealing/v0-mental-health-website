@@ -17,8 +17,8 @@ export async function GET() {
       documentsBucketName: rlthAwsFoundation.documentsBucketName,
     },
     nextRequiredStep: runtime.runtimeCredentialsConfigured
-      ? "Update the Cognito app client auth flow in AWS if needed, create the first owner/provider user, complete first login/MFA setup, and verify authenticated API calls."
+      ? "Complete first login, set the permanent password, enroll authenticator MFA, and verify authenticated audit/record API calls from /login."
       : "Add AWS server runtime credentials or OIDC role access in Vercel before PHI can be stored.",
-    note: "AWS foundation, Cognito-aware auth routes, secure cookie sessions, and protected EHR API routes are configured. Do not store PHI until first-user login, server authorization, audit writes, backup verification, signed compliance documentation, and operating policies are confirmed end-to-end.",
+    note: "AWS foundation, Cognito-aware auth routes, secure cookie sessions, owner user setup, and protected EHR API routes are configured. Do not store PHI until first-user login, server authorization, audit writes, backup verification, signed compliance documentation, and operating policies are confirmed end-to-end.",
   });
 }

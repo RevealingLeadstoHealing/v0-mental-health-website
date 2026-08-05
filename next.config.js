@@ -28,8 +28,18 @@ const cognitoUserPoolClientId = pick(
   DEFAULT_COGNITO_USER_POOL_CLIENT_ID
 );
 
+// Normalised here, in Node, so the page can keep a strict `=== "true"` comparison.
+// That comparison folds to a constant at build time, which lets the bundler drop the
+// locked-mode UI entirely when demo mode is on, and the demo UI when it is off.
+function resolveDemoEnabled() {
+  return pick(process.env.NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED).toLowerCase() === "true"
+    ? "true"
+    : "false";
+}
+
 const nextConfig = {
   env: {
+    NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED: resolveDemoEnabled(),
     NEXT_PUBLIC_AWS_REGION: resolveRegion(),
     NEXT_PUBLIC_COGNITO_USER_POOL_ID: pick(
       process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,

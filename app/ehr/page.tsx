@@ -42,6 +42,9 @@ const motion = {
   div: ({ initial, animate, transition, children, ...props }) => <div {...props}>{children}</div>,
 };
 
+// next.config.js trims and lowercases this before the build sees it, so a stray space
+// or capital letter typed into a deployment dashboard can no longer re-lock the EHR.
+// The comparison stays strict so it folds to a constant and the unused branch is dropped.
 const EHR_DEMO_ENABLED = process.env.NEXT_PUBLIC_RLTH_EHR_DEMO_ENABLED === "true";
 const EHR_PRODUCTION_LOCK_REASON =
   "Live clinical EHR use is locked until secure authentication, BAA-supported backend storage, database access rules, immutable audit logging, backups, and operational HIPAA controls are configured.";
