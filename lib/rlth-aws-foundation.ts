@@ -1,13 +1,49 @@
+const env = process.env;
+
+// Values are trimmed on the way in: deployment dashboards keep pasted whitespace,
+// and these feed hostnames and ARNs where a stray space breaks the request.
+function pick(...values: Array<string | undefined>) {
+  for (const value of values) {
+    if (value?.trim()) return value.trim();
+  }
+  return "";
+}
+
 export const rlthAwsFoundation = {
-  region: "us-east-2",
-  cognitoUserPoolId: "us-east-2_kSd3RAPsl",
-  cognitoUserPoolClientId: "64q7036m6i0sl68t9an6dqksnn",
-  clinicalRecordsTableName: "rlth-prod-clinical-records",
-  auditEventsTableName: "rlth-prod-audit-events",
-  documentMetadataTableName: "rlth-prod-document-metadata",
-  documentsBucketName: "rlth-prod-ehr-documents-597936860711",
-  cloudTrailName: "rlth-prod-ehr-management-events",
-  kmsKeyArn: "arn:aws:kms:us-east-2:597936860711:key/9114a3e2-b165-4db2-a1db-7d3a217e647a",
+  region: pick(env.EHR_AWS_REGION, env.AWS_REGION, "us-east-2"),
+  cognitoUserPoolId: pick(env.EHR_COGNITO_USER_POOL_ID, "us-east-2_kSd3RAPsl"),
+  cognitoUserPoolClientId: pick(
+    env.EHR_COGNITO_CLIENT_ID,
+    env.NEXT_PUBLIC_EHR_COGNITO_CLIENT_ID,
+    "64q7036m6i0sl68t9an6dqksnn"
+  ),
+  clinicalRecordsTableName: pick(
+    env.EHR_RECORDS_TABLE,
+    env.RECORDS_TABLE_NAME,
+    env.EHR_RECORDS_TABLE_NAME,
+    "rlth-prod-clinical-records"
+  ),
+  auditEventsTableName: pick(
+    env.EHR_AUDIT_TABLE,
+    env.AUDIT_TABLE_NAME,
+    env.AUDIT_EVENTS_TABLE_NAME,
+    "rlth-prod-audit-events"
+  ),
+  documentMetadataTableName: pick(
+    env.EHR_DOCUMENTS_TABLE,
+    env.DOCUMENT_METADATA_TABLE_NAME,
+    "rlth-prod-document-metadata"
+  ),
+  documentsBucketName: pick(
+    env.EHR_DOCUMENTS_BUCKET,
+    env.DOCUMENTS_BUCKET_NAME,
+    "rlth-prod-ehr-documents-597936860711"
+  ),
+  cloudTrailName: pick(env.EHR_CLOUDTRAIL_NAME, "rlth-prod-ehr-management-events"),
+  kmsKeyArn: pick(
+    env.EHR_KMS_KEY_ARN,
+    "arn:aws:kms:us-east-2:597936860711:key/9114a3e2-b165-4db2-a1db-7d3a217e647a"
+  ),
 } as const;
 
 export function getRlthAwsFoundationStatus() {
