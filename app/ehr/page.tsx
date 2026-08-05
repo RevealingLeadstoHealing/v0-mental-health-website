@@ -1007,6 +1007,18 @@ function MainApp() {
   const navItems = currentUser.role === "provider" ? providerItems : clientItems;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      {isMockMode && (
+        <div
+          role="alert"
+          className="sticky top-0 z-50 flex items-center justify-center gap-2 bg-red-700 px-4 py-2 text-center text-sm font-semibold text-white"
+        >
+          <Shield className="h-4 w-4 shrink-0" />
+          <span>
+            Demo mode. Sample data is stored in this browser only. Do not enter real client
+            names, notes, diagnoses, billing details, or any other PHI.
+          </span>
+        </div>
+      )}
       <div className="grid lg:grid-cols-[260px_1fr] min-h-screen">
         <aside className="border-r bg-white p-4 lg:p-6">
           <div className="flex items-start gap-3">
