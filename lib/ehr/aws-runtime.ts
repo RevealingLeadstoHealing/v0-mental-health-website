@@ -3,7 +3,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 
-export const DEFAULT_AWS_REGION = "us-east-2";
+export const DEFAULT_AWS_REGION = "us-east-1";
 
 // Deployment dashboards silently keep pasted whitespace, and an untrimmed region
 // produces a hostname with a space in it, which makes `new URL()` throw at build time.

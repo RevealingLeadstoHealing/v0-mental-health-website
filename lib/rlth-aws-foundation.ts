@@ -24,11 +24,16 @@ function resolve(envValues: Array<string | undefined>, fallback: string) {
 }
 
 const resolved = {
-  region: resolve([env.EHR_AWS_REGION], pick(env.AWS_REGION, "us-east-2")),
-  cognitoUserPoolId: resolve([env.EHR_COGNITO_USER_POOL_ID], "us-east-2_kSd3RAPsl"),
+  // The Cognito pool lives in us-east-1. The pool id encodes its own region, so the
+  // region and the pool id have to agree: the issuer is built as
+  // https://cognito-idp.<region>.amazonaws.com/<poolId>, and a us-east-2 region with a
+  // us-east-1 pool points at a pool that does not exist, which fails JWKS lookup and
+  // rejects every authenticated request.
+  region: resolve([env.EHR_AWS_REGION], pick(env.AWS_REGION, "us-east-1")),
+  cognitoUserPoolId: resolve([env.EHR_COGNITO_USER_POOL_ID], "us-east-1_BNbtAMN95"),
   cognitoUserPoolClientId: resolve(
     [env.EHR_COGNITO_CLIENT_ID, env.NEXT_PUBLIC_EHR_COGNITO_CLIENT_ID],
-    "64q7036m6i0sl68t9an6dqksnn"
+    "20r3lfn9rtsh6qr3k2q3slk82u"
   ),
   clinicalRecordsTableName: resolve(
     [env.EHR_RECORDS_TABLE, env.RECORDS_TABLE_NAME, env.EHR_RECORDS_TABLE_NAME],
