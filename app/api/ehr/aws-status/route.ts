@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRuntimeReadiness } from "../../../../lib/ehr/aws-runtime";
+import { getAwsRegion, getCognitoRegion, getRuntimeReadiness } from "../../../../lib/ehr/aws-runtime";
 import { getRlthAwsFoundationStatus, rlthAwsFoundation } from "../../../../lib/rlth-aws-foundation";
 
 export async function GET() {
@@ -7,6 +7,12 @@ export async function GET() {
 
   return NextResponse.json({
     ...getRlthAwsFoundationStatus(),
+    // Reported separately because they are genuinely different regions: the data
+    // resources are us-east-2 and the Cognito pool is us-east-1. If cognitoRegion ever
+    // stops matching the prefix of cognitoUserPoolId, authentication will fail.
+    dataRegion: getAwsRegion(),
+    cognitoRegion: getCognitoRegion(),
+    cognitoUserPoolId: rlthAwsFoundation.cognitoUserPoolId,
     runtimeCredentialsConfigured: runtime.runtimeCredentialsConfigured,
     apiRoutesInstalled: true,
     authRoutesInstalled: true,

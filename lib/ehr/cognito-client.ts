@@ -1,6 +1,6 @@
 import { decodeJwt } from "jose";
 import { NextResponse } from "next/server";
-import { getAwsRegion } from "./aws-runtime";
+import { getCognitoRegion } from "./aws-runtime";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 
 const COGNITO_TARGET_PREFIX = "AWSCognitoIdentityProviderService";
@@ -32,7 +32,7 @@ export type CognitoResponse = {
 };
 
 function cognitoEndpoint() {
-  return `https://cognito-idp.${getAwsRegion()}.amazonaws.com/`;
+  return `https://cognito-idp.${getCognitoRegion()}.amazonaws.com/`;
 }
 
 export function getCognitoClientId() {

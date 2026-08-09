@@ -3,7 +3,7 @@
 // These values are inlined into the bundle at build time, so anything malformed here is
 // compiled in and cannot be corrected from the deployment dashboard without a rebuild.
 // Every value is trimmed, and the region is validated, before it reaches the build.
-const DEFAULT_AWS_REGION = "us-east-1";
+const DEFAULT_AWS_REGION = "us-east-2";
 const DEFAULT_COGNITO_USER_POOL_ID = "us-east-1_BNbtAMN95";
 const DEFAULT_COGNITO_USER_POOL_CLIENT_ID = "20r3lfn9rtsh6qr3k2q3slk82u";
 

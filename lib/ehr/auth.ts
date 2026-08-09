@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { NextResponse } from "next/server";
-import { getAwsRegion } from "./aws-runtime";
+import { getCognitoRegion } from "./aws-runtime";
 import { readEhrIdCookie } from "./cognito-client";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 
@@ -32,7 +32,7 @@ let cachedIssuer = "";
 let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getIssuer() {
-  const region = getAwsRegion();
+  const region = getCognitoRegion();
   const userPoolId = rlthAwsFoundation.cognitoUserPoolId.trim();
 
   if (!userPoolId) {
