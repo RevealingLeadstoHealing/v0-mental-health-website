@@ -28,18 +28,12 @@ export async function startHealthScribeJob(input: {
     Media: { MediaFileUri: `s3://${healthScribeBucket}/${input.mediaKey}` },
     OutputBucketName: healthScribeBucket,
     OutputEncryptionKMSKeyId: healthScribeKmsKeyArn,
-    KMSEncryptionContext: { application: "RLTH-EHR", practiceId: input.practiceId },
     DataAccessRoleArn: healthScribeDataRoleArn,
     Settings: {
       ShowSpeakerLabels: true,
       MaxSpeakerLabels: 2,
       ClinicalNoteGenerationSettings: { NoteTemplate: input.noteTemplate },
     },
-    Tags: [
-      { Key: "Application", Value: "RLTH-EHR" },
-      { Key: "ContainsPHI", Value: "true" },
-      { Key: "ClientId", Value: input.clientId },
-    ],
   }));
 }
 
