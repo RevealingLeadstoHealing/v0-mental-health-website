@@ -59,6 +59,10 @@ export async function requireEhrActor(request: Request): Promise<EhrActor> {
   }
 
   const { payload } = await jwtVerify(token, jwks, { issuer });
+  const tokenUse = getStringClaim(payload, "token_use");
+  if (tokenUse !== "id") {
+    throw new ApiError(401, "The EHR requires a Cognito ID token.");
+  }
   const audience = typeof payload.aud === "string" ? payload.aud : getStringClaim(payload, "client_id");
 
   if (audience !== rlthAwsFoundation.cognitoUserPoolClientId) {
@@ -80,7 +84,7 @@ export async function requireEhrActor(request: Request): Promise<EhrActor> {
     role: normalizeRole(payload, groups),
     groups,
     practiceId: getStringClaim(payload, "custom:practiceId") || "rlth",
-    tokenUse: getStringClaim(payload, "token_use"),
+    tokenUse,
   };
 }
 
