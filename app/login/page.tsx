@@ -41,6 +41,7 @@ export default function LoginPage() {
   const [mfaSetupSession, setMfaSetupSession] = useState("");
   const [mfaSecret, setMfaSecret] = useState("");
   const [mfaQrCodeUrl, setMfaQrCodeUrl] = useState("");
+  const [replaceMfa, setReplaceMfa] = useState(false);
   const [apiResult, setApiResult] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -214,6 +215,36 @@ export default function LoginPage() {
       applyAuthResponse(data);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "MFA verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startAuthenticatedMfaReplacement() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await postJson("/api/ehr/auth/mfa/setup", {});
+      setMfaSecret(data.secretCode || "");
+      setReplaceMfa(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authenticator replacement could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishAuthenticatedMfaReplacement() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/mfa/verify", { userCode: mfaCode });
+      setReplaceMfa(false);
+      setMfaSecret("");
+      setMfaCode("");
+      setApiResult("New RLTH EHR authenticator verified. MFA replacement is complete.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authenticator verification failed.");
     } finally {
       setBusy(false);
     }
@@ -398,8 +429,24 @@ export default function LoginPage() {
             <p>{user.fullName} | {user.email} | {user.role}</p>
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={checkAuditApi}>Check audit API</button>
+              <button type="button" className="secondary" disabled={busy} onClick={startAuthenticatedMfaReplacement}>Replace authenticator</button>
               <Link className="rlth-login-link secondary" href="/ehr">Open EHR</Link>
               <button type="button" className="secondary" disabled={busy} onClick={logout}>Logout</button>
+            </div>
+          </div>
+        )}
+
+        {user && replaceMfa && mfaSecret && (
+          <div className="rlth-login-panel">
+            <strong>Replace RLTH EHR authenticator</strong>
+            <p>Scan this new QR code in the authenticator profile you want to keep, then enter its current 6-digit code.</p>
+            <div className="rlth-login-qr-wrap">
+              {mfaQrCodeUrl ? <img src={mfaQrCodeUrl} alt="New RLTH EHR authenticator QR code" /> : <span>Generating QR code...</span>}
+            </div>
+            <label>6-digit authenticator code</label>
+            <input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || mfaCode.length !== 6} onClick={finishAuthenticatedMfaReplacement}>Verify new authenticator</button>
             </div>
           </div>
         )}
