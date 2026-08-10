@@ -147,7 +147,12 @@ function EhrScopedStyles() {
     .ehr-ui h2 { font-size: 1.2rem !important; margin: 0; }
     .ehr-ui h3 { font-size: 1rem !important; margin: 0; }
     .ehr-ui p { margin: 0; }
-    .ehr-ui a { color: inherit; }
+    .ehr-ui a { color: inherit; text-decoration: none; }
+    .ehr-ui button, .ehr-ui a { cursor: pointer; }
+    .ehr-ui button { border: 1px solid #2b2926; background: #2b2926; color: #fff; }
+    .ehr-ui input, .ehr-ui textarea, .ehr-ui select { background: #fff; color: #2b2926; border-color: #bdb4a5; }
+    .ehr-ui nav a { display: flex; color: #514a41 !important; background: transparent; }
+    .ehr-ui nav a.bg-slate-900 { background: #2b2926 !important; color: #fff !important; }
     .ehr-ui nav { display: block; margin: 0; }
     .ehr-ui nav button { width: 100%; }
     .ehr-ui .min-h-screen { min-height: 100vh; }
@@ -208,7 +213,11 @@ function EhrScopedStyles() {
     .ehr-ui .bg-slate-50 { background-color: #f8f7f4; }
     .ehr-ui .bg-slate-100 { background-color: #eee7d9; }
     .ehr-ui .bg-slate-900 { background-color: #2b2926; }
+    .ehr-ui .bg-stone-900 { background-color: #2b2926 !important; }
+    .ehr-ui .bg-stone-100 { background-color: #eee7d9 !important; }
     .ehr-ui .text-white { color: #fff; }
+    .ehr-ui .text-stone-950, .ehr-ui .text-stone-900, .ehr-ui .text-stone-800 { color: #2b2926 !important; }
+    .ehr-ui .text-stone-700, .ehr-ui .text-stone-600 { color: #675f54 !important; }
     .ehr-ui .text-slate-950, .ehr-ui .text-slate-900 { color: #2b2926; }
     .ehr-ui .text-slate-800 { color: #3a352f; }
     .ehr-ui .text-slate-700 { color: #514a41; }
@@ -4397,7 +4406,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
 
