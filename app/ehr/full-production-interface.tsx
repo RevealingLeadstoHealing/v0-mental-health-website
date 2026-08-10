@@ -613,7 +613,10 @@ function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 function PageProvider({ children }) {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => {
+    if (typeof window === "undefined") return "dashboard";
+    return new URLSearchParams(window.location.search).get("tab") || "dashboard";
+  });
   const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
   return (
     <PageContext.Provider value={{ page, setPage, selectedChartClientId, setSelectedChartClientId }}>
@@ -819,16 +822,16 @@ function MainApp() {
           </div>
           <nav className="space-y-1 mt-6">
             {navItems.map(([id, label, Icon]) => (
-              <button
+              <a
                 key={id}
-                onClick={() => setPage(id)}
+                href={`/ehr?tab=${encodeURIComponent(id)}`}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${
                   page === id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 <Icon className="h-4 w-4" />
                 <span className="text-sm font-medium">{label}</span>
-              </button>
+              </a>
             ))}
           </nav>
           <Button variant="outline" className="w-full mt-6 rounded-2xl" onClick={logout}>
@@ -4364,7 +4367,6 @@ export default function RevealingLeadsToHealingFirebaseStarter() {
     </div>
   );
 }
-
 
 
 
