@@ -13,6 +13,7 @@ export type CognitoAction =
   | "RespondToAuthChallenge"
   | "AssociateSoftwareToken"
   | "VerifySoftwareToken"
+  | "SetUserMFAPreference"
   | "ForgotPassword"
   | "ConfirmForgotPassword";
 
@@ -130,6 +131,14 @@ export function clearAuthCookies(response: NextResponse) {
 }
 
 export function readEhrIdCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, ID_COOKIE);
+}
+
+export function readEhrAccessCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, ACCESS_COOKIE);
+}
+
+function readCookie(cookieHeader: string, cookieName: string) {
   const cookies = cookieHeader
     .split(";")
     .map((part) => part.trim())
@@ -140,7 +149,7 @@ export function readEhrIdCookie(cookieHeader: string) {
     if (separator === -1) continue;
     const name = cookie.slice(0, separator);
     const value = cookie.slice(separator + 1);
-    if (name === ID_COOKIE) return decodeURIComponent(value);
+    if (name === cookieName) return decodeURIComponent(value);
   }
 
   return "";
