@@ -612,13 +612,9 @@ function AuthProvider({ children }) {
   if (!currentUser) return <div className="min-h-screen flex items-center justify-center p-6"><div><h1>Secure session required</h1><p>{loadError}</p><a href="/login">Return to login</a></div></div>;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-function PageProvider({ children }) {
-  const [page, setPage] = useState("dashboard");
+function PageProvider({ children, initialPage = "dashboard" }) {
+  const [page, setPage] = useState(initialPage);
   const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
-  useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (requestedTab) setPage(requestedTab);
-  }, []);
   return (
     <PageContext.Provider value={{ page, setPage, selectedChartClientId, setSelectedChartClientId }}>
       {children}
@@ -825,7 +821,7 @@ function MainApp() {
             {navItems.map(([id, label, Icon]) => (
               <a
                 key={id}
-                href={`/ehr?tab=${encodeURIComponent(id)}`}
+                href={`/ehr/${encodeURIComponent(id)}`}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${
                   page === id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
@@ -4354,13 +4350,13 @@ ${organization}`;
     </div>
   );
 }
-export default function RevealingLeadsToHealingFirebaseStarter() {
+export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "dashboard" }) {
   return (
     <div className="ehr-ui">
       <EhrScopedStyles />
       <ErrorBoundary>
       <AuthProvider>
-        <PageProvider>
+        <PageProvider initialPage={initialPage}>
           <AppShell />
         </PageProvider>
       </AuthProvider>
@@ -4368,7 +4364,6 @@ export default function RevealingLeadsToHealingFirebaseStarter() {
     </div>
   );
 }
-
 
 
 
