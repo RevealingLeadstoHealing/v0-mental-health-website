@@ -830,11 +830,6 @@ function MainApp() {
               <a
                 key={id}
                 href={`/ehr/${encodeURIComponent(id)}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  window.history.pushState({}, "", `/ehr/${encodeURIComponent(id)}`);
-                  setPage(id);
-                }}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${
                   page === id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
@@ -4401,7 +4396,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
 
