@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
 import { appendAuditEvent, listClinicalRecords, putClinicalRecord } from "../../../../lib/ehr/dynamodb-store";
+import { requireClientAccess } from "../../../../lib/ehr/authorization";
 
 export async function GET(request: Request) {
   try {
@@ -9,15 +10,10 @@ export async function GET(request: Request) {
     const clientId = url.searchParams.get("clientId") || actor.sub;
     const limit = Number(url.searchParams.get("limit") || "50");
 
-    if (actor.role === "client" && clientId !== actor.sub) {
-      throw new ApiError(403, "Clients can only access their own record list.");
-    }
+    requireRole(actor, ["owner", "provider", "clinical_staff", "client", "auditor"]);
+    await requireClientAccess(actor, clientId);
 
-    if (actor.role !== "client") {
-      requireRole(actor, ["owner", "provider", "clinical_staff", "auditor"]);
-    }
-
-    const records = await listClinicalRecords(clientId, limit);
+    const records = await listClinicalRecords(actor.practiceId, clientId, limit);
     await appendAuditEvent(actor, {
       action: "Viewed clinical record list",
       category: "Clinical Record Access",
@@ -49,6 +45,8 @@ export async function POST(request: Request) {
     if (!payload) {
       throw new ApiError(400, "payload is required.");
     }
+
+    await requireClientAccess(actor, clientId);
 
     const record = await putClinicalRecord(actor, {
       clientId,
