@@ -1512,34 +1512,55 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
   };
   return templateMap[templateType] || templateMap["Progress Note - SOAP"];
 }function SchedulingPage() {
-  const { currentUser, store, updateCurrentUserData, appendAuditLog } = useAuth();
-  const appointments = store.users[currentUser.id].appointments || [];
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
+  const isProvider = currentUser.role === "provider";
+  const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentUser.id);
+  const activeClientId = isProvider ? selectedClientId : currentUser.id;
+  const activeClient = store.users[activeClientId];
+  const appointments = activeClient?.appointments || [];
   const [draft, setDraft] = useState({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
   const add = () => {
-    if (!draft.date || !draft.time) return;
-    updateCurrentUserData("appointments", (prev) => [{ id: `appt-${Date.now()}`, ...draft }, ...prev]);
+    if (!activeClientId || !draft.date || !draft.time) return;
+    const appointment = { id: `appt-${Date.now()}`, ...draft, status: "Scheduled", createdAt: new Date().toISOString() };
+    if (isProvider) updateSpecificUserData(activeClientId, "appointments", (prev) => [appointment, ...(prev || [])]);
+    else updateCurrentUserData("appointments", (prev) => [appointment, ...(prev || [])]);
     appendAuditLog({
-      action: "Added appointment item",
+      action: "Scheduled client appointment",
       details: `${draft.purpose} scheduled for ${draft.date} at ${draft.time}.`,
-      clientId: currentUser.role === "client" ? currentUser.id : "",
-      clientName: currentUser.role === "client" ? currentUser.fullName : "",
+      clientId: activeClientId,
+      clientName: activeClient?.profile?.fullName || currentUser.fullName,
       category: "Scheduling",
     });
     setDraft({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
+  };
+  const cancel = (appointmentId) => {
+    const update = (prev) => (prev || []).map((appointment) => appointment.id === appointmentId
+      ? { ...appointment, status: "Cancelled", cancelledAt: new Date().toISOString() }
+      : appointment);
+    if (isProvider) updateSpecificUserData(activeClientId, "appointments", update);
+    else updateCurrentUserData("appointments", update);
+    appendAuditLog({ action: "Cancelled client appointment", details: `Appointment ${appointmentId} was cancelled and retained in audit history.`, clientId: activeClientId, clientName: activeClient?.profile?.fullName || currentUser.fullName, category: "Scheduling" });
   };
   return (
     <div>
       <SectionHeader
         title="Scheduling"
-        description="Scheduling scaffold for future calendar integration, provider availability management, and client booking."
+        description="Client-linked appointment scheduling with status tracking and audited cancellation."
       />
       <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
-            <CardTitle>Add appointment item</CardTitle>
-            <CardDescription>Prototype scheduler</CardDescription>
+            <CardTitle>Schedule appointment</CardTitle>
+            <CardDescription>Appointments are saved to the selected encrypted client chart.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isProvider && (
+              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
+                <SelectContent>{clients.map(([clientId, bucket]) => <SelectItem key={clientId} value={clientId}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
             <Input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
             <Input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} />
             <Select value={draft.format} onValueChange={(value) => setDraft({ ...draft, format: value })}>
@@ -1551,13 +1572,13 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
               </SelectContent>
             </Select>
             <Input value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} placeholder="Purpose" />
-            <Button className="rounded-2xl" onClick={add}><Plus className="mr-2 h-4 w-4" />Add appointment</Button>
+            <Button className="rounded-2xl" disabled={!activeClientId || !draft.date || !draft.time} onClick={add}><Plus className="mr-2 h-4 w-4" />Schedule appointment</Button>
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Appointment list</CardTitle>
-            <CardDescription>Prototype display</CardDescription>
+            <CardDescription>{activeClient?.profile?.fullName || "Select a client"}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 max-h-[560px] overflow-auto">
             {appointments.length === 0 && <p className="text-sm text-slate-500">No appointments yet.</p>}
@@ -1566,6 +1587,8 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
                 <p className="font-medium">{appt.purpose}</p>
                 <p className="text-sm text-slate-600 mt-1">{appt.date} at {appt.time}</p>
                 <p className="text-xs text-slate-400 mt-1">{appt.format}</p>
+                <p className="text-xs font-semibold mt-2">{appt.status || "Scheduled"}</p>
+                {(appt.status || "Scheduled") !== "Cancelled" && <Button size="sm" variant="outline" className="mt-3 rounded-xl" onClick={() => cancel(appt.id)}>Cancel appointment</Button>}
               </div>
             ))}
           </CardContent>
@@ -4377,8 +4400,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
-
 
 
 
