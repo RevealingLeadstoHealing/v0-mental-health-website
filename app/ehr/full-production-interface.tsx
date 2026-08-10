@@ -2898,6 +2898,7 @@ x
 }
 function ProgressNotesPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const [aiNotice, setAiNotice] = useState("");
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const notes = selectedClientId ? store.users[selectedClientId]?.notes || [] : [];
@@ -4400,7 +4401,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
 
