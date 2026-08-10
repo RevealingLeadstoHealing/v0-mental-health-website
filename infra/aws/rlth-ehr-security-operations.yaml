@@ -18,6 +18,14 @@ Parameters:
   KmsKeyArn:
     Type: String
     Description: KMS key ARN from the RLTH EHR foundation stack output.
+  ExistingBackupVaultName:
+    Type: String
+    Default: rlth-prod-ehr-backup-vault
+    Description: Existing encrypted backup vault to reuse.
+  ExistingRuntimeSecretName:
+    Type: String
+    Default: /rlth/prod/ehr/runtime
+    Description: Existing KMS-encrypted runtime secret to reuse. The secret value is never read by this stack.
 
 Resources:
   ApiRuntimeLogGroup:
@@ -68,18 +76,6 @@ Resources:
         - Key: NoPHI
           Value: "true"
 
-  EhrBackupVault:
-    Type: AWS::Backup::BackupVault
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BackupVaultName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-backup-vault"
-      EncryptionKeyArn: !Ref KmsKeyArn
-      BackupVaultTags:
-        Application: RLTH-EHR
-        Environment: !Ref EnvironmentName
-        ContainsPHI: "true"
-
   EhrBackupRole:
     Type: AWS::IAM::Role
     Properties:
@@ -107,14 +103,14 @@ Resources:
         BackupPlanName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-backup-plan"
         BackupPlanRule:
           - RuleName: DailyEncryptedBackups
-            TargetBackupVault: !Ref EhrBackupVault
+            TargetBackupVault: !Ref ExistingBackupVaultName
             ScheduleExpression: cron(0 6 ? * * *)
             StartWindowMinutes: 60
             CompletionWindowMinutes: 180
             Lifecycle:
               DeleteAfterDays: 2555
           - RuleName: MonthlyLongTermBackups
-            TargetBackupVault: !Ref EhrBackupVault
+            TargetBackupVault: !Ref ExistingBackupVaultName
             ScheduleExpression: cron(0 7 1 * ? *)
             StartWindowMinutes: 120
             CompletionWindowMinutes: 360
@@ -148,27 +144,6 @@ Resources:
           Value: RLTH-EHR
         - Key: Environment
           Value: !Ref EnvironmentName
-
-  EhrRuntimeSecret:
-    Type: AWS::SecretsManager::Secret
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      Name: !Sub "/${PracticeSlug}/${EnvironmentName}/ehr/runtime"
-      Description: RLTH EHR backend runtime secret placeholder. Do not store PHI in secrets.
-      KmsKeyId: !Ref KmsKeyArn
-      GenerateSecretString:
-        SecretStringTemplate: '{"purpose":"rlth-ehr-api-runtime"}'
-        GenerateStringKey: "generatedSecret"
-        PasswordLength: 32
-        ExcludePunctuation: true
-      Tags:
-        - Key: Application
-          Value: RLTH-EHR
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: ContainsPHI
-          Value: "false"
 
   ApiWebAcl:
     Type: AWS::WAFv2::WebACL
@@ -371,7 +346,7 @@ Outputs:
     Value: !Ref DocumentRuntimeLogGroup
   BackupVaultName:
     Description: AWS Backup vault for tagged RLTH EHR resources.
-    Value: !Ref EhrBackupVault
+    Value: !Ref ExistingBackupVaultName
   BackupPlanId:
     Description: AWS Backup plan ID.
     Value: !Ref EhrBackupPlan
@@ -381,9 +356,9 @@ Outputs:
   WafWebAclArn:
     Description: Regional WAF WebACL ARN to associate with future API Gateway stage.
     Value: !GetAtt ApiWebAcl.Arn
-  RuntimeSecretArn:
-    Description: Secrets Manager runtime secret ARN.
-    Value: !Ref EhrRuntimeSecret
+  RuntimeSecretName:
+    Description: Existing Secrets Manager runtime secret name.
+    Value: !Ref ExistingRuntimeSecretName
   ConfigBucketName:
     Description: AWS Config delivery bucket.
     Value: !Ref ConfigBucket
