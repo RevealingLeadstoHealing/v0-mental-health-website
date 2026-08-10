@@ -30,6 +30,7 @@ async function postJson(path: string, body: Record<string, unknown>) {
 }
 
 export default function LoginPage() {
+  const [returnTo, setReturnTo] = useState("/ehr");
   const [user, setUser] = useState<LoginUser | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,6 +51,11 @@ export default function LoginPage() {
     if (!mfaSecret || !email) return "";
     return `otpauth://totp/RLTH%20EHR:${encodeURIComponent(email)}?secret=${encodeURIComponent(mfaSecret)}&issuer=RLTH%20EHR`;
   }, [email, mfaSecret]);
+
+  useEffect(() => {
+    const candidate = new URLSearchParams(window.location.search).get("returnTo") || "";
+    if (candidate === "/ehr" || candidate.startsWith("/ehr/")) setReturnTo(candidate);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -430,7 +436,7 @@ export default function LoginPage() {
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={checkAuditApi}>Check audit API</button>
               <button type="button" className="secondary" disabled={busy} onClick={startAuthenticatedMfaReplacement}>Replace authenticator</button>
-              <Link className="rlth-login-link secondary" href="/ehr">Open EHR</Link>
+              <Link className="rlth-login-link secondary" href={returnTo}>Open EHR</Link>
               <button type="button" className="secondary" disabled={busy} onClick={logout}>Logout</button>
             </div>
           </div>

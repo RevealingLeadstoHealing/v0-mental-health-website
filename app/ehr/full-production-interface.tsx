@@ -477,7 +477,8 @@ function AuthProvider({ children }) {
       try {
         const session = await productionApi("/api/ehr/auth/session");
         if (!session.authenticated) {
-          window.location.replace("/login");
+          const returnTo = window.location.pathname.startsWith("/ehr") ? window.location.pathname : "/ehr";
+          window.location.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
           return;
         }
         const sessionUser = session.user;
@@ -4396,7 +4397,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
 
