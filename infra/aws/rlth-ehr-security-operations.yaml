@@ -26,6 +26,10 @@ Parameters:
     Type: String
     Default: /rlth/prod/ehr/runtime
     Description: Existing KMS-encrypted runtime secret to reuse. The secret value is never read by this stack.
+  ExistingConfigBucketName:
+    Type: String
+    Default: rlth-prod-ehr-config-597936860711
+    Description: Existing KMS-encrypted AWS Config delivery bucket to reuse.
 
 Resources:
   ApiRuntimeLogGroup:
@@ -200,40 +204,10 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  ConfigBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BucketName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-${AWS::AccountId}"
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: !Ref KmsKeyArn
-            BucketKeyEnabled: true
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerPreferred
-      Tags:
-        - Key: Application
-          Value: RLTH-EHR
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: ContainsPHI
-          Value: "false"
-
   ConfigBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref ConfigBucket
+      Bucket: !Ref ExistingConfigBucketName
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -242,13 +216,13 @@ Resources:
             Principal:
               Service: config.amazonaws.com
             Action: s3:GetBucketAcl
-            Resource: !GetAtt ConfigBucket.Arn
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${ExistingConfigBucketName}"
           - Sid: AWSConfigBucketDelivery
             Effect: Allow
             Principal:
               Service: config.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub "${ConfigBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*"
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${ExistingConfigBucketName}/AWSLogs/${AWS::AccountId}/Config/*"
             Condition:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
@@ -257,8 +231,8 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !Sub "${ConfigBucket.Arn}"
-              - !Sub "${ConfigBucket.Arn}/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${ExistingConfigBucketName}"
+              - !Sub "arn:${AWS::Partition}:s3:::${ExistingConfigBucketName}/*"
             Condition:
               Bool:
                 aws:SecureTransport: false
@@ -296,7 +270,7 @@ Resources:
     DependsOn: ConfigBucketPolicy
     Properties:
       Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-delivery"
-      S3BucketName: !Ref ConfigBucket
+      S3BucketName: !Ref ExistingConfigBucketName
 
   S3PublicReadProhibitedRule:
     Type: AWS::Config::ConfigRule
@@ -361,4 +335,4 @@ Outputs:
     Value: !Ref ExistingRuntimeSecretName
   ConfigBucketName:
     Description: AWS Config delivery bucket.
-    Value: !Ref ConfigBucket
+    Value: !Ref ExistingConfigBucketName
