@@ -138,6 +138,10 @@ export function readEhrAccessCookie(cookieHeader: string) {
   return readCookie(cookieHeader, ACCESS_COOKIE);
 }
 
+export function readEhrRefreshCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, REFRESH_COOKIE);
+}
+
 function readCookie(cookieHeader: string, cookieName: string) {
   const cookies = cookieHeader
     .split(";")
