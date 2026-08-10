@@ -19,7 +19,7 @@ These values are resource identifiers, not credentials. Never add AWS access key
 - `AWS_REGION=us-east-2`
 - `EHR_AWS_REGION=us-east-2`
 - `EHR_COGNITO_USER_POOL_ID=us-east-2_kSd3RAPsl`
-- `EHR_COGNITO_CLIENT_ID=20r3lfn9rtsh6qr3k2q3slk82u`
+- `EHR_COGNITO_CLIENT_ID=64q7036m6i0sl68t9an6dqksnn`
 - `EHR_RECORDS_TABLE=rlth-prod-clinical-records`
 - `EHR_AUDIT_TABLE=rlth-prod-audit-events`
 - `EHR_DOCUMENTS_TABLE=rlth-prod-document-metadata`
