@@ -28,6 +28,7 @@ export type CognitoResponse = {
   AuthenticationResult?: CognitoAuthResult;
   ChallengeName?: string;
   ChallengeParameters?: Record<string, string>;
+  CodeDeliveryDetails?: { DeliveryMedium?: string; Destination?: string; AttributeName?: string };
   Session?: string;
   SecretCode?: string;
   Status?: string;
