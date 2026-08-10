@@ -8,6 +8,9 @@ Parameters:
   AllowedEhrOrigin:
     Type: String
     Default: https://ehr.revealing-leads-to-healing-wellness-services.org
+  AllowedAmplifyOrigin:
+    Type: String
+    Default: https://aws-ehr-production.d1mwc7x488m8xn.amplifyapp.com
   ClinicalRegion:
     Type: String
     Default: us-east-2
@@ -78,7 +81,9 @@ Resources:
         Status: Enabled
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins: [!Ref AllowedEhrOrigin]
+          - AllowedOrigins:
+              - !Ref AllowedEhrOrigin
+              - !Ref AllowedAmplifyOrigin
             AllowedMethods: [PUT]
             AllowedHeaders: ["*"]
             ExposedHeaders: [ETag]
