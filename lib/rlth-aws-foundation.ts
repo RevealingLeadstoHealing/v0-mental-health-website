@@ -13,7 +13,7 @@ export const rlthAwsFoundation = {
   cognitoUserPoolClientId: pick(
     env.EHR_COGNITO_CLIENT_ID,
     env.NEXT_PUBLIC_EHR_COGNITO_CLIENT_ID,
-    "20r3lfn9rtsh6qr3k2q3slk82u"
+    "64q7036m6i0sl68t9an6dqksnn"
   ),
   clinicalRecordsTableName: pick(
     env.EHR_RECORDS_TABLE,
