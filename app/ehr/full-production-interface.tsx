@@ -615,6 +615,14 @@ function AuthProvider({ children }) {
 function PageProvider({ children, initialPage = "dashboard" }) {
   const [page, setPage] = useState(initialPage);
   const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
+  useEffect(() => {
+    const syncPageFromPath = () => {
+      const requestedPage = window.location.pathname.split("/").filter(Boolean)[1] || "dashboard";
+      setPage(requestedPage);
+    };
+    window.addEventListener("popstate", syncPageFromPath);
+    return () => window.removeEventListener("popstate", syncPageFromPath);
+  }, []);
   return (
     <PageContext.Provider value={{ page, setPage, selectedChartClientId, setSelectedChartClientId }}>
       {children}
@@ -822,6 +830,11 @@ function MainApp() {
               <a
                 key={id}
                 href={`/ehr/${encodeURIComponent(id)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  window.history.pushState({}, "", `/ehr/${encodeURIComponent(id)}`);
+                  setPage(id);
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${
                   page === id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
@@ -4364,7 +4377,6 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
 
