@@ -35,6 +35,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
+  const [recoveryMode, setRecoveryMode] = useState<"" | "request" | "confirm">("");
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [challenge, setChallenge] = useState<ChallengeState | null>(null);
   const [mfaSetupSession, setMfaSetupSession] = useState("");
   const [mfaSecret, setMfaSecret] = useState("");
@@ -127,6 +129,35 @@ export default function LoginPage() {
       applyAuthResponse(data);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Login failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestPasswordReset() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/password/forgot", { email });
+      setRecoveryMode("confirm");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Password recovery could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmPasswordReset() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/password/confirm", { email, confirmationCode: recoveryCode, newPassword });
+      setRecoveryMode("");
+      setRecoveryCode("");
+      setNewPassword("");
+      setApiResult("Password updated. Sign in with the new password.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Password reset failed.");
     } finally {
       setBusy(false);
     }
@@ -265,7 +296,7 @@ export default function LoginPage() {
         <h1>Secure EHR Login</h1>
         <p>Production login uses AWS Cognito with MFA and secure HttpOnly session cookies.</p>
 
-        {!user && !challenge && (
+        {!user && !challenge && recoveryMode === "" && (
           <>
             <label>Email</label>
             <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
@@ -273,9 +304,38 @@ export default function LoginPage() {
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={handleLogin}>Sign in</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("request")}>Forgot password</button>
               <Link className="rlth-login-link secondary" href="/">Website</Link>
             </div>
           </>
+        )}
+
+        {!user && !challenge && recoveryMode === "request" && (
+          <div className="rlth-login-panel">
+            <strong>Reset password</strong>
+            <p>Enter the verified email address for the EHR account.</p>
+            <label>Email</label>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || !email} onClick={requestPasswordReset}>Email recovery code</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("")}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {!user && !challenge && recoveryMode === "confirm" && (
+          <div className="rlth-login-panel">
+            <strong>Enter recovery code</strong>
+            <p>Enter the code sent by AWS Cognito and choose a new password.</p>
+            <label>Recovery code</label>
+            <input value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+            <label>New password</label>
+            <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || !recoveryCode || !newPassword} onClick={confirmPasswordReset}>Set new password</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("request")}>Request another code</button>
+            </div>
+          </div>
         )}
 
         {!user && challenge?.challengeName === "NEW_PASSWORD_REQUIRED" && (
