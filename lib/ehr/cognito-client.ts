@@ -12,7 +12,9 @@ export type CognitoAction =
   | "InitiateAuth"
   | "RespondToAuthChallenge"
   | "AssociateSoftwareToken"
-  | "VerifySoftwareToken";
+  | "VerifySoftwareToken"
+  | "ForgotPassword"
+  | "ConfirmForgotPassword";
 
 export type CognitoAuthResult = {
   AccessToken?: string;
