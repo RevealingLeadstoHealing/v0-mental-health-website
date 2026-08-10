@@ -223,36 +223,6 @@ export default function LoginPage() {
     }
   }
 
-  async function createNonPhiTestRecord() {
-    setBusy(true);
-    setError("");
-    setApiResult("");
-    try {
-      const response = await fetch("/api/ehr/records", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: "system-check",
-          recordType: "system-check",
-          status: "test",
-          payload: {
-            purpose: "non-phi-production-connection-test",
-            createdFrom: "/login",
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Record API check failed.");
-      setApiResult(JSON.stringify({ status: "Record API connected", recordId: data.record?.recordId }, null, 2));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Record API check failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function logout() {
     setBusy(true);
     setError("");
@@ -368,7 +338,6 @@ export default function LoginPage() {
             <p>{user.fullName} | {user.email} | {user.role}</p>
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={checkAuditApi}>Check audit API</button>
-              <button type="button" disabled={busy} onClick={createNonPhiTestRecord}>Create non-PHI test record</button>
               <Link className="rlth-login-link secondary" href="/ehr">Open EHR</Link>
               <button type="button" className="secondary" disabled={busy} onClick={logout}>Logout</button>
             </div>
