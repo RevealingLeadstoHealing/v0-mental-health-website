@@ -420,7 +420,16 @@ function writeStore(data) {
   return data;
 }
 async function productionApi(path, options) {
-  const response = await fetch(path, { credentials: "include", cache: "no-store", ...options });
+  const requestOptions = { credentials: "include", cache: "no-store", ...options };
+  let response = await fetch(path, requestOptions);
+  if (response.status === 401 && path !== "/api/ehr/auth/refresh") {
+    const refresh = await fetch("/api/ehr/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (refresh.ok) response = await fetch(path, requestOptions);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "The EHR request could not be completed.");
   return data;
