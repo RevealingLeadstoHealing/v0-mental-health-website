@@ -1,4 +1,4 @@
-import { QueryCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
 import type { EhrActor } from "./auth";
@@ -11,6 +11,17 @@ export type ClinicalRecordInput = {
   status?: string;
 };
 
+export type ClientProfileInput = {
+  clientId?: string;
+  fullName: string;
+  preferredName?: string;
+  dateOfBirth?: string;
+  email?: string;
+  phone?: string;
+  status?: "active" | "inactive" | "archived";
+  assignedProviderIds?: string[];
+};
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -19,14 +30,18 @@ function makeId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export async function listClinicalRecords(clientId: string, limit = 50) {
+function clientPartition(practiceId: string, clientId: string) {
+  return `PRACTICE#${practiceId}#CLIENT#${clientId}`;
+}
+
+export async function listClinicalRecords(practiceId: string, clientId: string, limit = 50) {
   const dynamo = getDynamoDocumentClient();
   const response = await dynamo.send(
     new QueryCommand({
       TableName: rlthAwsFoundation.clinicalRecordsTableName,
       KeyConditionExpression: "PK = :pk AND begins_with(SK, :recordPrefix)",
       ExpressionAttributeValues: {
-        ":pk": `CLIENT#${clientId}`,
+        ":pk": clientPartition(practiceId, clientId),
         ":recordPrefix": "RECORD#",
       },
       ScanIndexForward: false,
@@ -44,7 +59,7 @@ export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordIn
   const recordType = input.recordType || "clinical-note";
 
   const item = {
-    PK: `CLIENT#${input.clientId}`,
+    PK: clientPartition(actor.practiceId, input.clientId),
     SK: `RECORD#${recordType}#${recordId}`,
     GSI1PK: `PRACTICE#${actor.practiceId}#TYPE#${recordType}`,
     GSI1SK: createdAt,
@@ -68,6 +83,69 @@ export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordIn
     })
   );
 
+  return item;
+}
+
+export async function getClientProfile(practiceId: string, clientId: string) {
+  const dynamo = getDynamoDocumentClient();
+  const response = await dynamo.send(new GetCommand({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    Key: {
+      PK: clientPartition(practiceId, clientId),
+      SK: "PROFILE",
+    },
+    ConsistentRead: true,
+  }));
+  return response.Item || null;
+}
+
+export async function listClientProfiles(actor: EhrActor, limit = 100) {
+  const dynamo = getDynamoDocumentClient();
+  const response = await dynamo.send(new QueryCommand({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    IndexName: "GSI1",
+    KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+    ExpressionAttributeValues: {
+      ":pk": `PRACTICE#${actor.practiceId}#TYPE#client-profile`,
+      ":prefix": "CLIENT#",
+    },
+    ScanIndexForward: true,
+    Limit: Math.min(Math.max(limit, 1), 100),
+  }));
+  const items = response.Items || [];
+  if (actor.role === "owner" || actor.role === "auditor") return items;
+  if (actor.role === "client") return items.filter((item) => item.cognitoUserId === actor.sub);
+  return items.filter((item) => Array.isArray(item.assignedProviderIds) && item.assignedProviderIds.includes(actor.sub));
+}
+
+export async function putClientProfile(actor: EhrActor, input: ClientProfileInput) {
+  const dynamo = getDynamoDocumentClient();
+  const timestamp = nowIso();
+  const clientId = input.clientId || makeId("client");
+  const item = {
+    PK: clientPartition(actor.practiceId, clientId),
+    SK: "PROFILE",
+    GSI1PK: `PRACTICE#${actor.practiceId}#TYPE#client-profile`,
+    GSI1SK: `CLIENT#${clientId}`,
+    recordType: "client-profile",
+    practiceId: actor.practiceId,
+    clientId,
+    fullName: input.fullName,
+    preferredName: input.preferredName || "",
+    dateOfBirth: input.dateOfBirth || "",
+    email: input.email || "",
+    phone: input.phone || "",
+    status: input.status || "active",
+    assignedProviderIds: input.assignedProviderIds?.length ? input.assignedProviderIds : [actor.sub],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    createdBy: actor.sub,
+  };
+  await dynamo.send(new PutCommand({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    Item: item,
+    ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+  }));
   return item;
 }
 
