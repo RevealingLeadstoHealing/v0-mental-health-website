@@ -613,11 +613,12 @@ function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 function PageProvider({ children }) {
-  const [page, setPage] = useState(() => {
-    if (typeof window === "undefined") return "dashboard";
-    return new URLSearchParams(window.location.search).get("tab") || "dashboard";
-  });
+  const [page, setPage] = useState("dashboard");
   const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab) setPage(requestedTab);
+  }, []);
   return (
     <PageContext.Provider value={{ page, setPage, selectedChartClientId, setSelectedChartClientId }}>
       {children}
@@ -4367,7 +4368,6 @@ export default function RevealingLeadsToHealingFirebaseStarter() {
     </div>
   );
 }
-
 
 
 
