@@ -1,16 +1,19 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { GetMedicalScribeJobCommand, StartMedicalScribeJobCommand, TranscribeClient } from "@aws-sdk/client-transcribe";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import { GetMedicalScribeJobCommand, TranscribeClient } from "@aws-sdk/client-transcribe";
 
 export const healthScribeRegion = process.env.EHR_HEALTHSCRIBE_REGION || "us-east-1";
 export const healthScribeBucket = process.env.EHR_HEALTHSCRIBE_BUCKET || "";
 export const healthScribeKmsKeyArn = process.env.EHR_HEALTHSCRIBE_KMS_KEY_ARN || "";
 export const healthScribeDataRoleArn = process.env.EHR_HEALTHSCRIBE_DATA_ROLE_ARN || "";
+export const healthScribeOrchestratorArn = process.env.EHR_HEALTHSCRIBE_ORCHESTRATOR_ARN || "";
 
 export const healthScribe = new TranscribeClient({ region: healthScribeRegion });
 export const healthScribeS3 = new S3Client({ region: healthScribeRegion });
+export const healthScribeLambda = new LambdaClient({ region: healthScribeRegion });
 
 export function assertHealthScribeConfigured() {
-  if (!healthScribeBucket || !healthScribeKmsKeyArn || !healthScribeDataRoleArn) {
+  if (!healthScribeBucket || !healthScribeKmsKeyArn || !healthScribeDataRoleArn || !healthScribeOrchestratorArn) {
     throw new Error("AWS HealthScribe production resources are not configured.");
   }
 }
@@ -23,18 +26,16 @@ export async function startHealthScribeJob(input: {
   clientId: string;
 }) {
   assertHealthScribeConfigured();
-  return healthScribe.send(new StartMedicalScribeJobCommand({
-    MedicalScribeJobName: input.jobName,
-    Media: { MediaFileUri: `s3://${healthScribeBucket}/${input.mediaKey}` },
-    OutputBucketName: healthScribeBucket,
-    OutputEncryptionKMSKeyId: healthScribeKmsKeyArn,
-    DataAccessRoleArn: healthScribeDataRoleArn,
-    Settings: {
-      ShowSpeakerLabels: true,
-      MaxSpeakerLabels: 2,
-      ClinicalNoteGenerationSettings: { NoteTemplate: input.noteTemplate },
-    },
+  const response = await healthScribeLambda.send(new InvokeCommand({
+    FunctionName: healthScribeOrchestratorArn,
+    InvocationType: "RequestResponse",
+    Payload: Buffer.from(JSON.stringify(input)),
   }));
+  const result = response.Payload ? JSON.parse(Buffer.from(response.Payload).toString("utf8")) : {};
+  if (response.FunctionError || result?.errorMessage) {
+    throw new Error(result?.errorMessage || response.FunctionError || "HealthScribe orchestrator failed.");
+  }
+  return result;
 }
 
 export async function getHealthScribeJob(jobName: string) {
