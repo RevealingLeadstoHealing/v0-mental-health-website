@@ -2522,7 +2522,14 @@ function getDocumentWorkflow(doc) {
   if (assessmentTabs[doc.title]) return { label: `Open ${doc.title}`, page: "assessments", target: { tab: assessmentTabs[doc.title] } };
   if (doc.title === "Treatment Plan") return { label: "Open treatment-plan form", page: "plans" };
   if (doc.title === "Homework Handout") return { label: "Open homework assignment form", page: "homework" };
-  if (doc.title.startsWith("Advocacy Letter Template")) return { label: "Open advocacy-letter builder", page: "documents" };
+  if (doc.title.startsWith("Advocacy Letter Template")) return {
+    label: "Open advocacy-letter builder",
+    page: "documents",
+    target: {
+      anchor: "advocacy-letter-builder",
+      advocacyTemplateType: doc.title.split(" | ")[1] || "General Outside Resource Support",
+    },
+  };
   return { label: "Review and sign this document", page: "documents" };
 }
 function ClientChartPage() {
@@ -4376,7 +4383,7 @@ function ProviderTrainingsPage() {
 }
 function DocumentLibraryPage() {
   const { currentUser, store, updateSpecificUserData, appendAuditLog } = useAuth();
-  const { setPage } = usePage();
+  const { setPage, workflowTarget } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
@@ -4391,6 +4398,14 @@ function DocumentLibraryPage() {
   const [documentBusy, setDocumentBusy] = useState(false);
   const [advocacyTemplateType, setAdvocacyTemplateType] = useState("Human Resources / Leave");
   const [advocacyDetails, setAdvocacyDetails] = useState({ recipient: "", purpose: "", limitations: "", recommendations: "", collaboration: "" });
+  useEffect(() => {
+    if (workflowTarget?.advocacyTemplateType) {
+      setAdvocacyTemplateType(workflowTarget.advocacyTemplateType);
+    }
+    if (workflowTarget?.anchor) {
+      window.setTimeout(() => document.getElementById(workflowTarget.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    }
+  }, [workflowTarget]);
   const buildAdvocacyLetterText = () => {
     const clientName = selectedClient?.profile?.fullName || "Client";
     const providerName = PRACTITIONER_NAME;
