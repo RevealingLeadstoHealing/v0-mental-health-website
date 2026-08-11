@@ -37,13 +37,22 @@ Parameters:
       - "true"
       - "false"
     Description: Set to true only when this account and Region do not already have an AWS Config recorder and delivery channel.
+  CreateRuntimeLogGroups:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Set to true only when the retained EHR runtime log groups do not already exist.
 
 Conditions:
   ShouldCreateConfigRecorderInfrastructure: !Equals [!Ref CreateConfigRecorderInfrastructure, "true"]
+  ShouldCreateRuntimeLogGroups: !Equals [!Ref CreateRuntimeLogGroups, "true"]
 
 Resources:
   ApiRuntimeLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: ShouldCreateRuntimeLogGroups
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -60,6 +69,7 @@ Resources:
 
   AuthRuntimeLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: ShouldCreateRuntimeLogGroups
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -76,6 +86,7 @@ Resources:
 
   DocumentRuntimeLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: ShouldCreateRuntimeLogGroups
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -321,13 +332,13 @@ Resources:
 Outputs:
   ApiRuntimeLogGroupName:
     Description: CloudWatch log group for EHR API runtime logs. Do not log PHI.
-    Value: !Ref ApiRuntimeLogGroup
+    Value: !Sub "/rlth/${EnvironmentName}/ehr/api-runtime"
   AuthRuntimeLogGroupName:
     Description: CloudWatch log group for EHR auth runtime logs. Do not log PHI.
-    Value: !Ref AuthRuntimeLogGroup
+    Value: !Sub "/rlth/${EnvironmentName}/ehr/auth-runtime"
   DocumentRuntimeLogGroupName:
     Description: CloudWatch log group for EHR document runtime logs. Do not log PHI.
-    Value: !Ref DocumentRuntimeLogGroup
+    Value: !Sub "/rlth/${EnvironmentName}/ehr/document-runtime"
   BackupVaultName:
     Description: AWS Backup vault for tagged RLTH EHR resources.
     Value: !Ref ExistingBackupVaultName
