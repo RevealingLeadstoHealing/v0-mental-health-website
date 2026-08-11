@@ -30,6 +30,16 @@ Parameters:
     Type: String
     Default: rlth-prod-ehr-config-597936860711
     Description: Existing KMS-encrypted AWS Config delivery bucket to reuse.
+  CreateConfigRecorderInfrastructure:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Set to true only when this account and Region do not already have an AWS Config recorder and delivery channel.
+
+Conditions:
+  ShouldCreateConfigRecorderInfrastructure: !Equals [!Ref CreateConfigRecorderInfrastructure, "true"]
 
 Resources:
   ApiRuntimeLogGroup:
@@ -206,6 +216,7 @@ Resources:
 
   ConfigBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateConfigRecorderInfrastructure
     Properties:
       Bucket: !Ref ExistingConfigBucketName
       PolicyDocument:
@@ -239,6 +250,7 @@ Resources:
 
   ConfigRecorderRole:
     Type: AWS::IAM::Role
+    Condition: ShouldCreateConfigRecorderInfrastructure
     Properties:
       RoleName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-recorder-role"
       AssumeRolePolicyDocument:
@@ -258,6 +270,7 @@ Resources:
 
   ConfigRecorder:
     Type: AWS::Config::ConfigurationRecorder
+    Condition: ShouldCreateConfigRecorderInfrastructure
     Properties:
       Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-recorder"
       RoleARN: !GetAtt ConfigRecorderRole.Arn
@@ -267,6 +280,7 @@ Resources:
 
   ConfigDeliveryChannel:
     Type: AWS::Config::DeliveryChannel
+    Condition: ShouldCreateConfigRecorderInfrastructure
     DependsOn: ConfigBucketPolicy
     Properties:
       Name: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-config-delivery"
@@ -274,7 +288,6 @@ Resources:
 
   S3PublicReadProhibitedRule:
     Type: AWS::Config::ConfigRule
-    DependsOn: ConfigRecorder
     Properties:
       ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-s3-public-read-prohibited"
       Source:
@@ -283,7 +296,6 @@ Resources:
 
   S3PublicWriteProhibitedRule:
     Type: AWS::Config::ConfigRule
-    DependsOn: ConfigRecorder
     Properties:
       ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-s3-public-write-prohibited"
       Source:
@@ -292,7 +304,6 @@ Resources:
 
   DynamoDbPitrEnabledRule:
     Type: AWS::Config::ConfigRule
-    DependsOn: ConfigRecorder
     Properties:
       ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-dynamodb-pitr-enabled"
       Source:
@@ -301,7 +312,6 @@ Resources:
 
   RootAccountMfaEnabledRule:
     Type: AWS::Config::ConfigRule
-    DependsOn: ConfigRecorder
     Properties:
       ConfigRuleName: !Sub "${PracticeSlug}-${EnvironmentName}-root-account-mfa-enabled"
       Source:
