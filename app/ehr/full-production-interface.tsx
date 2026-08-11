@@ -4398,7 +4398,7 @@ function DocumentLibraryPage() {
   const { currentUser, store, updateSpecificUserData, appendAuditLog } = useAuth();
   const { setPage, workflowTarget } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const [selectedClientId, setSelectedClientId] = useState(currentUser.role === "client" ? (currentUser.chartClientId || currentUser.id) : (clients[0]?.[0] || ""));
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const documents = selectedClient?.documents || [];
   const [signatureDocId, setSignatureDocId] = useState("");
@@ -4668,10 +4668,14 @@ ${organization}`;
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-            <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
-            <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
-          </Select>
+          {currentUser.role === "provider" ? (
+            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+              <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
+              <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : (
+            <p className="font-medium text-slate-900">{selectedClient?.profile?.fullName || currentUser.fullName}</p>
+          )}
           {currentUser.role === "provider" && <Button className="rounded-2xl" onClick={addTemplateDocuments}>Load clinical templates</Button>}
         </CardContent>
       </Card>
