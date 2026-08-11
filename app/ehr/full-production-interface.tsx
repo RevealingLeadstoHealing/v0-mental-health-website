@@ -710,9 +710,11 @@ function AuthProvider({ children }) {
 }
 function PageProvider({ children, initialPage = "dashboard" }) {
   const [page, setPageState] = useState(initialPage);
+  const [workflowTarget, setWorkflowTarget] = useState(null);
   const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
-  const setPage = (requestedPage) => {
+  const setPage = (requestedPage, target = null) => {
     setPageState(requestedPage);
+    setWorkflowTarget(target);
     const requestedPath = `/ehr/${encodeURIComponent(requestedPage)}`;
     if (window.location.pathname !== requestedPath) {
       window.history.pushState({}, "", requestedPath);
@@ -728,7 +730,7 @@ function PageProvider({ children, initialPage = "dashboard" }) {
     return () => window.removeEventListener("popstate", syncPageFromPath);
   }, [initialPage]);
   return (
-    <PageContext.Provider value={{ page, setPage, selectedChartClientId, setSelectedChartClientId }}>
+    <PageContext.Provider value={{ page, setPage, workflowTarget, selectedChartClientId, setSelectedChartClientId }}>
       {children}
     </PageContext.Provider>
   );
@@ -882,6 +884,7 @@ function MainApp() {
     ["psychoeducation", "Psychoeducation", BookOpen],
     ["homework-client", "Homework", BookOpen],
     ["messages", "Messages", MessageSquare],
+    ["documents", "Documents", Lock],
     ["records-request", "Record Request", FileText],
     ["telehealth", "Telehealth", Video],
     ["schedule", "Scheduling", Calendar],
@@ -983,7 +986,7 @@ function PageRouter() {
   if (page === "plans" && currentUser.role === "provider") return <TreatmentPlansPage />;
   if (page === "homework" && currentUser.role === "provider") return <HomeworkPage />;
   if (page === "assessments" && currentUser.role === "provider") return <AssessmentsPage />;
-  if (page === "documents" && currentUser.role === "provider") return <DocumentLibraryPage />;
+  if (page === "documents") return <DocumentLibraryPage />;
   if (page === "infrastructure" && currentUser.role === "provider") return <InfrastructurePage />;
   if (page === "trainings" && currentUser.role === "provider") return <ProviderTrainingsPage />;
   return <DashboardPage />;
@@ -3984,6 +3987,7 @@ function AuditLogPage() {
 }
 function AssessmentsPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { workflowTarget } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
@@ -4074,7 +4078,7 @@ function AssessmentsPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="phq9">
+      <Tabs key={workflowTarget?.tab || "phq9"} defaultValue={workflowTarget?.tab || "phq9"}>
         <TabsList className="grid grid-cols-2 lg:grid-cols-9 rounded-2xl w-full">
           <TabsTrigger value="phq9">PHQ-9</TabsTrigger>
           <TabsTrigger value="gad7">GAD-7</TabsTrigger>
@@ -4342,6 +4346,7 @@ function ProviderTrainingsPage() {
 }
 function DocumentLibraryPage() {
   const { currentUser, store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { setPage } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
@@ -4416,8 +4421,11 @@ ${organization}`;
   };
   const signDocument = async () => {
     if (!selectedClientId || !signatureDocId) return;
-    if (signatureRole !== "Provider" || currentUser?.role !== "provider") {
-      setDocumentNotice("Client and guardian signatures must be completed from that signer's own authenticated EHR account.");
+    const effectiveSignatureRole = currentUser?.role === "client" ? "Client" : signatureRole;
+    const authenticatedProvider = effectiveSignatureRole === "Provider" && currentUser?.role === "provider";
+    const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === currentUser.id;
+    if (!authenticatedProvider && !authenticatedClient) {
+      setDocumentNotice("The selected signature role must match the currently authenticated EHR account. Guardian signatures require a separately authenticated guardian account.");
       return;
     }
     const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
@@ -4436,11 +4444,11 @@ ${organization}`;
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) =>
         doc.id === signatureDocId
-          ? { ...doc, status: "Signed", signature: { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: signatureRole, signedAt, documentVersionSha256 } }
+          ? { ...doc, status: "Signed", signature: { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, signedAt, documentVersionSha256 } }
           : doc
       )
     );
-    appendAuditLog({ action: "Authenticated electronic signature applied", details: `${signatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
+    appendAuditLog({ action: "Authenticated electronic signature applied", details: `${effectiveSignatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
     setSignatureName(signer);
     setDocumentNotice("Authenticated provider signature saved securely to the client chart.");
   };
@@ -4526,6 +4534,62 @@ ${organization}`;
     );
     appendAuditLog({ action: "Viewed document", details: `${doc.title} opened from chart library.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Access" });
   };
+  const documentWorkflow = (doc) => {
+    if (doc.storageKey) return { label: "Open encrypted file", type: "file" };
+    if (doc.title === "Biopsychosocial Intake") return { label: "Open biopsychosocial intake", page: "intake" };
+    if (doc.title === "Initial Progress Note Template") return { label: "Open progress-note form", page: "notes" };
+    const assessmentTabs = {
+      "PHQ-9 Depression Screening": "phq9",
+      "GAD-7 Anxiety Screening": "gad7",
+      "Suicide Risk Assessment": "suicide",
+      "Substance Use / Drug Abuse Assessment": "substance",
+      "Violence Risk Assessment": "violence",
+      "Safety Plan": "safety",
+      "Clinical Outcome Measures": "phq9",
+    };
+    if (assessmentTabs[doc.title]) return { label: `Open ${doc.title}`, page: "assessments", target: { tab: assessmentTabs[doc.title] } };
+    if (doc.title === "Treatment Plan") return { label: "Open treatment-plan form", page: "plans" };
+    if (doc.title === "Homework Handout") return { label: "Open homework assignment form", page: "homework" };
+    if (doc.title.startsWith("Advocacy Letter Template")) return { label: "Open advocacy-letter builder", anchor: "advocacy-letter-builder" };
+    return { label: "Review and sign this document", anchor: "document-signatures" };
+  };
+  const openDocumentWorkflow = (doc) => {
+    const workflow = documentWorkflow(doc);
+    if (workflow.type === "file") {
+      void viewDocument(doc);
+      return;
+    }
+    void viewDocument(doc);
+    if (workflow.page) {
+      setPage(workflow.page, workflow.target || null);
+      return;
+    }
+    if (workflow.anchor === "document-signatures") setSignatureDocId(doc.id);
+    if (workflow.anchor === "advocacy-letter-builder") setAdvocacyTemplateType(doc.title.split(" | ")[1] || "General Outside Resource Support");
+    window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+  const saveAdvocacyLetter = () => {
+    if (!selectedClientId) return;
+    const generatedLetterText = buildAdvocacyLetterText();
+    const title = `Advocacy Letter | ${advocacyTemplateType}`;
+    updateSpecificUserData(selectedClientId, "documents", (prev) => [
+      {
+        id: `advocacy-${Date.now()}`,
+        title,
+        type: "Advocacy Letter",
+        category: "Advocacy Letter",
+        status: "Draft",
+        viewedAt: "",
+        signature: null,
+        uploadedFileName: "",
+        generatedLetterText,
+        createdAt: new Date().toISOString(),
+      },
+      ...(prev || []),
+    ]);
+    appendAuditLog({ action: "Created advocacy letter draft", details: `${title} saved to the encrypted client chart for provider review.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Advocacy" });
+    setDocumentNotice("Advocacy letter draft saved securely to the client chart.");
+  };
   return (
     <div>
       <SectionHeader title="Document Library" description="Encrypted AWS document storage, authenticated electronic signatures, immutable audit logging, and document access tracking." />
@@ -4536,7 +4600,7 @@ ${organization}`;
             <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
             <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
           </Select>
-          <Button className="rounded-2xl" onClick={addTemplateDocuments}>Load clinical templates</Button>
+          {currentUser.role === "provider" && <Button className="rounded-2xl" onClick={addTemplateDocuments}>Load clinical templates</Button>}
         </CardContent>
       </Card>
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
@@ -4560,34 +4624,34 @@ ${organization}`;
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" className="rounded-2xl" onClick={() => viewDocument(doc)}>{doc.storageKey ? "Open encrypted file" : "View / track access"}</Button>
+                  <Button variant="outline" className="rounded-2xl" onClick={() => openDocumentWorkflow(doc)}>{documentWorkflow(doc).label}</Button>
                 </div>
               </div>
             ))}
           </CardContent>
         </Card>
         <div className="space-y-4">
-          <Card className="rounded-2xl shadow-sm">
+          <Card id="document-signatures" className="rounded-2xl shadow-sm scroll-mt-4">
             <CardHeader><CardTitle>Electronic signatures</CardTitle><CardDescription>Authenticated signer identity, timestamp, and document-version fingerprint</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <Select value={signatureDocId} onValueChange={setSignatureDocId}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
                 <SelectContent>{documents.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(value === "Provider" ? (currentUser?.fullName || PRACTITIONER_NAME) : ""); }}>
+              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(["Provider", "Client"].includes(value) ? (currentUser?.fullName || PRACTITIONER_NAME) : ""); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Provider">Provider signature</SelectItem>
-                  <SelectItem value="Client">Client / patient signature</SelectItem>
-                  <SelectItem value="Guardian">Guardian / representative signature</SelectItem>
+                  {currentUser.role === "provider" && <SelectItem value="Provider">Provider signature</SelectItem>}
+                  {currentUser.role === "client" && <SelectItem value="Client">Client / patient signature</SelectItem>}
+                  {currentUser.role === "provider" && <SelectItem value="Guardian">Guardian / representative signature</SelectItem>}
                 </SelectContent>
               </Select>
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Provider signatures use the currently authenticated provider identity. Client or guardian signatures must be completed from that signer&apos;s authenticated account.</div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their own client accounts. Guardian signatures require an authenticated guardian account.</div>
               <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
             </CardContent>
           </Card>
-          <Card className="rounded-2xl shadow-sm">
+          <Card id="document-upload" className="rounded-2xl shadow-sm scroll-mt-4">
             <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Encrypted private AWS chart-document storage</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-2xl border-2 border-slate-800 bg-amber-50 p-4 space-y-2">
@@ -4614,6 +4678,28 @@ ${organization}`;
               <Button className="min-h-12 w-full rounded-2xl text-base" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
             </CardContent>
           </Card>
+          {currentUser.role === "provider" && (
+            <Card id="advocacy-letter-builder" className="rounded-2xl shadow-sm scroll-mt-4">
+              <CardHeader><CardTitle>Advocacy-letter builder</CardTitle><CardDescription>Create a chart-linked draft for provider review and signature</CardDescription></CardHeader>
+              <CardContent className="space-y-3">
+                <Select value={advocacyTemplateType} onValueChange={setAdvocacyTemplateType}>
+                  <SelectTrigger className="min-h-12 rounded-xl border-2 border-slate-800 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Human Resources / Leave">Human Resources / Leave</SelectItem>
+                    <SelectItem value="Housing / Waiver / Benefits">Housing / Waiver / Benefits</SelectItem>
+                    <SelectItem value="Care Coordination / Collaboration">Care Coordination / Collaboration</SelectItem>
+                    <SelectItem value="General Outside Resource Support">General Outside Resource Support</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input label="Recipient / agency / department" value={advocacyDetails.recipient} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, recipient: event.target.value })} />
+                <Textarea label="Purpose of letter" value={advocacyDetails.purpose} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, purpose: event.target.value })} className="min-h-[90px]" />
+                <Textarea label="Clinical or functional considerations" value={advocacyDetails.limitations} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, limitations: event.target.value })} className="min-h-[110px]" />
+                <Textarea label="Recommended supports or requested action" value={advocacyDetails.recommendations} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, recommendations: event.target.value })} className="min-h-[110px]" />
+                <Textarea label="Care coordination details" value={advocacyDetails.collaboration} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, collaboration: event.target.value })} className="min-h-[90px]" />
+                <Button className="w-full rounded-2xl" onClick={saveAdvocacyLetter}>Save advocacy-letter draft to chart</Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
