@@ -4526,20 +4526,28 @@ ${organization}`;
           <Card className="rounded-2xl shadow-sm">
             <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Encrypted private AWS chart-document storage</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <Input label="Document title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Enter document title" />
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Document type</p>
-              <Select value={uploadType} onValueChange={setUploadType}>
-                <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Clinical Document">Clinical Document</SelectItem>
-                  <SelectItem value="Assessment">Assessment</SelectItem>
-                  <SelectItem value="Consent">Consent</SelectItem>
-                  <SelectItem value="Signed Form">Signed Form</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input label="Choose document file" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="rounded-2xl" />
-              <div className="text-xs text-slate-500">Selected file: {uploadFile?.name || "No file selected"}</div>
-              <Button className="rounded-2xl" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
+              <div className="rounded-2xl border-2 border-slate-800 bg-amber-50 p-4 space-y-2">
+                <p className="font-bold text-slate-950">Step 1 — Enter document title</p>
+                <Input aria-label="Document title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Type the document title here" className="min-h-12 border-2 border-slate-950 bg-white text-base" />
+              </div>
+              <div className="rounded-2xl border-2 border-slate-800 bg-slate-50 p-4 space-y-2">
+                <p className="font-bold text-slate-950">Step 2 — Select document type</p>
+                <Select value={uploadType} onValueChange={setUploadType}>
+                  <SelectTrigger className="min-h-12 rounded-xl border-2 border-slate-950 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Clinical Document">Clinical Document</SelectItem>
+                    <SelectItem value="Assessment">Assessment</SelectItem>
+                    <SelectItem value="Consent">Consent</SelectItem>
+                    <SelectItem value="Signed Form">Signed Form</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-800 bg-slate-50 p-4 space-y-2">
+                <p className="font-bold text-slate-950">Step 3 — Choose document file</p>
+                <Input aria-label="Choose document file" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="min-h-12 cursor-pointer border-2 border-slate-950 bg-white text-base" />
+                <div className="font-medium text-slate-800">Selected file: {uploadFile?.name || "No file selected"}</div>
+              </div>
+              <Button className="min-h-12 w-full rounded-2xl text-base" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
             </CardContent>
           </Card>
         </div>
