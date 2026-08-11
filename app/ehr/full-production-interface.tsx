@@ -570,9 +570,10 @@ function AuthProvider({ children }) {
           clientName: users[event.clientId]?.profile?.fullName || "",
         }));
         const recordRequests = Object.values(users).flatMap((bucket) => bucket.recordRequests || []);
+        const chartClientId = sessionUser.role === "client" ? (clients[0]?.clientId || sessionUser.id) : "";
         const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests, users };
         setStore(nextStore);
-        setCurrentUser({ id: sessionUser.id, ...users[sessionUser.id].profile });
+        setCurrentUser({ id: sessionUser.id, chartClientId, ...(users[chartClientId || sessionUser.id]?.profile || users[sessionUser.id].profile) });
       } catch (error) {
         if (active) setLoadError(error instanceof Error ? error.message : "Unable to open the production EHR.");
       } finally {
@@ -637,21 +638,22 @@ function AuthProvider({ children }) {
   };
   const submitRecordRequest = ({ requestType, reason }) => {
     if (!currentUser) return;
-    const request = { id: `request-${Date.now()}`, clientId: currentUser.id, clientName: currentUser.fullName, requestType, reason, status: "Pending Review", submittedAt: new Date().toLocaleString(), resolvedAt: "" };
-    const clientRequests = [request, ...(storeRef.current.users[currentUser.id]?.recordRequests || [])];
+    const clientId = currentUser.chartClientId || currentUser.id;
+    const request = { id: `request-${Date.now()}`, clientId, clientName: currentUser.fullName, requestType, reason, status: "Pending Review", submittedAt: new Date().toLocaleString(), resolvedAt: "" };
+    const clientRequests = [request, ...(storeRef.current.users[clientId]?.recordRequests || [])];
     setStore((previous) => {
       const next = {
         ...previous,
         recordRequests: [request, ...(previous.recordRequests || [])],
         users: {
           ...previous.users,
-          [currentUser.id]: { ...previous.users[currentUser.id], recordRequests: clientRequests },
+          [clientId]: { ...previous.users[clientId], recordRequests: clientRequests },
         },
       };
       storeRef.current = next;
       return next;
     });
-    enqueueModuleSave(currentUser.id, "recordRequests", clientRequests);
+    enqueueModuleSave(clientId, "recordRequests", clientRequests);
   };
   const updateRecordRequestStatus = (requestId, status) => {
     const request = (storeRef.current.recordRequests || []).find((item) => item.id === requestId);
@@ -674,7 +676,8 @@ function AuthProvider({ children }) {
   };
   const updateCurrentUserData = (key, updater) => {
     if (!currentUser) return;
-    const userBucket = storeRef.current.users[currentUser.id];
+    const clientId = currentUser.chartClientId || currentUser.id;
+    const userBucket = storeRef.current.users[clientId];
     if (!userBucket) return;
     const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
     if (currentUser.role !== "client") {
@@ -682,11 +685,11 @@ function AuthProvider({ children }) {
       return;
     }
     setStore((previous) => {
-      const next = { ...previous, users: { ...previous.users, [currentUser.id]: { ...previous.users[currentUser.id], [key]: updatedValue } } };
+      const next = { ...previous, users: { ...previous.users, [clientId]: { ...previous.users[clientId], [key]: updatedValue } } };
       storeRef.current = next;
       return next;
     });
-    enqueueModuleSave(currentUser.id, key, updatedValue);
+    enqueueModuleSave(clientId, key, updatedValue);
   };
   const updateSpecificUserData = (userId, key, updater) => {
     const userBucket = storeRef.current.users[userId];
@@ -1004,7 +1007,8 @@ function SectionHeader({ title, description, right }) {
 }
 function DashboardPage() {
   const { currentUser, store } = useAuth();
-  const bucket = store.users[currentUser.id];
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const bucket = store.users[currentUser.role === "client" ? currentClientId : currentUser.id];
   const stats = currentUser.role === "provider"
     ? [
         [Users, "Clients", Object.values(store.users).filter((u) => u.profile.role === "client").length, "Private professional client list"],
@@ -1103,7 +1107,8 @@ function DashboardPage() {
 }
 function JournalPage() {
   const { currentUser, store, updateCurrentUserData, appendAuditLog } = useAuth();
-  const entries = store.users[currentUser.id].journalEntries || [];
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const entries = store.users[currentClientId]?.journalEntries || [];
   const [draft, setDraft] = useState({ title: "", content: "", visibility: "private" });
   const [editingId, setEditingId] = useState(null);
   const saveEntry = () => {
@@ -1115,7 +1120,7 @@ function JournalPage() {
       appendAuditLog({
         action: "Updated journal entry",
         details: `${draft.visibility === "shared" ? "Shared" : "Private"} journal entry updated.`,
-        clientId: currentUser.id,
+        clientId: currentClientId,
         clientName: currentUser.fullName,
         category: "Journal",
       });
@@ -1134,7 +1139,7 @@ function JournalPage() {
       appendAuditLog({
         action: "Created journal entry",
         details: `${draft.visibility === "shared" ? "Shared" : "Private"} journal entry created.`,
-        clientId: currentUser.id,
+        clientId: currentClientId,
         clientName: currentUser.fullName,
         category: "Journal",
       });
@@ -1150,7 +1155,7 @@ function JournalPage() {
     appendAuditLog({
       action: "Deleted journal entry",
       details: "Client removed a journal entry.",
-      clientId: currentUser.id,
+      clientId: currentClientId,
       clientName: currentUser.fullName,
       category: "Journal",
     });
@@ -1302,8 +1307,9 @@ function MessagingPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
   const isProvider = currentUser.role === "provider";
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentUser.id);
-  const activeClientId = isProvider ? selectedClientId : currentUser.id;
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentClientId);
+  const activeClientId = isProvider ? selectedClientId : currentClientId;
   const bucket = store.users[activeClientId];
   const [draft, setDraft] = useState("");
   const send = () => {
@@ -1645,8 +1651,9 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
   const isProvider = currentUser.role === "provider";
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentUser.id);
-  const activeClientId = isProvider ? selectedClientId : currentUser.id;
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentClientId);
+  const activeClientId = isProvider ? selectedClientId : currentClientId;
   const activeClient = store.users[activeClientId];
   const appointments = activeClient?.appointments || [];
   const [draft, setDraft] = useState({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
@@ -1731,8 +1738,9 @@ function TelehealthPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
   const isProvider = currentUser.role === "provider";
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentUser.id);
-  const activeClientId = isProvider ? selectedClientId : currentUser.id;
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentClientId);
+  const activeClientId = isProvider ? selectedClientId : currentClientId;
   const activeClient = store.users[activeClientId];
   const telehealthLog = activeClient?.telehealth || [];
   const [sessionForm, setSessionForm] = useState({
@@ -3800,7 +3808,8 @@ function HomeworkPage() {
 }
 function ClientHomeworkPage() {
   const { currentUser, store, updateCurrentUserData, appendAuditLog } = useAuth();
-  const assignments = store.users[currentUser.id].homework || [];
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const assignments = store.users[currentClientId]?.homework || [];
   const updateHomeworkStatus = (itemId, nextStatus) => {
     updateCurrentUserData("homework", (prev) =>
       prev.map((item) =>
@@ -3816,7 +3825,7 @@ function ClientHomeworkPage() {
     appendAuditLog({
       action: `Updated homework status to ${nextStatus}`,
       details: "Client updated homework progress.",
-      clientId: currentUser.id,
+      clientId: currentClientId,
       clientName: currentUser.fullName,
       category: "Homework",
     });
@@ -3874,14 +3883,15 @@ function ClientRecordRequestPage() {
   const { store, currentUser, submitRecordRequest, appendAuditLog } = useAuth();
   const [requestType, setRequestType] = useState("Medical Record Copy");
   const [reason, setReason] = useState("");
-  const requests = (store.recordRequests || []).filter((item) => item.clientId === currentUser.id);
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const requests = (store.recordRequests || []).filter((item) => item.clientId === currentClientId);
   const handleSubmit = () => {
     if (!reason.trim()) return;
     submitRecordRequest({ requestType, reason });
     appendAuditLog({
       action: "Submitted records request",
       details: `${requestType} requested by client through portal.`,
-      clientId: currentUser.id,
+      clientId: currentClientId,
       clientName: currentUser.fullName,
       category: "Records Request",
     });
@@ -3943,10 +3953,13 @@ function ProviderRecordRequestsPage() {
   const { store, updateRecordRequestStatus, appendAuditLog } = useAuth();
   const requests = store.recordRequests || [];
   const handleStatus = (id, status) => {
+    const request = requests.find((item) => item.id === id);
     updateRecordRequestStatus(id, status);
     appendAuditLog({
       action: `Updated record request to ${status}`,
       details: "Provider reviewed a client records request.",
+      clientId: request?.clientId || "",
+      clientName: request?.clientName || "",
       category: "Records Request",
     });
   };
@@ -4468,7 +4481,7 @@ ${organization}`;
     if (!selectedClientId || !signatureDocId) return;
     const effectiveSignatureRole = currentUser?.role === "client" ? "Client" : signatureRole;
     const authenticatedProvider = effectiveSignatureRole === "Provider" && currentUser?.role === "provider";
-    const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === currentUser.id;
+    const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === (currentUser.chartClientId || currentUser.id);
     if (!authenticatedProvider && !authenticatedClient) {
       setDocumentNotice("The selected signature role must match the currently authenticated EHR account. Guardian signatures require a separately authenticated guardian account.");
       return;
