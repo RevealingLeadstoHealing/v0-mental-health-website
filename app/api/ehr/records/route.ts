@@ -31,8 +31,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await requireEhrActor(request);
-    requireRole(actor, ["owner", "provider", "clinical_staff"]);
-
     const body = await request.json();
     const clientId = typeof body.clientId === "string" ? body.clientId : "";
     const recordType = typeof body.recordType === "string" ? body.recordType : "clinical-note";
@@ -54,6 +52,15 @@ export async function POST(request: Request) {
     if (recordType === "ehr-module-snapshot" && !moduleKey) {
       throw new ApiError(400, "A valid moduleKey is required for an EHR module snapshot.");
     }
+
+    if (actor.role === "client") {
+      if (recordType !== "ehr-module-snapshot" || moduleKey !== "recordRequests") {
+        throw new ApiError(403, "Client accounts may submit only their own medical-record requests through this endpoint.");
+      }
+    } else {
+      requireRole(actor, ["owner", "provider", "clinical_staff"]);
+    }
+
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,
