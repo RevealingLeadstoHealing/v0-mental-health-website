@@ -333,6 +333,18 @@ Resources:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !Ref EhrKmsKey
             BucketKeyEnabled: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+            AllowedOrigins:
+              - "https://aws-ehr-production.d1mwc7x488m8xn.amplifyapp.com"
+              - "https://ehr.revealing-leads-to-healing-wellness-services.org"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 300
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true

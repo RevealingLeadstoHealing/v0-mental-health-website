@@ -4288,17 +4288,19 @@ function ProviderTrainingsPage() {
   );
 }
 function DocumentLibraryPage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { currentUser, store, updateSpecificUserData, appendAuditLog } = useAuth();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const documents = selectedClient?.documents || [];
   const [signatureDocId, setSignatureDocId] = useState("");
-  const [signatureName, setSignatureName] = useState(PRACTITIONER_NAME);
+  const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
   const [signatureRole, setSignatureRole] = useState("Provider");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadType, setUploadType] = useState("Clinical Document");
-  const [uploadFileName, setUploadFileName] = useState("");
+  const [uploadFile, setUploadFile] = useState(null);
+  const [documentNotice, setDocumentNotice] = useState("");
+  const [documentBusy, setDocumentBusy] = useState(false);
   const [advocacyTemplateType, setAdvocacyTemplateType] = useState("Human Resources / Leave");
   const [advocacyDetails, setAdvocacyDetails] = useState({ recipient: "", purpose: "", limitations: "", recommendations: "", collaboration: "" });
   const buildAdvocacyLetterText = () => {
@@ -4359,38 +4361,102 @@ ${organization}`;
     updateSpecificUserData(selectedClientId, "documents", [...documents, ...nextDocs]);
     appendAuditLog({ action: "Added document templates", details: "Clinical document templates added to chart.", clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document" });
   };
-  const signDocument = () => {
-    if (!selectedClientId || !signatureDocId || !signatureName.trim()) return;
+  const signDocument = async () => {
+    if (!selectedClientId || !signatureDocId) return;
+    if (signatureRole !== "Provider" || currentUser?.role !== "provider") {
+      setDocumentNotice("Client and guardian signatures must be completed from that signer's own authenticated EHR account.");
+      return;
+    }
+    const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
+    if (!selectedDocument) return;
+    const signer = currentUser?.fullName || signatureName.trim();
+    const signedAt = new Date().toISOString();
+    const versionSource = JSON.stringify({
+      id: selectedDocument.id,
+      title: selectedDocument.title,
+      type: selectedDocument.type,
+      storageKey: selectedDocument.storageKey || "",
+      createdAt: selectedDocument.createdAt,
+    });
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(versionSource));
+    const documentVersionSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) =>
         doc.id === signatureDocId
-          ? { ...doc, status: "Signed", signature: { signer: signatureName, role: signatureRole, signedAt: new Date().toLocaleString() } }
+          ? { ...doc, status: "Signed", signature: { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: signatureRole, signedAt, documentVersionSha256 } }
           : doc
       )
     );
-    appendAuditLog({ action: "Electronic signature applied", details: `${signatureRole} signature applied by ${signatureName}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
-    setSignatureName(signatureRole === "Provider" ? PRACTITIONER_NAME : "");
+    appendAuditLog({ action: "Authenticated electronic signature applied", details: `${signatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
+    setSignatureName(signer);
+    setDocumentNotice("Authenticated provider signature saved securely to the client chart.");
   };
-  const uploadDocument = () => {
-    if (!selectedClientId || !uploadTitle.trim() || !uploadFileName.trim()) return;
-    updateSpecificUserData(selectedClientId, "documents", (prev) => [
-      {
-        id: `upload-${Date.now()}`,
-        title: uploadTitle,
-        type: uploadType,
-        status: "Uploaded",
-        viewedAt: "",
-        signature: null,
-        uploadedFileName: uploadFileName,
-        createdAt: new Date().toLocaleString(),
-      },
-      ...prev,
-    ]);
-    appendAuditLog({ action: "Uploaded document metadata", details: `${uploadTitle} uploaded as ${uploadFileName}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Upload" });
-    setUploadTitle("");
-    setUploadFileName("");
+  const uploadDocument = async () => {
+    if (!selectedClientId || !uploadTitle.trim() || !uploadFile) {
+      setDocumentNotice("Enter a document title and choose the file before uploading.");
+      return;
+    }
+    setDocumentBusy(true);
+    setDocumentNotice("Encrypting and uploading the document to AWS…");
+    try {
+      const authorization = await productionApi("/api/ehr/documents/presign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          documentType: uploadType,
+          fileName: uploadFile.name,
+          contentType: uploadFile.type || "application/octet-stream",
+        }),
+      });
+      const uploadResponse = await fetch(authorization.uploadUrl, {
+        method: "PUT",
+        headers: authorization.uploadHeaders,
+        body: uploadFile,
+      });
+      if (!uploadResponse.ok) throw new Error("The encrypted AWS file upload failed.");
+      const uploadedAt = new Date().toISOString();
+      updateSpecificUserData(selectedClientId, "documents", (prev) => [
+        {
+          id: authorization.documentId,
+          title: uploadTitle.trim(),
+          type: uploadType,
+          status: "Uploaded",
+          viewedAt: "",
+          signature: null,
+          uploadedFileName: uploadFile.name,
+          contentType: uploadFile.type || "application/octet-stream",
+          sizeBytes: uploadFile.size,
+          storageKey: authorization.key,
+          createdAt: uploadedAt,
+        },
+        ...prev,
+      ]);
+      appendAuditLog({ action: "Uploaded encrypted chart document", details: `${uploadTitle.trim()} uploaded to private AWS storage as ${uploadFile.name}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Upload" });
+      setUploadTitle("");
+      setUploadFile(null);
+      setDocumentNotice("Encrypted document uploaded and saved to the client chart.");
+    } catch (error) {
+      setDocumentNotice(error instanceof Error ? error.message : "The document could not be uploaded.");
+    } finally {
+      setDocumentBusy(false);
+    }
   };
-  const viewDocument = (doc) => {
+  const viewDocument = async (doc) => {
+    if (doc.storageKey) {
+      setDocumentBusy(true);
+      setDocumentNotice("Authorizing private document access…");
+      try {
+        const result = await productionApi(`/api/ehr/documents/presign?clientId=${encodeURIComponent(selectedClientId)}&key=${encodeURIComponent(doc.storageKey)}`);
+        window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
+        setDocumentNotice("Private document opened in a new tab.");
+      } catch (error) {
+        setDocumentNotice(error instanceof Error ? error.message : "The document could not be opened.");
+        setDocumentBusy(false);
+        return;
+      }
+      setDocumentBusy(false);
+    }
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((item) => (item.id === doc.id ? { ...item, viewedAt: new Date().toLocaleString() } : item))
     );
@@ -4398,7 +4464,8 @@ ${organization}`;
   };
   return (
     <div>
-      <SectionHeader title="Document Library" description="Interactive document workflow with templates, mock upload, electronic signatures, immutable audit logging, access logging, and document view tracking." />
+      <SectionHeader title="Document Library" description="Encrypted AWS document storage, authenticated electronic signatures, immutable audit logging, and document access tracking." />
+      {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
           <Select value={selectedClientId} onValueChange={setSelectedClientId}>
@@ -4437,13 +4504,13 @@ ${organization}`;
         </Card>
         <div className="space-y-4">
           <Card className="rounded-2xl shadow-sm">
-            <CardHeader><CardTitle>Electronic signatures</CardTitle><CardDescription>Mock e-signature workflow for consents and plan signatures</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Electronic signatures</CardTitle><CardDescription>Authenticated signer identity, timestamp, and document-version fingerprint</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <Select value={signatureDocId} onValueChange={setSignatureDocId}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
                 <SelectContent>{documents.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(value === "Provider" ? PRACTITIONER_NAME : ""); }}>
+              <Select value={signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(value === "Provider" ? (currentUser?.fullName || PRACTITIONER_NAME) : ""); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Provider">Provider signature</SelectItem>
@@ -4452,12 +4519,12 @@ ${organization}`;
                 </SelectContent>
               </Select>
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Prototype signature capture only. Production signature workflow should include signer authentication, document versioning, and storage metadata.</div>
-              <Button className="rounded-2xl" onClick={signDocument}>Apply electronic signature</Button>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Provider signatures use the currently authenticated provider identity. Client or guardian signatures must be completed from that signer&apos;s authenticated account.</div>
+              <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
             </CardContent>
           </Card>
           <Card className="rounded-2xl shadow-sm">
-            <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Mock upload metadata capture for production file storage workflow</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Encrypted private AWS chart-document storage</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <Input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Document title" />
               <Select value={uploadType} onValueChange={setUploadType}>
@@ -4469,9 +4536,9 @@ ${organization}`;
                   <SelectItem value="Signed Form">Signed Form</SelectItem>
                 </SelectContent>
               </Select>
-              <Input type="file" onChange={(e) => setUploadFileName(e.target.files?.[0]?.name || "")} className="rounded-2xl" />
-              <div className="text-xs text-slate-500">Selected file: {uploadFileName || "No file selected"}</div>
-              <Button className="rounded-2xl" onClick={uploadDocument}>Upload document metadata</Button>
+              <Input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="rounded-2xl" />
+              <div className="text-xs text-slate-500">Selected file: {uploadFile?.name || "No file selected"}</div>
+              <Button className="rounded-2xl" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
             </CardContent>
           </Card>
         </div>
