@@ -4443,14 +4443,25 @@ ${organization}`;
     }
   };
   const viewDocument = async (doc) => {
+    const documentWindow = doc.storageKey ? window.open("about:blank", "_blank") : null;
+    if (documentWindow) {
+      documentWindow.opener = null;
+      documentWindow.document.title = "Opening encrypted document…";
+      documentWindow.document.body.textContent = "Authorizing secure document access…";
+    }
     if (doc.storageKey) {
       setDocumentBusy(true);
       setDocumentNotice("Authorizing private document access…");
       try {
         const result = await productionApi(`/api/ehr/documents/presign?clientId=${encodeURIComponent(selectedClientId)}&key=${encodeURIComponent(doc.storageKey)}`);
-        window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
+        if (documentWindow) {
+          documentWindow.location.replace(result.downloadUrl);
+        } else {
+          window.location.assign(result.downloadUrl);
+        }
         setDocumentNotice("Private document opened in a new tab.");
       } catch (error) {
+        if (documentWindow) documentWindow.close();
         setDocumentNotice(error instanceof Error ? error.message : "The document could not be opened.");
         setDocumentBusy(false);
         return;
@@ -4496,7 +4507,7 @@ ${organization}`;
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" className="rounded-2xl" onClick={() => viewDocument(doc)}>View / track access</Button>
+                  <Button variant="outline" className="rounded-2xl" onClick={() => viewDocument(doc)}>{doc.storageKey ? "Open encrypted file" : "View / track access"}</Button>
                 </div>
               </div>
             ))}
