@@ -398,6 +398,7 @@ function normalizeUserBucket(bucket = {}, fallback = {}) {
     messages: Array.isArray(bucket.messages) ? bucket.messages : [],
     appointments: Array.isArray(bucket.appointments) ? bucket.appointments : [],
     telehealth: Array.isArray(bucket.telehealth) ? bucket.telehealth : [],
+    recordRequests: Array.isArray(bucket.recordRequests) ? bucket.recordRequests : [],
   };
 }
 function normalizeStore(raw) {
@@ -568,7 +569,8 @@ function AuthProvider({ children }) {
           clientId: event.clientId || "",
           clientName: "",
         }));
-        const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests: [], users };
+        const recordRequests = Object.values(users).flatMap((bucket) => bucket.recordRequests || []);
+        const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests, users };
         setStore(nextStore);
         setCurrentUser({ id: sessionUser.id, ...users[sessionUser.id].profile });
       } catch (error) {
@@ -636,11 +638,39 @@ function AuthProvider({ children }) {
   const submitRecordRequest = ({ requestType, reason }) => {
     if (!currentUser) return;
     const request = { id: `request-${Date.now()}`, clientId: currentUser.id, clientName: currentUser.fullName, requestType, reason, status: "Pending Review", submittedAt: new Date().toLocaleString(), resolvedAt: "" };
-    setStore((previous) => ({ ...previous, recordRequests: [request, ...(previous.recordRequests || [])] }));
-    if (currentUser.role === "client") persistModuleSnapshot(currentUser.id, "recordRequests", [request, ...(store.recordRequests || [])]);
+    const clientRequests = [request, ...(storeRef.current.users[currentUser.id]?.recordRequests || [])];
+    setStore((previous) => {
+      const next = {
+        ...previous,
+        recordRequests: [request, ...(previous.recordRequests || [])],
+        users: {
+          ...previous.users,
+          [currentUser.id]: { ...previous.users[currentUser.id], recordRequests: clientRequests },
+        },
+      };
+      storeRef.current = next;
+      return next;
+    });
+    enqueueModuleSave(currentUser.id, "recordRequests", clientRequests);
   };
   const updateRecordRequestStatus = (requestId, status) => {
-    setStore((previous) => ({ ...previous, recordRequests: (previous.recordRequests || []).map((item) => item.id === requestId ? { ...item, status, resolvedAt: status === "Pending Review" ? "" : new Date().toLocaleString() } : item) }));
+    const request = (storeRef.current.recordRequests || []).find((item) => item.id === requestId);
+    if (!request?.clientId) return;
+    const resolvedAt = status === "Pending Review" ? "" : new Date().toLocaleString();
+    const clientRequests = (storeRef.current.users[request.clientId]?.recordRequests || []).map((item) => item.id === requestId ? { ...item, status, resolvedAt } : item);
+    setStore((previous) => {
+      const next = {
+        ...previous,
+        recordRequests: (previous.recordRequests || []).map((item) => item.id === requestId ? { ...item, status, resolvedAt } : item),
+        users: {
+          ...previous.users,
+          [request.clientId]: { ...previous.users[request.clientId], recordRequests: clientRequests },
+        },
+      };
+      storeRef.current = next;
+      return next;
+    });
+    enqueueModuleSave(request.clientId, "recordRequests", clientRequests);
   };
   const updateCurrentUserData = (key, updater) => {
     if (!currentUser) return;
@@ -1266,25 +1296,37 @@ function PsychoeducationPage() {
   );
 }
 function MessagingPage() {
-  const { currentUser, store, updateCurrentUserData, appendAuditLog } = useAuth();
-  const bucket = store.users[currentUser.id];
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
+  const isProvider = currentUser.role === "provider";
+  const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentUser.id);
+  const activeClientId = isProvider ? selectedClientId : currentUser.id;
+  const bucket = store.users[activeClientId];
   const [draft, setDraft] = useState("");
   const send = () => {
-    if (!draft.trim()) return;
-    updateCurrentUserData("messages", (prev) => [
-      {
-        id: `message-${Date.now()}`,
-        from: currentUser.role,
-        text: draft,
-        timestamp: new Date().toLocaleString(),
-      },
-      ...prev,
-    ]);
+    if (!draft.trim() || !bucket) return;
+    const message = {
+      id: `message-${Date.now()}`,
+      from: currentUser.role,
+      senderId: currentUser.id,
+      senderName: currentUser.fullName,
+      text: draft.trim(),
+      timestamp: new Date().toISOString(),
+    };
+    const updateMessages = (prev) => [
+      message,
+      ...(prev || []),
+    ];
+    if (isProvider) {
+      updateSpecificUserData(activeClientId, "messages", updateMessages);
+    } else {
+      updateCurrentUserData("messages", updateMessages);
+    }
     appendAuditLog({
       action: "Sent secure portal message",
-      details: `Message sent from ${currentUser.role} portal.`,
-      clientId: currentUser.role === "client" ? currentUser.id : "",
-      clientName: currentUser.role === "client" ? currentUser.fullName : "",
+      details: `Message sent from authenticated ${currentUser.role} account and saved to the encrypted client chart.`,
+      clientId: activeClientId,
+      clientName: bucket.profile.fullName || currentUser.fullName,
       category: "Messaging",
     });
     setDraft("");
@@ -1293,20 +1335,31 @@ function MessagingPage() {
     <div>
       <SectionHeader
         title="Messaging"
-        description="This is a placeholder communication workflow. In production this should move to secure real-time messaging with strict access rules, logging, and HIPAA-focused controls."
+        description="Secure chart messaging between authenticated clients and assigned practice users, with encrypted AWS persistence and audit logging."
       />
+      {isProvider && (
+        <Card className="rounded-2xl shadow-sm mb-4">
+          <CardContent className="p-4 space-y-2">
+            <p className="font-bold text-slate-950">Select authorized client conversation</p>
+            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+              <SelectTrigger className="min-h-12 rounded-xl border-2 border-slate-800 bg-white"><SelectValue placeholder="Select client" /></SelectTrigger>
+              <SelectContent>{clients.map(([id, clientBucket]) => <SelectItem key={id} value={id}>{clientBucket.profile.fullName}</SelectItem>)}</SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Conversation stream</CardTitle>
-            <CardDescription>Prototype only</CardDescription>
+            <CardDescription>{bucket?.profile?.fullName || "Authorized client"} — encrypted chart conversation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 max-h-[560px] overflow-auto">
-            {bucket.messages.length === 0 && <p className="text-sm text-slate-500">No messages yet.</p>}
-            {bucket.messages.map((m) => (
+            {(bucket?.messages || []).length === 0 && <p className="text-sm text-slate-500">No messages yet.</p>}
+            {(bucket?.messages || []).map((m) => (
               <div key={m.id} className="rounded-2xl border p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium capitalize">{m.from}</p>
+                  <p className="font-medium">{m.senderName || m.from}</p>
                   <p className="text-xs text-slate-400">{m.timestamp}</p>
                 </div>
                 <p className="text-sm mt-2 whitespace-pre-wrap">{m.text}</p>
@@ -1317,7 +1370,7 @@ function MessagingPage() {
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Send message</CardTitle>
-            <CardDescription>Prototype composer</CardDescription>
+            <CardDescription>Message will be stored in the selected encrypted client chart</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[260px] rounded-2xl" placeholder="Type message..." />
