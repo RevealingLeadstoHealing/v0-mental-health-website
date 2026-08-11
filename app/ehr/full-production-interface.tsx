@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 73110)
-Total output lines: 4795
+Warning: truncated output (original token count: 73526)
+Total output lines: 4815
 
 ﻿// @ts-nocheck
 "use client";
@@ -1730,6 +1730,7 @@ function ClientTelehealthPage() {
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const client = store.users[currentClientId];
   const telehealthAppointments = (client?.appointments || []).filter((item) => item.format === "Telehealth" && item.status !== "Cancelled");
+  const sessionConnections = (client?.telehealth || []).filter((item) => typeof item.sessionUrl === "string" && /^https:\/\//i.test(item.sessionUrl));
   return (
     <div>
       <SectionHeader
@@ -1750,6 +1751,20 @@ function ClientTelehealthPage() {
               <p className="mt-1 text-xs text-slate-500">Status: {item.status || "Scheduled"}</p>
             </div>
           ))}
+          {sessionConnections.length > 0 && (
+            <div className="space-y-3">
+              <p className="font-semibold text-slate-900">Secure session connection</p>
+              {sessionConnections.map((item) => (
+                <a key={item.id} href={item.sessionUrl} target="_blank" rel="noreferrer noopener" className="flex items-center justify-between gap-3 rounded-2xl border border-slate-300 bg-white p-4 text-slate-900 hover:bg-slate-50">
+                  <span>
+                    <span className="block font-semibold">Open secure telehealth session</span>
+                    <span className="mt-1 block text-xs text-slate-500">{item.platform || "Approved telehealth platform"}</span>
+                  </span>
+                  <Video className="h-5 w-5" />
+                </a>
+              ))}
+            </div>
+          )}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
             Your provider will supply the secure session connection through the practice’s approved telehealth workflow.
           </div>
@@ -1771,6 +1786,7 @@ function TelehealthPage() {
     sessionType: "Video",
     dialNumber: "",
     platform: "Secure video room",
+    sessionUrl: "",
     consentObtained: false,
     consentVerbiage: "Client provided verbal consent for telehealth services. Audio and visual connection were reviewed, privacy limitations were discussed, and the client agreed to proceed.",
     recordingConsent: false,
@@ -1847,22 +1863,7 @@ function TelehealthPage() {
     try {
       if (!sessionForm.recordingConsent) throw new Error("Document recording and AI-scribe consent before recording.");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const preferred = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType: preferred });
-      mediaChunksRef.current = [];
-      recorder.ondataavailable = (event) => { if (event.data.size) mediaChunksRef.current.push(event.data); };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setIsAudioBusy(true);
-        try { await uploadAudioAndStartHealthScribe(new Blob(mediaChunksRef.current, { type: preferred })); }
-        catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to start transcription."); }
-        finally { setIsAudioBusy(false); }
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start(1000);
-      setIsAudioRecording(true);
-      setCopyNotice("Secure audio capture started. Stop recording to encrypt, upload, and transcribe it.");
-    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Microphone access failed."); …23110 tokens truncated…omework",
+      const preferred = MediaRecorder.isTypeSup…23526 tokens truncated…omework",
       });
       setAiNotice("Draft copied to Homework as a new assignment.");
       return;
