@@ -3,7 +3,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../../lib/ehr/auth";
 import { requireClientAccess } from "../../../../../lib/ehr/authorization";
-import { appendAuditEvent } from "../../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, getClinicalRecord } from "../../../../../lib/ehr/dynamodb-store";
+import { isClientVisibleDocument } from "../../../../../lib/ehr/client-record-policy";
 import { getS3Client } from "../../../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../../../lib/rlth-aws-foundation";
 
@@ -92,6 +93,13 @@ export async function GET(request: Request) {
     ].join("/") + "/";
     if (!key.startsWith(expectedPrefix)) {
       throw new ApiError(403, "This document does not belong to the authorized client chart.");
+    }
+
+    if (actor.role === "client") {
+      const documentSnapshot = await getClinicalRecord(actor.practiceId, clientId, "ehr-module-snapshot", "module_documents");
+      const documents = Array.isArray(documentSnapshot?.payload?.value) ? documentSnapshot.payload.value : [];
+      const authorizedDocument = documents.find((document: Record<string, unknown>) => document.storageKey === key && isClientVisibleDocument(document));
+      if (!authorizedDocument) throw new ApiError(403, "This document is not authorized for client access.");
     }
 
     const downloadUrl = await getSignedUrl(

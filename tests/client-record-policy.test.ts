@@ -32,6 +32,11 @@ test("unknown and malformed documents are provider-only by default", () => {
   assert.equal(isClientVisibleDocument({ title: "Progress Note" }), false);
 });
 
+test("provider clinical uploads are not client-downloadable by default", () => {
+  assert.equal(isClientVisibleDocument({ title: "Progress Note", storageKey: "ehr-documents/rlth/client-chart/private.docx" }), false);
+  assert.equal(isClientVisibleDocument({ title: "Client upload", storageKey: "ehr-documents/rlth/client-chart/upload.docx", uploadedByRole: "client" }), true);
+});
+
 test("client messages append without changing provider messages", () => {
   const existing = [{ id: "provider-1", from: "provider", text: "Original provider message" }];
   const merged = mergeClientModuleValue("messages", existing, [
