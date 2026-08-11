@@ -2506,6 +2506,25 @@ function ClientManagementPage() {
     </div>
   );
 }
+function getDocumentWorkflow(doc) {
+  if (doc.storageKey) return { label: "Open encrypted file", page: "documents" };
+  if (doc.title === "Biopsychosocial Intake") return { label: "Open biopsychosocial intake", page: "intake" };
+  if (doc.title === "Initial Progress Note Template") return { label: "Open progress-note form", page: "notes" };
+  const assessmentTabs = {
+    "PHQ-9 Depression Screening": "phq9",
+    "GAD-7 Anxiety Screening": "gad7",
+    "Suicide Risk Assessment": "suicide",
+    "Substance Use / Drug Abuse Assessment": "substance",
+    "Violence Risk Assessment": "violence",
+    "Safety Plan": "safety",
+    "Clinical Outcome Measures": "phq9",
+  };
+  if (assessmentTabs[doc.title]) return { label: `Open ${doc.title}`, page: "assessments", target: { tab: assessmentTabs[doc.title] } };
+  if (doc.title === "Treatment Plan") return { label: "Open treatment-plan form", page: "plans" };
+  if (doc.title === "Homework Handout") return { label: "Open homework assignment form", page: "homework" };
+  if (doc.title.startsWith("Advocacy Letter Template")) return { label: "Open advocacy-letter builder", page: "documents" };
+  return { label: "Review and sign this document", page: "documents" };
+}
 function ClientChartPage() {
   const { store } = useAuth();
   const { selectedChartClientId, setPage } = usePage();
@@ -2691,6 +2710,17 @@ function ClientChartPage() {
                       </div>
                       <p className="text-xs text-slate-500 mt-2">Viewed: {doc.viewedAt || "Not viewed"}</p>
                       <p className="text-xs text-slate-500 mt-1">Signature: {doc.signature ? `${doc.signature.signer} | ${doc.signature.signedAt}` : "Not signed"}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl mt-3"
+                        onClick={() => {
+                          const workflow = getDocumentWorkflow(doc);
+                          setPage(workflow.page, workflow.target || null);
+                        }}
+                      >
+                        {getDocumentWorkflow(doc).label}
+                      </Button>
                     </div>
                   ))}
                 </CardContent>
