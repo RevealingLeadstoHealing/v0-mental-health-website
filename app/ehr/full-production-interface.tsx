@@ -4614,7 +4614,12 @@ ${organization}`;
     window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
   const saveAdvocacyLetter = () => {
-    if (!selectedClientId) return;
+    if (!selectedClientId || documentBusy) return;
+    if (!advocacyDetails.recipient.trim() || !advocacyDetails.purpose.trim() || !advocacyDetails.limitations.trim() || !advocacyDetails.recommendations.trim()) {
+      setDocumentNotice("Complete the recipient, purpose, clinical considerations, and requested action before saving the advocacy letter.");
+      return;
+    }
+    setDocumentBusy(true);
     const generatedLetterText = buildAdvocacyLetterText();
     const title = `Advocacy Letter | ${advocacyTemplateType}`;
     updateSpecificUserData(selectedClientId, "documents", (prev) => [
@@ -4634,6 +4639,15 @@ ${organization}`;
     ]);
     appendAuditLog({ action: "Created advocacy letter draft", details: `${title} saved to the encrypted client chart for provider review.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Advocacy" });
     setDocumentNotice("Advocacy letter draft saved securely to the client chart.");
+    window.setTimeout(() => setDocumentBusy(false), 1200);
+  };
+  const deleteIncompleteAdvocacyDraft = (doc) => {
+    if (currentUser.role !== "provider" || doc.type !== "Advocacy Letter" || doc.status !== "Draft" || doc.signature) return;
+    const confirmed = window.confirm(`Delete the incomplete unsigned draft "${doc.title}" from this client chart? The Audit Log will retain a record of the removal.`);
+    if (!confirmed) return;
+    updateSpecificUserData(selectedClientId, "documents", (prev) => (prev || []).filter((item) => item.id !== doc.id));
+    appendAuditLog({ action: "Removed incomplete advocacy letter draft", details: `${doc.title} (${doc.createdAt}) was removed from the encrypted client chart as an incomplete duplicate.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Advocacy" });
+    setDocumentNotice("The incomplete duplicate advocacy-letter draft was removed. The signed letter was not changed.");
   };
   return (
     <div>
@@ -4670,6 +4684,9 @@ ${organization}`;
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <Button variant="outline" className="rounded-2xl" onClick={() => openDocumentWorkflow(doc)}>{documentWorkflow(doc).label}</Button>
+                  {currentUser.role === "provider" && doc.type === "Advocacy Letter" && doc.status === "Draft" && !doc.signature && (
+                    <Button type="button" variant="destructive" className="rounded-2xl" onClick={() => deleteIncompleteAdvocacyDraft(doc)}>Delete incomplete draft</Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -4741,7 +4758,7 @@ ${organization}`;
                 <Textarea label="Clinical or functional considerations" value={advocacyDetails.limitations} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, limitations: event.target.value })} className="min-h-[110px]" />
                 <Textarea label="Recommended supports or requested action" value={advocacyDetails.recommendations} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, recommendations: event.target.value })} className="min-h-[110px]" />
                 <Textarea label="Care coordination details" value={advocacyDetails.collaboration} onChange={(event) => setAdvocacyDetails({ ...advocacyDetails, collaboration: event.target.value })} className="min-h-[90px]" />
-                <Button className="w-full rounded-2xl" onClick={saveAdvocacyLetter}>Save advocacy-letter draft to chart</Button>
+                <Button className="w-full rounded-2xl" disabled={documentBusy} onClick={saveAdvocacyLetter}>{documentBusy ? "Saving draft…" : "Save advocacy-letter draft to chart"}</Button>
               </CardContent>
             </Card>
           )}
