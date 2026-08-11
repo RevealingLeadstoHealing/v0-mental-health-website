@@ -488,6 +488,10 @@ function AuthProvider({ children }) {
   const [store, setStore] = useState(() => readStore());
   const [currentUser, setCurrentUser] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const storeRef = useRef(store);
+  const saveQueuesRef = useRef(new Map());
+  useEffect(() => { storeRef.current = store; }, [store]);
 
   useEffect(() => {
     let active = true;
@@ -508,6 +512,9 @@ function AuthProvider({ children }) {
               .catch(() => ({ records: [] }))
           )
         );
+        const auditResponse = sessionUser.role === "client"
+          ? { events: [] }
+          : await productionApi("/api/ehr/audit?limit=100").catch(() => ({ events: [] }));
         const users = {};
         users[sessionUser.id] = normalizeUserBucket({
           profile: {
@@ -549,7 +556,19 @@ function AuthProvider({ children }) {
           users[client.clientId] = bucket;
         });
         if (!active) return;
-        const nextStore = { currentUserId: sessionUser.id, auditLog: [], recordRequests: [], users };
+        const auditLog = (auditResponse.events || []).map((event) => ({
+          id: event.auditId,
+          timestamp: event.timestamp,
+          actorId: event.actorId,
+          actorName: event.actorName,
+          actorRole: event.actorRole,
+          category: event.category,
+          action: event.action,
+          details: event.summary || "",
+          clientId: event.clientId || "",
+          clientName: "",
+        }));
+        const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests: [], users };
         setStore(nextStore);
         setCurrentUser({ id: sessionUser.id, ...users[sessionUser.id].profile });
       } catch (error) {
@@ -561,9 +580,9 @@ function AuthProvider({ children }) {
     return () => { active = false; };
   }, []);
 
-  const persistModuleSnapshot = (clientId, moduleKey, value) => {
+  const persistModuleSnapshot = async (clientId, moduleKey, value) => {
     if (!clientId || !moduleKey) return;
-    void productionApi("/api/ehr/records", {
+    await productionApi("/api/ehr/records", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -572,7 +591,21 @@ function AuthProvider({ children }) {
         status: "draft",
         payload: { moduleKey, value, providerReviewRequired: true },
       }),
-    }).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to save EHR module."));
+    });
+  };
+  const enqueueModuleSave = (clientId, moduleKey, value) => {
+    const queueKey = `${clientId}:${moduleKey}`;
+    setSaveStatus("Saving securely to AWS…");
+    const previous = saveQueuesRef.current.get(queueKey) || Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() => persistModuleSnapshot(clientId, moduleKey, value))
+      .then(() => setSaveStatus("Saved securely to AWS."))
+      .catch((error) => setSaveStatus(`AWS save failed: ${error instanceof Error ? error.message : "Unknown error"}`))
+      .finally(() => {
+        if (saveQueuesRef.current.get(queueKey) === next) saveQueuesRef.current.delete(queueKey);
+      });
+    saveQueuesRef.current.set(queueKey, next);
   };
 
   const login = () => window.location.replace("/login");
@@ -582,17 +615,23 @@ function AuthProvider({ children }) {
     window.location.replace("/login");
   };
   const appendAuditLog = ({ action, details = "", clientId = "", clientName = "", category = "General" }) => {
+    const event = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      timestamp: new Date().toISOString(),
+      actorId: currentUser?.id || "system",
+      actorName: currentUser?.fullName || "System",
+      actorRole: currentUser?.role || "system",
+      category, action, details, clientId, clientName,
+    };
     setStore((previous) => ({
       ...previous,
-      auditLog: [{
-        id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        timestamp: new Date().toLocaleString(),
-        actorId: currentUser?.id || "system",
-        actorName: currentUser?.fullName || "System",
-        actorRole: currentUser?.role || "system",
-        category, action, details, clientId, clientName,
-      }, ...(previous.auditLog || [])],
+      auditLog: [event, ...(previous.auditLog || [])],
     }));
+    void productionApi("/api/ehr/audit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, category, clientId, entityType: "ehr-action", summary: details }),
+    }).catch((error) => setSaveStatus(`Audit save failed: ${error instanceof Error ? error.message : "Unknown error"}`));
   };
   const submitRecordRequest = ({ requestType, reason }) => {
     if (!currentUser) return;
@@ -605,26 +644,34 @@ function AuthProvider({ children }) {
   };
   const updateCurrentUserData = (key, updater) => {
     if (!currentUser) return;
+    const userBucket = storeRef.current.users[currentUser.id];
+    if (!userBucket) return;
+    const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
+    if (currentUser.role !== "client") {
+      setSaveStatus("This provider action is not connected to a client chart and was not saved.");
+      return;
+    }
     setStore((previous) => {
-      const userBucket = previous.users[currentUser.id];
-      if (!userBucket) return previous;
-      const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
-      if (currentUser.role === "client") persistModuleSnapshot(currentUser.id, key, updatedValue);
-      return { ...previous, users: { ...previous.users, [currentUser.id]: { ...userBucket, [key]: updatedValue } } };
+      const next = { ...previous, users: { ...previous.users, [currentUser.id]: { ...previous.users[currentUser.id], [key]: updatedValue } } };
+      storeRef.current = next;
+      return next;
     });
+    enqueueModuleSave(currentUser.id, key, updatedValue);
   };
   const updateSpecificUserData = (userId, key, updater) => {
+    const userBucket = storeRef.current.users[userId];
+    if (!userBucket) return;
+    const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
     setStore((previous) => {
-      const userBucket = previous.users[userId];
-      if (!userBucket) return previous;
-      const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
-      persistModuleSnapshot(userId, key, updatedValue);
-      return { ...previous, users: { ...previous.users, [userId]: { ...userBucket, [key]: updatedValue } } };
+      const next = { ...previous, users: { ...previous.users, [userId]: { ...previous.users[userId], [key]: updatedValue } } };
+      storeRef.current = next;
+      return next;
     });
+    enqueueModuleSave(userId, key, updatedValue);
   };
   const value = useMemo(() => ({
     currentUser, store, login, signup, logout, updateCurrentUserData, updateSpecificUserData,
-    appendAuditLog, submitRecordRequest, updateRecordRequestStatus, isMockMode: false,
+    appendAuditLog, submitRecordRequest, updateRecordRequestStatus, saveStatus, isMockMode: false,
   }), [currentUser, store]);
 
   if (!hydrated) return <div className="min-h-screen flex items-center justify-center"><p>Opening secure EHR…</p></div>;
@@ -796,7 +843,7 @@ function AuthPage() {
   );
 }
 function MainApp() {
-  const { currentUser, logout, isMockMode } = useAuth();
+  const { currentUser, logout, saveStatus, isMockMode } = useAuth();
   const { page, setPage } = usePage();
   const clientItems = [
     ["dashboard", "Dashboard", HeartHandshake],
@@ -875,6 +922,7 @@ function MainApp() {
           </Button>
         </aside>
         <main className="p-4 lg:p-8">
+          {saveStatus && <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-medium ${saveStatus.includes("failed") || saveStatus.includes("not saved") ? "border-red-200 bg-red-50 text-red-800" : saveStatus.includes("Saving") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{saveStatus}</div>}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <PageRouter />
           </motion.div>
@@ -4445,5 +4493,3 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
-

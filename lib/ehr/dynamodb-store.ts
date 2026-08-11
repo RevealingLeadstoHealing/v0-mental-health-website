@@ -79,7 +79,7 @@ export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordIn
     new PutCommand({
       TableName: rlthAwsFoundation.clinicalRecordsTableName,
       Item: item,
-      ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+      ...(input.recordId ? {} : { ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)" }),
     })
   );
 

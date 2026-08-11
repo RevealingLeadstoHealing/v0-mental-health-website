@@ -48,9 +48,16 @@ export async function POST(request: Request) {
 
     await requireClientAccess(actor, clientId);
 
+    const moduleKey = recordType === "ehr-module-snapshot" && typeof payload.moduleKey === "string"
+      ? payload.moduleKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80)
+      : "";
+    if (recordType === "ehr-module-snapshot" && !moduleKey) {
+      throw new ApiError(400, "A valid moduleKey is required for an EHR module snapshot.");
+    }
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,
+      recordId: moduleKey ? `module_${moduleKey}` : undefined,
       payload,
       status: typeof body.status === "string" ? body.status : "draft",
     });
@@ -61,7 +68,7 @@ export async function POST(request: Request) {
       clientId,
       entityType: recordType,
       entityId: record.recordId,
-      summary: "A clinical record was created through the production API.",
+      summary: moduleKey ? `${moduleKey} was saved to the encrypted client chart.` : "A clinical record was created through the production API.",
     });
 
     return NextResponse.json({ record }, { status: 201 });
