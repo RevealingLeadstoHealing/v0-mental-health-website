@@ -4526,7 +4526,8 @@ ${organization}`;
           <Card className="rounded-2xl shadow-sm">
             <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Encrypted private AWS chart-document storage</CardDescription></CardHeader>
             <CardContent className="space-y-3">
-              <Input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Document title" />
+              <Input label="Document title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Enter document title" />
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Document type</p>
               <Select value={uploadType} onValueChange={setUploadType}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -4536,7 +4537,7 @@ ${organization}`;
                   <SelectItem value="Signed Form">Signed Form</SelectItem>
                 </SelectContent>
               </Select>
-              <Input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="rounded-2xl" />
+              <Input label="Choose document file" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="rounded-2xl" />
               <div className="text-xs text-slate-500">Selected file: {uploadFile?.name || "No file selected"}</div>
               <Button className="rounded-2xl" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
             </CardContent>
