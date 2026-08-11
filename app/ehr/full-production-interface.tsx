@@ -979,7 +979,8 @@ function PageRouter() {
   if (page === "records-request" && currentUser.role === "client") return <ClientRecordRequestPage />;
   if (page === "record-requests" && currentUser.role === "provider") return <ProviderRecordRequestsPage />;
   if (page === "audit-log" && currentUser.role === "provider") return <AuditLogPage />;
-  if (page === "telehealth") return <TelehealthPage />;
+  if (page === "telehealth" && currentUser.role === "client") return <ClientTelehealthPage />;
+  if (page === "telehealth" && currentUser.role === "provider") return <TelehealthPage />;
   if (page === "schedule") return <SchedulingPage />;
   if (page === "clients" && currentUser.role === "provider") return <ClientManagementPage />;
   if (page === "chart" && currentUser.role === "provider") return <ClientChartPage />;
@@ -1731,6 +1732,39 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+function ClientTelehealthPage() {
+  const { currentUser, store } = useAuth();
+  const currentClientId = currentUser.chartClientId || currentUser.id;
+  const client = store.users[currentClientId];
+  const telehealthAppointments = (client?.appointments || []).filter((item) => item.format === "Telehealth" && item.status !== "Cancelled");
+  return (
+    <div>
+      <SectionHeader
+        title="Telehealth"
+        description="Secure access to your scheduled telehealth appointments. Clinical recording, transcription, diagnosis, billing, and provider documentation controls are available only to authenticated practice providers."
+      />
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle>Your telehealth appointments</CardTitle>
+          <CardDescription>Appointment information from your linked chart</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {telehealthAppointments.length === 0 && <p className="text-sm text-slate-600">No active telehealth appointments are currently scheduled.</p>}
+          {telehealthAppointments.map((item) => (
+            <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="font-semibold text-slate-900">{item.purpose || "Telehealth appointment"}</p>
+              <p className="mt-2 text-sm text-slate-700">{item.date} at {item.time}</p>
+              <p className="mt-1 text-xs text-slate-500">Status: {item.status || "Scheduled"}</p>
+            </div>
+          ))}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            Your provider will supply the secure session connection through the practice’s approved telehealth workflow.
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
