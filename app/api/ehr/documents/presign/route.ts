@@ -22,9 +22,6 @@ export async function POST(request: Request) {
     const fileName = typeof body.fileName === "string" ? body.fileName : "upload.bin";
     const contentType = typeof body.contentType === "string" ? body.contentType : "application/octet-stream";
 
-    if (actor.role === "client" && clientId !== actor.sub) {
-      throw new ApiError(403, "Clients can only upload documents to their own chart.");
-    }
     await requireClientAccess(actor, clientId);
 
     const documentId = `document_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -86,9 +83,6 @@ export async function GET(request: Request) {
     const clientId = url.searchParams.get("clientId") || actor.sub;
     const key = url.searchParams.get("key") || "";
     if (!key) throw new ApiError(400, "Document storage key is required.");
-    if (actor.role === "client" && clientId !== actor.sub) {
-      throw new ApiError(403, "Clients can only open documents from their own chart.");
-    }
     await requireClientAccess(actor, clientId);
 
     const expectedPrefix = [

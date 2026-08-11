@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
-import { appendAuditEvent, listClinicalRecords, putClinicalRecord } from "../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, getClinicalRecord, listClinicalRecords, putClinicalRecord } from "../../../../lib/ehr/dynamodb-store";
 import { requireClientAccess } from "../../../../lib/ehr/authorization";
+import { mergeClientModuleValue, recordsVisibleToClient } from "../../../../lib/ehr/client-record-policy";
 
 export async function GET(request: Request) {
   try {
@@ -13,7 +14,8 @@ export async function GET(request: Request) {
     requireRole(actor, ["owner", "provider", "clinical_staff", "client", "auditor"]);
     await requireClientAccess(actor, clientId);
 
-    const records = await listClinicalRecords(actor.practiceId, clientId, limit);
+    const chartRecords = await listClinicalRecords(actor.practiceId, clientId, limit);
+    const records = actor.role === "client" ? recordsVisibleToClient(chartRecords) : chartRecords;
     await appendAuditEvent(actor, {
       action: "Viewed clinical record list",
       category: "Clinical Record Access",
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const clientId = typeof body.clientId === "string" ? body.clientId : "";
     const recordType = typeof body.recordType === "string" ? body.recordType : "clinical-note";
-    const payload = body.payload && typeof body.payload === "object" ? body.payload : null;
+    let payload = body.payload && typeof body.payload === "object" ? body.payload : null;
 
     if (!clientId) {
       throw new ApiError(400, "clientId is required.");
@@ -54,9 +56,11 @@ export async function POST(request: Request) {
     }
 
     if (actor.role === "client") {
-      if (recordType !== "ehr-module-snapshot" || moduleKey !== "recordRequests") {
-        throw new ApiError(403, "Client accounts may submit only their own medical-record requests through this endpoint.");
-      }
+      if (recordType !== "ehr-module-snapshot") throw new ApiError(403, "Client accounts may use only authorized portal actions.");
+      const existing = await getClinicalRecord(actor.practiceId, clientId, recordType, `module_${moduleKey}`);
+      const mergedValue = mergeClientModuleValue(moduleKey, existing?.payload?.value, payload.value, actor, clientId);
+      if (!mergedValue) throw new ApiError(403, "This client portal action is not authorized.");
+      payload = { moduleKey, value: mergedValue, providerReviewRequired: true };
     } else {
       requireRole(actor, ["owner", "provider", "clinical_staff"]);
     }

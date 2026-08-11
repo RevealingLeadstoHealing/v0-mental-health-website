@@ -52,6 +52,19 @@ export async function listClinicalRecords(practiceId: string, clientId: string, 
   return response.Items || [];
 }
 
+export async function getClinicalRecord(practiceId: string, clientId: string, recordType: string, recordId: string) {
+  const dynamo = getDynamoDocumentClient();
+  const response = await dynamo.send(new GetCommand({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    Key: {
+      PK: clientPartition(practiceId, clientId),
+      SK: `RECORD#${recordType}#${recordId}`,
+    },
+    ConsistentRead: true,
+  }));
+  return response.Item || null;
+}
+
 export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordInput) {
   const dynamo = getDynamoDocumentClient();
   const createdAt = nowIso();

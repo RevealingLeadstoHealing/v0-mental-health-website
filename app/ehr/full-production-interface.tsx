@@ -4565,6 +4565,8 @@ ${organization}`;
           contentType: uploadFile.type || "application/octet-stream",
           sizeBytes: uploadFile.size,
           storageKey: authorization.key,
+          uploadedByRole: currentUser.role,
+          clientVisible: currentUser.role === "client",
           createdAt: uploadedAt,
         },
         ...prev,
