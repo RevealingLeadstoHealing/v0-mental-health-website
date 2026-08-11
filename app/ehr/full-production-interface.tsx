@@ -4401,6 +4401,13 @@ function DocumentLibraryPage() {
   const [selectedClientId, setSelectedClientId] = useState(currentUser.role === "client" ? (currentUser.chartClientId || currentUser.id) : (clients[0]?.[0] || ""));
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const documents = selectedClient?.documents || [];
+  const clientAuthorizedDocumentTitles = new Set([
+    ...consentTemplateDefinitions.map((item) => item.title),
+    "Treatment Plan Signature",
+  ]);
+  const visibleDocuments = currentUser.role === "client"
+    ? documents.filter((doc) => clientAuthorizedDocumentTitles.has(doc.title))
+    : documents;
   const [signatureDocId, setSignatureDocId] = useState("");
   const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
   const [signatureRole, setSignatureRole] = useState("Provider");
@@ -4683,8 +4690,8 @@ ${organization}`;
         <Card className="rounded-2xl shadow-sm">
           <CardHeader><CardTitle>Chart documents</CardTitle><CardDescription>Client-specific document set</CardDescription></CardHeader>
           <CardContent className="space-y-3 max-h-[760px] overflow-auto">
-            {documents.length === 0 && <p className="text-sm text-slate-500">No chart documents available yet.</p>}
-            {documents.map((doc) => (
+            {visibleDocuments.length === 0 && <p className="text-sm text-slate-500">No client-authorized documents are available yet.</p>}
+            {visibleDocuments.map((doc) => (
               <div key={doc.id} className="rounded-2xl border p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
@@ -4715,7 +4722,7 @@ ${organization}`;
             <CardContent className="space-y-3">
               <Select value={signatureDocId} onValueChange={setSignatureDocId}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
-                <SelectContent>{documents.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
+                <SelectContent>{visibleDocuments.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(["Provider", "Client"].includes(value) ? (currentUser?.fullName || PRACTITIONER_NAME) : ""); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
