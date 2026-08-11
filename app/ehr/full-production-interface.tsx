@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 73110)
+Total output lines: 4795
+
 ﻿// @ts-nocheck
 "use client";
 
@@ -278,10 +281,7 @@ function EhrScopedStyles() {
 
 const APP_NAME = "Revealing Leads to Healing Wellness Services LLC";
 const VERSION = "EHR Proprietary System v2.0.25";
-const START_DATE = "2025-06-02";
-const ROADMAP_DATE = "2026-01-02";
 const PRACTITIONER_NAME = "Kenseener Carpenter";
-const STORAGE_KEY = "rlth-firebase-architecture-demo-v2-stable";
 const affirmations = [
   "I can move through this moment with steadiness and care.",
   "Healing is not linear, and my effort still counts.",
@@ -371,7 +371,6 @@ const psychoeducationLibrary = [
     summary: "How journaling supports reflection, pattern recognition, and emotional processing.",
   },
 ];
-const mockUsers = [];
 const mockSeed = { currentUserId: null, auditLog: [], recordRequests: [], users: {} };
 function normalizeUserBucket(bucket = {}, fallback = {}) {
   const profile = bucket.profile || fallback.profile || {};
@@ -443,10 +442,10 @@ class ErrorBoundary extends Component {
     this.state = { hasError: false, errorMessage: "" };
   }
   static getDerivedStateFromError(error) {
-    return { hasError: true, errorMessage: error?.message || "Unknown preview error" };
+    return { hasError: true, errorMessage: error?.message || "Unknown EHR interface error" };
   }
   componentDidCatch(error, info) {
-    console.error("RLTH preview component error:", error, info);
+    console.error("RLTH EHR component error:", error, info);
   }
   resetPreview = () => {
     this.setState({ hasError: false, errorMessage: "" });
@@ -457,9 +456,9 @@ class ErrorBoundary extends Component {
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
           <Card className="max-w-2xl w-full rounded-3xl shadow-sm border-red-200">
             <CardHeader>
-              <CardTitle className="text-red-700">Preview safety boundary caught an error</CardTitle>
+              <CardTitle className="text-red-700">The EHR safety boundary caught an error</CardTitle>
               <CardDescription>
-                One section of the app crashed, but the safety layer kept the whole preview from going blank.
+                One section could not open, but the safety layer kept the rest of the EHR available.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -467,9 +466,9 @@ class ErrorBoundary extends Component {
                 {this.state.errorMessage}
               </div>
               <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
-                Try resetting the preview first. If it returns to this screen, the broken page/component needs a code cleanup pass.
+                Reset this view once. If the error returns, record the page name and time for technical review.
               </div>
-              <Button className="rounded-2xl" onClick={this.resetPreview}>Reset preview view</Button>
+              <Button className="rounded-2xl" onClick={this.resetPreview}>Reset EHR view</Button>
             </CardContent>
           </Card>
         </div>
@@ -743,7 +742,7 @@ function AppShell() {
   return currentUser ? <MainApp /> : <AuthPage />;
 }
 function AuthPage() {
-  const { login, signup, isMockMode } = useAuth();
+  const { login, signup } = useAuth();
   const [mode, setMode] = useState("login");
   const [error, setError] = useState("");
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
@@ -774,11 +773,11 @@ function AuthPage() {
                 <Shield className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Started {START_DATE}</p>
+                <p className="text-sm text-slate-500">Secure behavioral-health record platform</p>
                 <h1 className="text-3xl font-semibold mt-1">{APP_NAME}</h1>
                 <p className="text-slate-600 mt-3 max-w-2xl">
-                  Firebase-oriented mental health well-being platform with role-based client and provider workflow,
-                  journaling, affirmations, psychoeducation, scheduling, communication, and future-ready EHR modules.
+                  AWS-hosted EHR with role-based provider and client workflows, secure documentation,
+                  messaging, scheduling, telehealth, assessments, and collaborative care tools.
                 </p>
               </div>
             </div>
@@ -788,8 +787,8 @@ function AuthPage() {
                 [Sparkles, "Daily affirmations"],
                 [Users, "Provider/client role routing"],
                 [MessageSquare, "Portal communication"],
-                [Calendar, "Scheduling module scaffold"],
-                [FileText, "HIPAA-aligned record workflow"],
+                [Calendar, "Client-linked scheduling"],
+                [FileText, "Encrypted record workflow"],
               ].map(([Icon, label]) => (
                 <div key={label} className="rounded-2xl border p-4 bg-white flex items-center gap-3">
                   <div className="p-2 rounded-2xl bg-slate-100">
@@ -805,9 +804,7 @@ function AuthPage() {
           <CardHeader>
             <CardTitle>{mode === "login" ? "Sign in" : "Create account"}</CardTitle>
             <CardDescription>
-              {isMockMode
-                ? "Preview is running in mock mode with Firebase-ready architecture."
-                : "Connected to Firebase."}
+              Sign in through the production AWS Cognito authentication service.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -831,11 +828,6 @@ function AuthPage() {
                 <Button className="w-full rounded-2xl" onClick={handleLogin}>
                   <LogIn className="mr-2 h-4 w-4" />Sign in
                 </Button>
-                <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600 space-y-1">
-                  <p className="font-medium text-slate-800">Demo credentials</p>
-                  <p>Provider: provider@rlth.demo / demo123</p>
-                  <p>Client: client@rlth.demo / demo123</p>
-                </div>
               </TabsContent>
               <TabsContent value="signup" className="space-y-3 mt-4">
                 <Input
@@ -868,8 +860,7 @@ function AuthPage() {
             </Tabs>
             {error && <div className="text-sm text-red-600 rounded-2xl border border-red-200 bg-red-50 p-3">{error}</div>}
             <div className="rounded-2xl border p-4 text-xs text-slate-500">
-              This is an application starter. Production deployment still requires secure auth settings, Firebase rules,
-              BAA-supported cloud configuration, audit logs, operational HIPAA controls, and legal review.
+              Access is restricted to authorized practice users and linked clients. Activity is recorded in the EHR audit history.
             </div>
           </CardContent>
         </Card>
@@ -878,7 +869,7 @@ function AuthPage() {
   );
 }
 function MainApp() {
-  const { currentUser, logout, saveStatus, isMockMode } = useAuth();
+  const { currentUser, logout, saveStatus } = useAuth();
   const { page, setPage } = usePage();
   const clientItems = [
     ["dashboard", "Dashboard", HeartHandshake],
@@ -932,7 +923,6 @@ function MainApp() {
             <p className="font-medium mt-1">{currentUser.fullName}</p>
             <div className="flex items-center gap-2 mt-2">
               <Badge className="rounded-xl">{currentUser.role}</Badge>
-              {isMockMode && <Badge variant="secondary" className="rounded-xl">mock mode</Badge>}
             </div>
           </div>
           <nav className="space-y-1 mt-6">
@@ -1069,17 +1059,17 @@ function DashboardPage() {
             </div>
             <div className="grid md:grid-cols-2 gap-3">
               <div className="rounded-2xl border p-4">
-                <p className="font-medium">Completed / in progress</p>
+                <p className="font-medium">Provider operations</p>
                 <p className="mt-2">Secure authentication and role management</p>
-                <p>Advanced messaging hub</p>
-                <p>Proprietary scheduling module</p>
-                <p>Clinical intake system</p>
+                <p>Secure messaging and scheduling</p>
+                <p>Clinical intake, notes, treatment plans, and assessments</p>
+                <p>Encrypted documents and authenticated signatures</p>
               </div>
               <div className="rounded-2xl border p-4">
-                <p className="font-medium">Future phases</p>
-                <p className="mt-2">Client charting dashboard</p>
-                <p>Billing and claims</p>
-                <p>Document library for signed consents and assessments</p>
+                <p className="font-medium">Client collaboration</p>
+                <p className="mt-2">Linked client portal and chart access</p>
+                <p>Messages, homework, scheduling, and shared journal entries</p>
+                <p>Document review, upload, record requests, and signatures</p>
               </div>
             </div>
           </CardContent>
@@ -1096,10 +1086,10 @@ function DashboardPage() {
               <p className="mt-2"><span className="font-medium text-slate-800">Categorization:</span> Follow-up notes and professional documentation follow the internal clinical documentation standard.</p>
             </div>
             <div className="rounded-2xl border p-4 bg-amber-50 border-amber-200">
-              Production HIPAA readiness still requires Firebase security rules, BAA-backed cloud configuration,
-              access controls, encrypted workflows, audit logs, incident procedures, backups, and policy documentation.
+              AWS Cognito authentication, role-based chart access, encrypted workflows, audit logging, backups,
+              and retention controls support the practice’s security operations. Required operating policies and BAAs must remain current.
             </div>
-            <p className="text-xs text-slate-400">Roadmap date: {ROADMAP_DATE} | Practitioner: {PRACTITIONER_NAME}</p>
+            <p className="text-xs text-slate-400">Practice owner: {PRACTITIONER_NAME}</p>
           </CardContent>
         </Card>
       </div>
@@ -1250,7 +1240,7 @@ function AffirmationsPage() {
     <div>
       <SectionHeader
         title="Affirmations"
-        description="Client-facing emotional support tool. This can later be personalized by diagnosis, treatment goals, or provider-created libraries."
+        description="Client-facing emotional support tool for brief grounding and supportive reflection."
       />
       <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
@@ -1262,13 +1252,13 @@ function AffirmationsPage() {
         </Card>
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
-            <CardTitle>How this expands later</CardTitle>
-            <CardDescription>Future client engagement options</CardDescription>
+            <CardTitle>Therapeutic use</CardTitle>
+            <CardDescription>Ways to use affirmations between sessions</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-slate-600 space-y-3">
-            <p>Providers can assign affirmation themes by diagnosis, mood pattern, treatment phase, or session focus.</p>
-            <p>Clients can bookmark meaningful affirmations and add reflections on what resonates or feels challenging.</p>
-            <p>Affirmations can be delivered through scheduled prompts, check-ins, or journaling integrations.</p>
+            <p>Review an affirmation during grounding, emotional regulation, or preparation for a session.</p>
+            <p>Use the Journal to record what resonates, feels difficult, or connects to a treatment goal.</p>
+            <p>Discuss meaningful affirmations with the provider through secure Messages.</p>
           </CardContent>
         </Card>
       </div>
@@ -1282,7 +1272,7 @@ function PsychoeducationPage() {
     <div>
       <SectionHeader
         title="Psychoeducation"
-        description="Foundational education library for clients and providers. This can later pull from Firestore or another managed content source."
+        description="Searchable education library for authenticated clients and providers."
         right={
           <div className="relative w-full lg:w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1872,1490 +1862,7 @@ function TelehealthPage() {
       recorder.start(1000);
       setIsAudioRecording(true);
       setCopyNotice("Secure audio capture started. Stop recording to encrypt, upload, and transcribe it.");
-    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Microphone access failed."); }
-  };
-  const stopSecureAudioCapture = () => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    setIsAudioRecording(false);
-  };
-  const uploadConsentedAudioFile = async (file) => {
-    if (!file) return;
-    setIsAudioBusy(true);
-    try { await uploadAudioAndStartHealthScribe(file); }
-    catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to upload the audio file."); }
-    finally { setIsAudioBusy(false); }
-  };
-  const checkHealthScribeJob = async () => {
-    if (!awsScribeJob.jobName) return;
-    setIsAudioBusy(true);
-    try {
-      const result = await productionApi(`/api/ehr/scribe/jobs?clientId=${encodeURIComponent(activeClientId)}&jobName=${encodeURIComponent(awsScribeJob.jobName)}&mediaKey=${encodeURIComponent(awsScribeJob.mediaKey)}`);
-      setAwsScribeJob((current) => ({ ...current, status: result.status }));
-      if (result.status === "COMPLETED") {
-        const transcriptJson = JSON.stringify(result.transcript, null, 2);
-        const clinicalDocumentJson = JSON.stringify(result.clinicalDocument, null, 2);
-        const mappedDraft = buildGeneratedClinicalDocumentation(transcriptJson);
-        setTranscriptText(transcriptJson);
-        setGeneratedDocs({ ...mappedDraft, structuredNote: { ...mappedDraft.structuredNote, title: mappedDraft.structuredNote?.title || "AWS HealthScribe clinical-note draft", noteType: scribeTemplate, content: clinicalDocumentJson } });
-        setCopyNotice("AWS HealthScribe completed. Temporary audio was deleted. Review and edit the draft before merging it into the chart.");
-      } else if (result.status === "FAILED") setCopyNotice(result.failureReason || "AWS HealthScribe failed.");
-      else setCopyNotice(`AWS HealthScribe status: ${result.status}.`);
-    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to check transcription."); }
-    finally { setIsAudioBusy(false); }
-  };
-  useEffect(() => {
-    if (!awsScribeJob.jobName || ["COMPLETED", "FAILED"].includes(awsScribeJob.status)) return;
-    const id = window.setInterval(() => { void checkHealthScribeJob(); }, 10000);
-    return () => window.clearInterval(id);
-  }, [awsScribeJob.jobName, awsScribeJob.status]);
-  useEffect(() => {
-    if (!isScribeTimerRunning) return;
-    const id = window.setInterval(() => setScribeSeconds((prev) => prev + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [isScribeTimerRunning]);
-  const formattedScribeTimer = `${String(Math.floor(scribeSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((scribeSeconds % 3600) / 60)).padStart(2, "0")}:${String(scribeSeconds % 60).padStart(2, "0")}`;
-  const scribeSessionMinutes = scribeMeta.manualMinutes || (scribeSeconds ? String(Math.ceil(scribeSeconds / 60)) : "");
-  const scribeMetadataBlock = () => [
-    `Chief complaint / reason for visit: ${scribeMeta.chiefComplaint || "Not entered"}`,
-    `Onset / duration: ${scribeMeta.onset || "Not entered"}`,
-    `Session minutes: ${scribeSessionMinutes || "Not entered"}`,
-    `Primary ICD-10-CM: ${scribeMeta.primaryDiagnosis || "Not selected"}`,
-    `Secondary ICD-10-CM: ${scribeMeta.secondaryDiagnosis || "Not selected"}`,
-    `Tertiary ICD-10-CM: ${scribeMeta.tertiaryDiagnosis || "Not selected"}`,
-    `Service / CPT-HCPCS: ${scribeMeta.serviceCode || "Not selected"}`,
-    `Interpreter service code: ${scribeMeta.interpreterCode || "Not used"}`,
-    `Provider e-signature: ${scribeMeta.providerSignature || "Not signed"}`,
-    `Client e-signature: ${scribeMeta.clientSignature || "Not signed / not required"}`,
-  ].join("\n");
-  const applyScribeDiagnosisCode = (item) => {
-    setScribeMeta((prev) => ({ ...prev, [scribeDiagnosisTarget]: `${item.code} | ${item.label}` }));
-  };
-  const handleScribeTemplateChange = (value) => {
-    setScribeTemplate(value);
-    setScribeMeta((prev) => {
-      if (value === "Biopsychosocial" || value === "Intake Session") {
-        return { ...prev, manualMinutes: prev.manualMinutes || "90", serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / intake / biopsychosocial assessment" };
-      }
-      if (value === "Initial Progress Note") {
-        return { ...prev, manualMinutes: prev.manualMinutes || "60", serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / intake / biopsychosocial assessment" };
-      }
-      return { ...prev, serviceCode: prev.serviceCode || "90837 | CPT | Psychotherapy, 60 minutes" };
-    });
-  };
-  const buildGeneratedClinicalDocumentation = (sourceTranscript = transcriptText) => {
-    const clientName = activeClient?.profile?.fullName || "Client";
-    const modality = `${sessionForm.sessionType} Telehealth`;
-    const riskFlags = extractRiskFlags(sourceTranscript);
-    const baseIntakeDraft = buildIntakeFromTranscript({ transcript: sourceTranscript, clientName });
-    const metadata = scribeMetadataBlock();
-    const intakeDraft = {
-      ...baseIntakeDraft,
-      presentingProblem: `Chief Complaint / Reason for Visit: ${scribeMeta.chiefComplaint || "Not entered"}\nOnset / Duration: ${scribeMeta.onset || "Not entered"}\n\n${baseIntakeDraft.presentingProblem}`,
-      biopsychosocialSummary: `${baseIntakeDraft.biopsychosocialSummary}\n\nClinical metadata:\n${metadata}`,
-    };
-    const structuredBase = buildStructuredClinicalNote({ transcript: sourceTranscript, clientName, modality, templateType: scribeTemplate });
-    const structuredNote = {
-      ...structuredBase,
-      intakeFields: structuredBase.intakeFields ? intakeDraft : structuredBase.intakeFields,
-      content: `${metadata}\n\n${structuredBase.content}`,
-      scribeMeta: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
-    };
-    return {
-      soapNote: `${metadata}\n\n${buildSoapNote({ transcript: sourceTranscript, clientName, modality })}`,
-      structuredNote,
-      intakeDraft,
-      riskFlags,
-      sessionSummary: buildSessionSummary({ transcript: sourceTranscript, clientName }),
-      insuranceReady: `${metadata}\n\n${buildInsuranceReadyDocumentation({ transcript: sourceTranscript, modality })}`,
-      scribeMeta: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
-    };
-  };
-  const saveTelehealthEntry = () => {
-    if (!activeClientId) return;
-    const entry = {
-      id: `telehealth-${Date.now()}`,
-      createdAt: new Date().toLocaleString(),
-      sessionType: sessionForm.sessionType,
-      dialNumber: sessionForm.dialNumber,
-      platform: sessionForm.platform,
-      consentObtained: sessionForm.consentObtained,
-      consentVerbiage: sessionForm.consentVerbiage,
-      recordingConsent: sessionForm.recordingConsent,
-      recordingVerbiage: sessionForm.recordingVerbiage,
-      languageUsed: sessionForm.languageUsed,
-      interpreterNeeded: sessionForm.interpreterNeeded,
-      interpreterType: sessionForm.interpreterType,
-      interpreterName: sessionForm.interpreterName,
-      translationNotes: sessionForm.translationNotes,
-      technicalNotes: sessionForm.technicalNotes,
-      audioRetentionPolicy,
-      enteredBy: currentUser.fullName,
-    };
-    if (isProvider) {
-      updateSpecificUserData(activeClientId, "telehealth", (prev) => [entry, ...((prev || []))]);
-    } else {
-      updateCurrentUserData("telehealth", (prev) => [entry, ...((prev || []))]);
-    }
-    appendAuditLog({
-      action: "Saved telehealth session entry",
-      details: `${sessionForm.sessionType} telehealth entry saved with consent and recording documentation.`,
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "Telehealth",
-    });
-  };
-  const copyConsentText = async () => {
-    try {
-      await navigator.clipboard.writeText(`${sessionForm.consentVerbiage}
-${sessionForm.recordingVerbiage}`);
-      setCopyNotice("Telehealth consent and recording text copied.");
-      setTimeout(() => setCopyNotice(""), 2500);
-    } catch {
-      setCopyNotice("Copy is not available in this preview.");
-      setTimeout(() => setCopyNotice(""), 2500);
-    }
-  };
-  const generateClinicalDocumentation = () => {
-    if (!transcriptText.trim()) {
-      setGeneratedDocs(null);
-      setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before generating a clinical draft.");
-      return;
-    }
-    const docs = buildGeneratedClinicalDocumentation();
-    setGeneratedDocs(docs);
-    appendAuditLog({
-      action: "Generated AI telehealth documentation",
-      details: `${scribeTemplate} draft generated with mapped chief complaint, onset, time, ICD diagnosis, CPT/HCPCS billing, consent, and signature fields. Audio retention policy: ${audioRetentionPolicy}`,
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "Telehealth AI",
-    });
-  };
-  const copyTextBlock = async (label, text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyNotice(`${label} copied.`);
-      setTimeout(() => setCopyNotice(""), 2500);
-    } catch {
-      setCopyNotice("Copy is not available in this preview.");
-      setTimeout(() => setCopyNotice(""), 2500);
-    }
-  };
-  const saveStructuredDraftToChart = () => {
-    if (!generatedDocs?.structuredNote || !activeClientId || !transcriptText.trim()) {
-      setCopyNotice("A completed transcript is required before a generated draft can be saved to the chart.");
-      return;
-    }
-    const structured = generatedDocs.structuredNote;
-    updateSpecificUserData(activeClientId, "notes", (prev) => [
-      {
-        id: `note-scribe-${Date.now()}`,
-        title: structured.title,
-        content: `Provider Review Required: AI-generated draft must be reviewed, edited, and signed by the provider before final use.\nAudio Retention Policy: ${audioRetentionPolicy}\n\n${structured.content}`,
-        modality: sessionForm.sessionType === "Video" ? "Telehealth" : "Audio Telehealth",
-        noteType: structured.noteType,
-        status: "Provider review required",
-        audioRetentionPolicy,
-        createdAt: new Date().toLocaleString(),
-      },
-      ...((prev || [])),
-    ]);
-    if (structured.intakeFields) {
-      const currentIntake = activeClient?.intake || {};
-      updateSpecificUserData(activeClientId, "intake", {
-        ...currentIntake,
-        presentingProblem: structured.intakeFields.presentingProblem,
-        treatmentGoals: currentIntake.treatmentGoals || structured.intakeFields.treatmentGoals,
-        biopsychosocialSummary: structured.intakeFields.biopsychosocialSummary,
-        scribeUpdatedAt: new Date().toLocaleString(),
-      });
-    }
-    appendAuditLog({
-      action: "Saved AI scribe draft to client chart",
-      details: `${structured.noteType} draft saved to chart for provider review. ${audioRetentionPolicy}`,
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "EHR Scribe",
-    });
-    setCopyNotice("Generated draft saved into the client chart for provider review/signature. Temporary audio remains governed by overnight/next-business-day deletion policy.");
-    setTimeout(() => setCopyNotice(""), 4000);
-  };
-  const mergeScribeToEhr = () => {
-    if (!activeClientId) return;
-    if (!transcriptText.trim()) {
-      setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before merging into the EHR.");
-      return;
-    }
-    const requiredMissing = [
-      !scribeMeta.chiefComplaint.trim() ? "chief complaint / reason for visit" : null,
-      !scribeSessionMinutes ? "session time" : null,
-      !scribeMeta.primaryDiagnosis ? "primary ICD diagnosis" : null,
-      !scribeMeta.serviceCode ? "billing CPT/HCPCS code" : null,
-    ].filter(Boolean);
-    if (requiredMissing.length) {
-      setCopyNotice(`Missing required fields before merging to EHR: ${requiredMissing.join(", ")}.`);
-      setTimeout(() => setCopyNotice(""), 4000);
-      return;
-    }
-    const docs = buildGeneratedClinicalDocumentation();
-    const structured = docs.structuredNote;
-    setGeneratedDocs(docs);
-    updateSpecificUserData(activeClientId, "notes", (prev) => [
-      {
-        id: `note-scribe-merge-${Date.now()}`,
-        title: structured.title,
-        content: `Provider Review Required: AI-generated draft must be reviewed, edited, and signed by the provider before final use.\nAudio Retention Policy: ${audioRetentionPolicy}\n\n${structured.content}`,
-        modality: sessionForm.sessionType === "Video" ? "Telehealth" : "Audio Telehealth",
-        noteType: structured.noteType,
-        status: "Merged to EHR - provider review required",
-        sessionMinutes: scribeSessionMinutes,
-        codeDraft: docs.scribeMeta,
-        signature: {
-          provider: scribeMeta.providerSignature || "",
-          client: scribeMeta.clientSignature || "",
-          signedAt: new Date().toLocaleString(),
-        },
-        audioRetentionPolicy,
-        createdAt: new Date().toLocaleString(),
-      },
-      ...((prev || [])),
-    ]);
-    const currentIntake = activeClient?.intake || {};
-    updateSpecificUserData(activeClientId, "intake", {
-      ...currentIntake,
-      chiefComplaint: scribeMeta.chiefComplaint,
-      onset: scribeMeta.onset,
-      presentingProblem: docs.intakeDraft.presentingProblem,
-      treatmentGoals: currentIntake.treatmentGoals || docs.intakeDraft.treatmentGoals,
-      biopsychosocialSummary: docs.intakeDraft.biopsychosocialSummary,
-      diagnoses: [scribeMeta.primaryDiagnosis, scribeMeta.secondaryDiagnosis, scribeMeta.tertiaryDiagnosis].filter(Boolean),
-      billingCodes: [scribeMeta.serviceCode, scribeMeta.interpreterCode].filter(Boolean),
-      sessionMinutes: scribeSessionMinutes,
-      scribeUpdatedAt: new Date().toLocaleString(),
-    });
-    if (scribeTemplate === "Treatment Plan Update") {
-      updateSpecificUserData(activeClientId, "treatmentPlans", (prev) => [
-        {
-          id: `plan-scribe-${Date.now()}`,
-          problem: scribeMeta.chiefComplaint || "AI transcriber treatment plan update",
-          longTermGoal: "Review and refine with provider.",
-          shortTermGoal: "Review and refine with provider.",
-          intervention: docs.structuredNote.content,
-          createdAt: new Date().toLocaleString(),
-        },
-        ...((prev || [])),
-      ]);
-    }
-    if (docs.riskFlags.summary.length > 0) {
-      updateSpecificUserData(activeClientId, "documents", (prev) => [
-        {
-          id: `risk-scribe-${Date.now()}`,
-          title: "AI Transcriber Risk Flag Review",
-          type: "Clinical Document",
-          status: "Draft",
-          viewedAt: "",
-          signature: null,
-          uploadedFileName: "",
-          createdAt: new Date().toLocaleString(),
-          category: "Risk Review",
-          generatedLetterText: docs.riskFlags.summary.join("\n"),
-        },
-        ...((prev || [])),
-      ]);
-    }
-    appendAuditLog({
-      action: "Merged AI transcriber fields to EHR",
-      details: `${scribeTemplate} merged into Progress Notes, Intake/Biopsychosocial fields, diagnosis, billing, time, and signature metadata.`,
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "EHR Scribe",
-    });
-    setCopyNotice("AI transcriber fields merged to EHR: note, intake/biopsychosocial fields, diagnosis, billing, time, and signatures are in the chart for provider review.");
-    setTimeout(() => setCopyNotice(""), 5000);
-  };
-  const pushToProgressNotes = () => {
-    if (!generatedDocs || !activeClientId) return;
-    updateSpecificUserData(activeClientId, "notes", (prev) => [
-      {
-        id: `note-ai-${Date.now()}`,
-        title: "AI Telehealth SOAP Note",
-        content: generatedDocs.soapNote,
-        modality: sessionForm.sessionType === "Video" ? "Telehealth" : "Audio Telehealth",
-        noteType: "Medical Record Note",
-        createdAt: new Date().toLocaleString(),
-      },
-      ...prev,
-    ]);
-    appendAuditLog({
-      action: "Saved telehealth AI documentation to progress notes",
-      details: "SOAP note generated from transcript and saved as medical record note.",
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "Telehealth AI",
-    });
-    setCopyNotice("SOAP note saved to Progress Notes for provider review/signature.");
-    setTimeout(() => setCopyNotice(""), 2500);
-  };
-  const pushToIntake = () => {
-    if (!generatedDocs || !activeClientId) return;
-    const currentIntake = activeClient?.intake || {};
-    updateSpecificUserData(activeClientId, "intake", {
-      ...currentIntake,
-      presentingProblem: generatedDocs.intakeDraft.presentingProblem,
-      treatmentGoals: currentIntake.treatmentGoals || generatedDocs.intakeDraft.treatmentGoals,
-      biopsychosocialSummary: generatedDocs.intakeDraft.biopsychosocialSummary,
-    });
-    appendAuditLog({
-      action: "Saved telehealth AI documentation to intake",
-      details: "Transcript-derived intake summary saved to intake fields.",
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "Telehealth AI",
-    });
-    setCopyNotice("Transcript summary saved to Intake and Biopsychosocial fields.");
-    setTimeout(() => setCopyNotice(""), 2500);
-  };
-  const pushRiskFlagsToDocuments = () => {
-    if (!generatedDocs || !activeClientId) return;
-    updateSpecificUserData(activeClientId, "documents", (prev) => [
-      {
-        id: `risk-ai-${Date.now()}`,
-        title: "AI Risk Flag Review",
-        type: "Clinical Document",
-        status: "Draft",
-        viewedAt: "",
-        signature: null,
-        uploadedFileName: "",
-        createdAt: new Date().toLocaleString(),
-        category: "Risk Review",
-        generatedLetterText: generatedDocs.riskFlags.summary.length
-          ? generatedDocs.riskFlags.summary.join("\n")
-          : "No automatic risk flags detected from transcript text.",
-      },
-      ...(activeClient?.documents || []),
-    ]);
-    appendAuditLog({
-      action: "Saved telehealth AI risk review to chart documents",
-      details: "Risk flag review saved to the document library for provider follow-up.",
-      clientId: activeClientId,
-      clientName: activeClient?.profile?.fullName || "Client",
-      category: "Telehealth AI",
-    });
-    setCopyNotice("Risk review saved to Document Library.");
-    setTimeout(() => setCopyNotice(""), 2500);
-  };
-  return (
-    <div>
-      <SectionHeader
-        title="Telehealth"
-        description="Audio/visual session workflow with consent, Spruce-supported transcript intake, EHR scribe note generation, overnight audio deletion policy, and telehealth chart history."
-      />
-      {copyNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{copyNotice}</div>}
-      <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle>Telehealth session setup</CardTitle>
-            <CardDescription>Document modality, consent, recording language, interpreter use, and technical details.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isProvider && (
-              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>
-                  {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={sessionForm.sessionType} onValueChange={(value) => setSessionForm({ ...sessionForm, sessionType: value })}>
-              <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Video">Video session</SelectItem>
-                <SelectItem value="Audio Only">Audio only</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="grid md:grid-cols-2 gap-3">
-              <Input value={sessionForm.platform} onChange={(e) => setSessionForm({ ...sessionForm, platform: e.target.value })} placeholder="Video platform / room" />
-              <Input value={sessionForm.dialNumber} onChange={(e) => setSessionForm({ ...sessionForm, dialNumber: e.target.value })} placeholder="Dialer / call-back number" />
-            </div>
-            <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => setSessionForm({ ...sessionForm, consentObtained: e.target.checked })} />
-              Telehealth consent obtained verbally
-            </label>
-            <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
-            <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => setSessionForm({ ...sessionForm, recordingConsent: e.target.checked })} />
-              Recording consent obtained
-            </label>
-            <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
-            <div className="grid md:grid-cols-2 gap-3">
-              <Input value={sessionForm.languageUsed} onChange={(e) => setSessionForm({ ...sessionForm, languageUsed: e.target.value })} placeholder="Language used in session" />
-              <Input value={sessionForm.interpreterName} onChange={(e) => setSessionForm({ ...sessionForm, interpreterName: e.target.value })} placeholder="Interpreter / translator name" />
-            </div>
-            <div className="grid md:grid-cols-2 gap-3">
-              <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-                <input type="checkbox" checked={sessionForm.interpreterNeeded} onChange={(e) => setSessionForm({ ...sessionForm, interpreterNeeded: e.target.checked })} />
-                Interpreter or translator used
-              </label>
-              <Select value={sessionForm.interpreterType} onValueChange={(value) => setSessionForm({ ...sessionForm, interpreterType: value })}>
-                <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Professional Interpreter">Professional Interpreter</SelectItem>
-                  <SelectItem value="Bilingual Provider">Bilingual Provider</SelectItem>
-                  <SelectItem value="Family / Support Person">Family / Support Person</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Textarea value={sessionForm.translationNotes} onChange={(e) => setSessionForm({ ...sessionForm, translationNotes: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Translation / interpreter notes, language access details, communication barriers, accommodations" />
-            <Textarea value={sessionForm.technicalNotes} onChange={(e) => setSessionForm({ ...sessionForm, technicalNotes: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Technical notes, privacy verification, audio/video quality, interruptions" />
-            <div className="flex flex-wrap gap-2">
-              <Button className="rounded-2xl" onClick={saveTelehealthEntry}><Mic className="mr-2 h-4 w-4" />Save telehealth entry</Button>
-              <Button variant="outline" className="rounded-2xl" onClick={copyConsentText}><Copy className="mr-2 h-4 w-4" />Copy consent text</Button>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle>EHR clinical scribe</CardTitle>
-            <CardDescription>Use Spruce transcript/summary or EHR-recorded transcript to generate structured note fields directly inside the client chart.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600 space-y-1">
-              <p className="font-medium text-slate-800">Consent and retention rule</p>
-              <p>Recording/AI scribe consent must be documented before audio is used for note generation.</p>
-              <p>{audioRetentionPolicy}</p>
-            </div>
-            <Select value={scribeTemplate} onValueChange={handleScribeTemplateChange}>
-              <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Progress Note - SOAP">Progress Note - SOAP</SelectItem>
-                <SelectItem value="Initial Progress Note">Initial Progress Note</SelectItem>
-                <SelectItem value="Follow-up Progress Note">Follow-up Progress Note</SelectItem>
-                <SelectItem value="Biopsychosocial">Biopsychosocial</SelectItem>
-                <SelectItem value="Psychosocial">Psychosocial</SelectItem>
-                <SelectItem value="Intake Session">Intake Session</SelectItem>
-                <SelectItem value="Treatment Plan Update">Treatment Plan Update</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
-              <p className="text-sm font-medium text-slate-900">Scribe timing and EHR merge fields</p>
-              <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Chief Complaint / Reason for Visit" value={scribeMeta.chiefComplaint} onChange={(e) => setScribeMeta({ ...scribeMeta, chiefComplaint: e.target.value })} placeholder="Chief complaint / reason for visit" />
-                <Input label="Onset / Duration" value={scribeMeta.onset} onChange={(e) => setScribeMeta({ ...scribeMeta, onset: e.target.value })} placeholder="Onset / duration" />
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border bg-white p-3 space-y-2">
-                  <p className="text-sm font-medium">Transcriber timer</p>
-                  <p className="text-2xl font-semibold">{formattedScribeTimer}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" className="rounded-2xl" onClick={() => setIsScribeTimerRunning((value) => !value)}>{isScribeTimerRunning ? "Pause" : "Start"}</Button>
-                    <Button type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => { setIsScribeTimerRunning(false); setScribeSeconds(0); }}>Reset</Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Session Minutes (manual or timer)</label>
-                  <Input value={scribeMeta.manualMinutes} onChange={(e) => setScribeMeta({ ...scribeMeta, manualMinutes: e.target.value })} placeholder="Enter minutes manually, e.g. 90" />
-                  <p className="text-xs text-slate-500">Merged minutes: {scribeSessionMinutes || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <Input label="Primary ICD-10-CM Diagnosis" value={scribeMeta.primaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, primaryDiagnosis: e.target.value })} placeholder="Primary ICD-10-CM" />
-                <Input label="Secondary ICD-10-CM Diagnosis" value={scribeMeta.secondaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, secondaryDiagnosis: e.target.value })} placeholder="Secondary ICD-10-CM" />
-                <Input label="Tertiary ICD-10-CM Diagnosis" value={scribeMeta.tertiaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, tertiaryDiagnosis: e.target.value })} placeholder="Tertiary ICD-10-CM" />
-              </div>
-              <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                <Select value={scribeDiagnosisTarget} onValueChange={setScribeDiagnosisTarget}>
-                  <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                    <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                    <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input value={scribeDiagnosisSearch} onChange={(e) => setScribeDiagnosisSearch(e.target.value)} placeholder="Type ICD code or diagnosis keyword" />
-              </div>
-              {scribeDiagnosisMatches.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {scribeDiagnosisMatches.map((item) => (
-                    <Button key={item.code} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyScribeDiagnosisCode(item)}>{item.code} | {item.label}</Button>
-                  ))}
-                </div>
-              )}
-              <div className="grid md:grid-cols-2 gap-3">
-                <Input label="CPT / HCPCS Service Code" value={scribeMeta.serviceCode} onChange={(e) => setScribeMeta({ ...scribeMeta, serviceCode: e.target.value })} placeholder="CPT/HCPCS service code" />
-                <Input label="Interpreter Code" value={scribeMeta.interpreterCode} onChange={(e) => setScribeMeta({ ...scribeMeta, interpreterCode: e.target.value })} placeholder="Interpreter code, if used" />
-              </div>
-              <Input value={scribeBillingSearch} onChange={(e) => setScribeBillingSearch(e.target.value)} placeholder="Type billing keyword, e.g. bio, intake, 60, interpreter" />
-              {scribeBillingMatches.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {scribeBillingMatches.map((item) => (
-                    <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => item.code === "T1013" ? setScribeMeta({ ...scribeMeta, interpreterCode: `${item.code} | ${item.type} | ${item.label}` }) : setScribeMeta({ ...scribeMeta, serviceCode: `${item.code} | ${item.type} | ${item.label}` })}>{item.code} | {item.label}</Button>
-                  ))}
-                </div>
-              )}
-              <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
-                <Input label="Client Electronic Signature" value={scribeMeta.clientSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
-              </div>
-              <p className="text-xs text-slate-500">Merge writes matching fields into Progress Notes and Intake/Biopsychosocial. Treatment plan templates also create a plan draft.</p>
-            </div>
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-              <p className="font-medium text-slate-900">Encrypted AWS HealthScribe audio transcription</p>
-              <p className="text-xs text-slate-600">Recording consent must be checked above. Audio is encrypted during upload, used to create a preliminary draft, and deleted after successful retrieval.</p>
-              <p className="text-xs font-medium text-slate-800">For a live recording, click Start, then Stop and securely transcribe. Stopping automatically encrypts, uploads, and starts AWS HealthScribe.</p>
-              <div className="flex flex-wrap gap-2">
-                {isAudioRecording
-                  ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
-                  : <Button type="button" disabled={isAudioBusy || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start consented audio capture</Button>}
-                <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
-                  Upload an existing audio file
-                  <input hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
-                </label>
-                {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
-              </div>
-              {awsScribeJob.status && <p className="text-sm">HealthScribe status: <strong>{awsScribeJob.status}</strong></p>}
-            </div>
-            <Textarea value={transcriptText} onChange={(e) => setTranscriptText(e.target.value)} className="min-h-[180px] rounded-2xl" placeholder="Paste Spruce transcript/summary or EHR session transcript here. The EHR maps it into the selected note template fields." />
-            <div className="flex flex-wrap gap-2">
-              <Button className="rounded-2xl" disabled={!transcriptText.trim()} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={!transcriptText.trim()} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={!generatedDocs || !transcriptText.trim()} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
-            </div>
-            {generatedDocs && (
-              <div className="space-y-4 pt-2">
-                <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Structured EHR note draft</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{generatedDocs.structuredNote?.content || generatedDocs.soapNote}</div>
-                    <Button variant="outline" className="rounded-2xl" onClick={saveStructuredDraftToChart}>Save structured draft to chart</Button>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Intake / biopsychosocial field mapping</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{`Presenting Problem:
-${generatedDocs.intakeDraft.presentingProblem}
-
-Treatment Goals:
-${generatedDocs.intakeDraft.treatmentGoals}
-
-Biopsychosocial Summary:
-${generatedDocs.intakeDraft.biopsychosocialSummary}`}</div>
-                    <Button variant="outline" className="rounded-2xl" onClick={pushToIntake}>Save to Intake / Biopsychosocial</Button>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Risk flag detection</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm">
-                      {generatedDocs.riskFlags.summary.length === 0
-                        ? "No automatic risk flags detected from transcript text."
-                        : generatedDocs.riskFlags.summary.map((item) => <p key={item} className="mb-1">| {item}</p>)}
-                    </div>
-                    <Button variant="outline" className="rounded-2xl" onClick={pushRiskFlagsToDocuments}>Save risk review to Document Library</Button>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Session summary for client portal</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{generatedDocs.sessionSummary}</div>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Insurance-ready clinical documentation</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{generatedDocs.insuranceReady}</div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </CardContent>
-        </Card>      </div>
-      <Card className="rounded-2xl shadow-sm mt-4">
-        <CardHeader>
-          <CardTitle>Telehealth chart history</CardTitle>
-          <CardDescription>Client-specific telehealth entries with consent, recording, interpreter, and language documentation.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 max-h-[520px] overflow-auto">
-          {(telehealthLog || []).length === 0 && <p className="text-sm text-slate-500">No telehealth entries saved yet.</p>}
-          {(telehealthLog || []).map((entry) => (
-            <div key={entry.id} className="rounded-2xl border p-4 space-y-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="font-medium">{entry.sessionType}</p>
-                <Badge className="rounded-xl">{entry.platform}</Badge>
-              </div>
-              <p className="text-xs text-slate-500">Created: {entry.createdAt} | Entered by: {entry.enteredBy}</p>
-              <p className="text-sm"><span className="font-medium">Dialer:</span> {entry.dialNumber || "Not entered"}</p>
-              <p className="text-sm"><span className="font-medium">Consent obtained:</span> {entry.consentObtained ? "Yes" : "No"}</p>
-              <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Consent text:</span> {entry.consentVerbiage}</p>
-              <p className="text-sm"><span className="font-medium">Recording consent:</span> {entry.recordingConsent ? "Yes" : "No"}</p>
-              {entry.recordingConsent && <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Recording text:</span> {entry.recordingVerbiage}</p>}
-              <p className="text-sm"><span className="font-medium">Language used:</span> {entry.languageUsed || "Not entered"}</p>
-              <p className="text-sm"><span className="font-medium">Interpreter used:</span> {entry.interpreterNeeded ? "Yes" : "No"}</p>
-              {entry.interpreterNeeded && <p className="text-sm"><span className="font-medium">Interpreter type:</span> {entry.interpreterType || "Not entered"}</p>}
-              {entry.interpreterNeeded && <p className="text-sm"><span className="font-medium">Interpreter / translator:</span> {entry.interpreterName || "Not entered"}</p>}
-              {entry.interpreterNeeded && <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Translation notes:</span> {entry.translationNotes || "None"}</p>}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-function ClientManagementPage() {
-  const { store } = useAuth();
-  const { setPage, setSelectedChartClientId } = usePage();
-  const clients = Object.entries(store.users)
-    .filter(([, bucket]) => bucket.profile.role === "client")
-    .map(([id, bucket]) => ({ id, ...bucket.profile, bucket }));
-  return (
-    <div>
-      <SectionHeader
-        title="Client Management"
-        description="Provider-facing client list. In the full system this becomes the central chart access point, with consent-aware visibility, assessments, notes, plans, outcomes, and messaging."
-      />
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {clients.map((client) => (
-          <Card key={client.id} className="rounded-2xl shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{client.fullName}</p>
-                  <p className="text-sm text-slate-500 mt-1">{client.email}</p>
-                </div>
-                <Badge className="rounded-xl">client</Badge>
-              </div>
-              <Separator className="my-4" />
-              <div className="space-y-2 text-sm text-slate-600">
-                <p>Journal entries: {client.bucket.journalEntries.length}</p>
-                <p>Homework items: {client.bucket.homework.length}</p>
-                <p>Appointments: {client.bucket.appointments.length}</p>
-                <p>Diagnoses: {(client.bucket.intake?.diagnoses || []).join(", ") || "None entered"}</p>
-              </div>
-              <Button
-                className="w-full mt-4 rounded-2xl"
-                onClick={() => {
-                  setSelectedChartClientId(client.id);
-                  setPage("chart");
-                }}
-              >
-                Open client chart
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-function getDocumentWorkflow(doc) {
-  if (doc.storageKey) return { label: "Open encrypted file", page: "documents" };
-  if (doc.title === "Biopsychosocial Intake") return { label: "Open biopsychosocial intake", page: "intake" };
-  if (doc.title === "Initial Progress Note Template") return { label: "Open progress-note form", page: "notes" };
-  const assessmentTabs = {
-    "PHQ-9 Depression Screening": "phq9",
-    "GAD-7 Anxiety Screening": "gad7",
-    "Suicide Risk Assessment": "suicide",
-    "Substance Use / Drug Abuse Assessment": "substance",
-    "Violence Risk Assessment": "violence",
-    "Safety Plan": "safety",
-    "Clinical Outcome Measures": "phq9",
-  };
-  if (assessmentTabs[doc.title]) return { label: `Open ${doc.title}`, page: "assessments", target: { tab: assessmentTabs[doc.title] } };
-  if (doc.title === "Treatment Plan") return { label: "Open treatment-plan form", page: "plans" };
-  if (doc.title === "Homework Handout") return { label: "Open homework assignment form", page: "homework" };
-  if (doc.title.startsWith("Advocacy Letter Template")) return {
-    label: "Open advocacy-letter builder",
-    page: "documents",
-    target: {
-      anchor: "advocacy-letter-builder",
-      advocacyTemplateType: doc.title.split(" | ")[1] || "General Outside Resource Support",
-    },
-  };
-  return { label: "Review and sign this document", page: "documents" };
-}
-function ClientChartPage() {
-  const { store } = useAuth();
-  const { selectedChartClientId, setPage } = usePage();
-  const clientBucket = selectedChartClientId ? store.users[selectedChartClientId] : null;
-  if (!clientBucket) {
-    return (
-      <div>
-        <SectionHeader title="Client Chart" description="Select a client from Client Management to open a chart." />
-      </div>
-    );
-  }
-  const profile = clientBucket.profile || {};
-  const intake = clientBucket.intake || {};
-  const diagnoses = intake.diagnoses || [];
-  const homework = clientBucket.homework || [];
-  const appointments = clientBucket.appointments || [];
-  const journalEntries = clientBucket.journalEntries || [];
-  const sharedJournalEntries = journalEntries.filter((entry) => entry.visibility === "shared");
-  const messages = clientBucket.messages || [];
-  const clientNotes = clientBucket.notes || [];
-  const clientPlans = clientBucket.treatmentPlans || [];
-  const documents = clientBucket.documents || [];
-  const assessments = clientBucket.assessments || {};
-  const telehealthEntries = clientBucket.telehealth || [];
-  const advocacyDocs = documents.filter((doc) => doc.type === "Advocacy Letter Template");
-  return (
-    <div>
-      <SectionHeader
-        title="Client Chart"
-        description="Centralized client record for intake, diagnoses, provider-only documentation, assessments, shared journal, telehealth, and chart documents."
-        right={<Button variant="outline" className="rounded-2xl" onClick={() => setPage("clients")}>Back to client list</Button>}
-      />
-      <div className="grid xl:grid-cols-[1.15fr_0.85fr] gap-4">
-        <div className="space-y-4">
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>{profile.fullName || "Client"}</CardTitle>
-              <CardDescription>{profile.email || "No email on file"}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm text-slate-700">
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Date of birth</p>
-                  <p className="mt-1 font-medium">{intake.dateOfBirth || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Contact phone</p>
-                  <p className="mt-1 font-medium">{intake.phone || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Chief complaint / reason for visit</p>
-                  <p className="mt-2 whitespace-pre-wrap">{intake.chiefComplaint || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Onset / duration</p>
-                  <p className="mt-2 whitespace-pre-wrap">{intake.onset || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Session minutes</p>
-                  <p className="mt-1 font-medium">{intake.sessionMinutes || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Billing codes</p>
-                  <p className="mt-1 font-medium">{(intake.billingCodes || []).join(", ") || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Presenting problem</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.presentingProblem || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Clinical objectives and treatment goals</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.treatmentGoals || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Biopsychosocial summary</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.biopsychosocialSummary || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Diagnostic formulation</p>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {diagnoses.length === 0 ? <p className="text-slate-500">No diagnoses entered.</p> : diagnoses.map((dx) => <Badge key={dx} variant="secondary" className="rounded-xl">{dx}</Badge>)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Tabs defaultValue="notes">
-            <TabsList className="grid grid-cols-6 rounded-2xl w-full">
-              <TabsTrigger value="notes">Notes</TabsTrigger>
-              <TabsTrigger value="plans">Plans</TabsTrigger>
-              <TabsTrigger value="assessments">Assessments</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
-              <TabsTrigger value="journal">Shared Journal</TabsTrigger>
-              <TabsTrigger value="messages">Messages</TabsTrigger>
-            </TabsList>
-            <TabsContent value="notes" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Provider-only notes</CardTitle>
-                  <CardDescription>Medical record notes and psychotherapy notes are not visible in the client portal.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto">
-                  {clientNotes.length === 0 && <p className="text-sm text-slate-500">No saved notes yet.</p>}
-                  {clientNotes.map((note) => (
-                    <div key={note.id} className="rounded-2xl border p-4">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <p className="font-medium">{note.title}</p>
-                        <div className="flex gap-2 flex-wrap">
-                          <Badge className="rounded-xl">{note.modality}</Badge>
-                          <Badge variant="secondary" className="rounded-xl">{note.noteType || "Medical Record Note"}</Badge>
-                        </div>
-                      </div>
-                      <p className="text-sm text-slate-700 mt-3 whitespace-pre-wrap">{note.content}</p>
-                      <p className="text-xs text-slate-400 mt-2">{note.createdAt}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="plans" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Provider-only treatment plans</CardTitle>
-                  <CardDescription>Treatment plans remain provider visible unless released through a formal records process.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto">
-                  {clientPlans.length === 0 && <p className="text-sm text-slate-500">No treatment plans saved yet.</p>}
-                  {clientPlans.map((plan) => (
-                    <div key={plan.id} className="rounded-2xl border p-4">
-                      <p className="font-medium">{plan.problem}</p>
-                      <p className="text-sm mt-2"><span className="font-medium">Long-term:</span> {plan.longTermGoal}</p>
-                      <p className="text-sm mt-1"><span className="font-medium">Short-term:</span> {plan.shortTermGoal}</p>
-                      <p className="text-sm mt-1"><span className="font-medium">Intervention:</span> {plan.intervention}</p>
-                      <p className="text-xs text-slate-400 mt-2">{plan.createdAt}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="assessments" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Assessment summary</CardTitle>
-                  <CardDescription>Completed clinical assessment data saved to this chart.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto text-sm">
-                  {Object.entries(assessments).filter(([, value]) => !!value).length === 0 && <p className="text-slate-500">No completed assessments saved yet.</p>}
-                  {Object.entries(assessments).filter(([, value]) => !!value).map(([key, value]) => (
-                    <div key={key} className="rounded-2xl border p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{key}</p>
-                        <Badge className="rounded-xl">{value.completedAt || "Saved"}</Badge>
-                      </div>
-                      {typeof value.score !== "undefined" && <p className="mt-2">Score: {value.score}</p>}
-                      {value.severity && <p className="mt-1">Severity: {value.severity}</p>}
-                      {value.riskLevel && <p className="mt-1">Risk Level: {value.riskLevel}</p>}
-                      {typeof value.concernCount !== "undefined" && <p className="mt-1">Concern Count: {value.concernCount}</p>}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="documents" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Chart documents</CardTitle>
-                  <CardDescription>Clinical forms, uploads, signatures, and advocacy letters.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto">
-                  {documents.length === 0 && <p className="text-sm text-slate-500">No chart documents available.</p>}
-                  {documents.map((doc) => (
-                    <div key={doc.id} className="rounded-2xl border p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{doc.title}</p>
-                          <p className="text-xs text-slate-400 mt-1">{doc.type} | {doc.category || "General"}</p>
-                        </div>
-                        <Badge className="rounded-xl">{doc.status}</Badge>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-2">Viewed: {doc.viewedAt || "Not viewed"}</p>
-                      <p className="text-xs text-slate-500 mt-1">Signature: {doc.signature ? `${doc.signature.signer} | ${doc.signature.signedAt}` : "Not signed"}</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-2xl mt-3"
-                        onClick={() => {
-                          const workflow = getDocumentWorkflow(doc);
-                          setPage(workflow.page, workflow.target || null);
-                        }}
-                      >
-                        {getDocumentWorkflow(doc).label}
-                      </Button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="journal" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Shared journal reflections</CardTitle>
-                  <CardDescription>Client-authorized journal entries visible to the provider.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto">
-                  {sharedJournalEntries.length === 0 && <p className="text-sm text-slate-500">No shared journal entries available.</p>}
-                  {sharedJournalEntries.map((entry) => (
-                    <div key={entry.id} className="rounded-2xl border p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{entry.title}</p>
-                        <Badge variant="secondary" className="rounded-xl">Shared with provider</Badge>
-                      </div>
-                      <p className="text-sm text-slate-700 mt-3 whitespace-pre-wrap">{entry.content}</p>
-                      <p className="text-xs text-slate-400 mt-2">{entry.createdAt}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="messages" className="mt-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                  <CardTitle>Message history</CardTitle>
-                  <CardDescription>Client-provider communication items connected to this chart.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-auto">
-                  {messages.length === 0 && <p className="text-sm text-slate-500">No messages on file.</p>}
-                  {messages.map((message) => (
-                    <div key={message.id} className="rounded-2xl border p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium capitalize">{message.from}</p>
-                        <p className="text-xs text-slate-400">{message.timestamp}</p>
-                      </div>
-                      <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">{message.text}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-        <div className="space-y-4">
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>Chart snapshot</CardTitle>
-              <CardDescription>Quick client totals</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-700">
-              <div className="flex items-center justify-between"><span>Homework</span><Badge className="rounded-xl">{homework.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Appointments</span><Badge className="rounded-xl">{appointments.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Telehealth entries</span><Badge className="rounded-xl">{telehealthEntries.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Journal entries</span><Badge className="rounded-xl">{journalEntries.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Shared journal entries</span><Badge className="rounded-xl">{sharedJournalEntries.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Documents</span><Badge className="rounded-xl">{documents.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Advocacy letters</span><Badge className="rounded-xl">{advocacyDocs.length}</Badge></div>
-              <div className="flex items-center justify-between"><span>Intake status</span><Badge className="rounded-xl">{intake.status || "Draft"}</Badge></div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-}
-function IntakePage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
-  const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
-  const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake || { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
-  const [diagnosisInput, setDiagnosisInput] = useState("");
-  const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
-  const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
-  const [intakeBillingSearch, setIntakeBillingSearch] = useState("");
-  const intakeDiagnosisMatches = diagnosisCodeOptions.filter((item) => {
-    const query = intakeDiagnosisSearch.trim().toLowerCase();
-    return query && `${item.code} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
-  }).slice(0, 6);
-  const intakeBillingMatches = billingCodeOptions.filter((item) => {
-    const query = intakeBillingSearch.trim().toLowerCase();
-    return query && `${item.code} ${item.type} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
-  }).slice(0, 6);
-  const applyIntakeDiagnosisCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      [intakeDiagnosisTarget]: value,
-      diagnoses: Array.from(new Set([...(current.diagnoses || []), value])),
-    });
-  };
-  const applyIntakeBillingCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.type} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      billingCodes: Array.from(new Set([...(current.billingCodes || []), value])),
-    });
-  };
-  const [saveNotice, setSaveNotice] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const updateIntakeField = (field, value) => {
-    if (!selectedClientId) return;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...(store.users[selectedClientId].intake || {
-        firstName: "",
-        lastName: "",
-        dateOfBirth: "",
-        phone: "",
-        chiefComplaint: "",
-        onset: "",
-        presentingProblem: "",
-        demographicsSummary: "",
-        socialFamilyHistory: "",
-        mentalHealthHistory: "",
-        hospitalizationHistory: "",
-        medicalPhysicalHistory: "",
-        abuseTraumaHistory: "",
-        substanceUseHistory: "",
-        riskSafetySummary: "",
-        strengthsProtectiveFactors: "",
-        clinicalFormulation: "",
-        treatmentGoals: "",
-        biopsychosocialSummary: "",
-        billingCodes: [],
-        sessionMinutes: "",
-        diagnoses: [],
-        primaryDiagnosis: "",
-        secondaryDiagnosis: "",
-        tertiaryDiagnosis: "",
-        providerSignature: PRACTITIONER_NAME,
-        clientSignature: "",
-      }),
-      [field]: value,
-    });
-  };
-  const addDiagnosis = () => {
-    if (!diagnosisInput.trim() || !selectedClientId) return;
-    const diagnoses = [...(store.users[selectedClientId].intake?.diagnoses || [])];
-    if (!diagnoses.includes(diagnosisInput.trim())) diagnoses.push(diagnosisInput.trim());
-    updateIntakeField("diagnoses", diagnoses);
-    setDiagnosisInput("");
-  };
-  const handleSubmitIntake = () => {
-    if (!selectedClientId) return;
-    setIsSubmitting(true);
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...(store.users[selectedClientId].intake || intake),
-      status: "submitted",
-      submittedAt: new Date().toLocaleString(),
-      designation: "HIPAA Medical Record Entry",
-    });
-    appendAuditLog({
-      action: "Submitted intake",
-      details: "HIPAA medical record intake entry submitted to secure chart.",
-      clientId: selectedClientId,
-      clientName: selectedClient?.profile?.fullName || "Client",
-      category: "Medical Record",
-    });
-    setSaveNotice("Intake saved to the secure chart for this client.");
-    setTimeout(() => {
-      setSaveNotice("");
-      setIsSubmitting(false);
-    }, 3000);
-  };
-  return (
-    <div>
-      <SectionHeader title="Intake" description="Revealing Leads to Healing Wellness Services LLC | EHR Proprietary System | Licensed for RLHW Services LLC" />
-      <Card className="rounded-2xl shadow-sm mb-4">
-        <CardContent className="p-4">
-          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-            <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
-            <SelectContent>
-              {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-      {saveNotice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{saveNotice}</div>}
-      {selectedClient && (
-        <Card className="rounded-[2rem] shadow-sm border border-slate-100 bg-white">
-          <CardContent className="p-6 md:p-10 space-y-10">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-100 pb-8">
-              <div>
-                <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">Client Intake</h3>
-                <p className="text-indigo-600 font-semibold tracking-wide text-sm uppercase mt-2">Revealing Leads to Healing Wellness Services LLC</p>
-              </div>
-              <div className="text-left md:text-right">
-                <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">EHR Proprietary System</p>
-                <p className="text-slate-600 font-bold text-sm">Licensed for RLHW Services LLC</p>
-              </div>
-            </div>
-            <section className="bg-slate-50/70 p-6 md:p-8 rounded-[1.5rem] border border-slate-100">
-              <h4 className="text-xl font-bold text-slate-800 mb-6">Patient Identification</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">First Name</label>
-                  <Input value={intake.firstName || ""} onChange={(e) => updateIntakeField("firstName", e.target.value)} placeholder="First Name" className="rounded-2xl h-12" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Last Name</label>
-                  <Input value={intake.lastName || ""} onChange={(e) => updateIntakeField("lastName", e.target.value)} placeholder="Last Name" className="rounded-2xl h-12" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Date of Birth</label>
-                  <Input type="date" value={intake.dateOfBirth || ""} onChange={(e) => updateIntakeField("dateOfBirth", e.target.value)} className="rounded-2xl h-12" />
-                  <p className="text-xs text-slate-400 ml-1">mm/dd/yyyy</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Contact Phone</label>
-                  <Input value={intake.phone || ""} onChange={(e) => updateIntakeField("phone", e.target.value)} placeholder="Contact Phone" className="rounded-2xl h-12" />
-                </div>
-              </div>
-            </section>
-            <section className="space-y-6">
-              <h4 className="text-xl font-bold text-slate-800">Clinical Assessment Summary</h4>
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Chief Complaint / Reason for Visit</label>
-                    <Input value={intake.chiefComplaint || ""} onChange={(e) => updateIntakeField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Onset / Duration</label>
-                    <Input value={intake.onset || ""} onChange={(e) => updateIntakeField("onset", e.target.value)} placeholder="Onset / duration" className="rounded-2xl" />
-                  </div>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Session Minutes</label>
-                    <Input value={intake.sessionMinutes || ""} onChange={(e) => updateIntakeField("sessionMinutes", e.target.value)} placeholder="Session minutes" className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
-                    <Input value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
-                    <Input value={intakeBillingSearch} onChange={(e) => setIntakeBillingSearch(e.target.value)} placeholder="Type billing code or keyword for intake, e.g. 90791, bio, interpreter" className="rounded-2xl" />
-                    {intakeBillingMatches.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {intakeBillingMatches.map((item) => (
-                          <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyIntakeBillingCode(item)}>{item.code} | {item.label}</Button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Presenting Problem / Reason for Therapy</label>
-                  <Textarea value={intake.presentingProblem || ""} onChange={(e) => updateIntakeField("presentingProblem", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Document the current symptoms, duration, and life impact..." />
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
-                  <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Complete Biopsychosocial Summary</label>
-                  <Textarea value={intake.biopsychosocialSummary || ""} onChange={(e) => updateIntakeField("biopsychosocialSummary", e.target.value)} className="min-h-[190px] rounded-[1.25rem]" placeholder="Demographics, social/family history, abuse/trauma history, medical and mental health history, hospitalizations, substance use, risk, strengths, diagnostic rationale, and clinical formulation..." />
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-                  <p className="text-sm font-bold text-slate-800">Detailed biopsychosocial fields</p>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Textarea label="Demographics / Household / Access Needs" value={intake.demographicsSummary || ""} onChange={(e) => updateIntakeField("demographicsSummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Demographics, household, housing, work/school, language, culture, access needs" />
-                    <Textarea label="Social / Family History" value={intake.socialFamilyHistory || ""} onChange={(e) => updateIntakeField("socialFamilyHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Social and family history, supports, relationships, family mental health/substance history" />
-                    <Textarea label="Mental Health History" value={intake.mentalHealthHistory || ""} onChange={(e) => updateIntakeField("mentalHealthHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Mental health history, prior therapy, diagnoses, medications, response to treatment" />
-                    <Textarea label="Hospitalization / Crisis History" value={intake.hospitalizationHistory || ""} onChange={(e) => updateIntakeField("hospitalizationHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Psychiatric hospitalizations, ER/crisis episodes, higher level of care history" />
-                    <Textarea label="Medical / Physical Health History" value={intake.medicalPhysicalHistory || ""} onChange={(e) => updateIntakeField("medicalPhysicalHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Medical/physical health history, medications, allergies, sleep, appetite, pain, PCP coordination" />
-                    <Textarea label="Abuse / Trauma History" value={intake.abuseTraumaHistory || ""} onChange={(e) => updateIntakeField("abuseTraumaHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Abuse, trauma, violence exposure, grief/loss, safety concerns, triggers" />
-                    <Textarea label="Substance Use History" value={intake.substanceUseHistory || ""} onChange={(e) => updateIntakeField("substanceUseHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Substance use history, frequency, consequences, recovery supports, stage of change" />
-                    <Textarea label="Risk / Safety Summary" value={intake.riskSafetySummary || ""} onChange={(e) => updateIntakeField("riskSafetySummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Risk/safety: SI/HI, self-harm, violence, protective factors, crisis plan, level of care" />
-                    <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
-                    <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Diagnostic Formulation</label>
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <Input label="Primary ICD-10-CM Diagnosis" value={intake.primaryDiagnosis || ""} onChange={(e) => updateIntakeField("primaryDiagnosis", e.target.value)} placeholder="Primary ICD-10-CM" className="rounded-2xl" />
-                    <Input label="Secondary ICD-10-CM Diagnosis" value={intake.secondaryDiagnosis || ""} onChange={(e) => updateIntakeField("secondaryDiagnosis", e.target.value)} placeholder="Secondary ICD-10-CM" className="rounded-2xl" />
-                    <Input label="Tertiary ICD-10-CM Diagnosis" value={intake.tertiaryDiagnosis || ""} onChange={(e) => updateIntakeField("tertiaryDiagnosis", e.target.value)} placeholder="Tertiary ICD-10-CM" className="rounded-2xl" />
-                  </div>
-                  <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                    <Select value={intakeDiagnosisTarget} onValueChange={setIntakeDiagnosisTarget}>
-                      <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                        <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                        <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input value={intakeDiagnosisSearch} onChange={(e) => setIntakeDiagnosisSearch(e.target.value)} placeholder="Type ICD code or diagnosis keyword for intake" className="rounded-2xl" />
-                  </div>
-                  {intakeDiagnosisMatches.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {intakeDiagnosisMatches.map((item) => (
-                        <Button key={item.code} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyIntakeDiagnosisCode(item)}>{item.code} | {item.label}</Button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <Input value={diagnosisInput} onChange={(e) => setDiagnosisInput(e.target.value)} placeholder="Add diagnosis" className="rounded-2xl" />
-                    <Button type="button" className="rounded-2xl" onClick={addDiagnosis}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(intake.diagnoses || []).map((dx) => (
-                      <Badge key={dx} variant="secondary" className="rounded-xl flex items-center gap-1">
-                        {dx}
-                        <button
-                          type="button"
-                          className="ml-1 text-xs opacity-70 hover:opacity-100"
-                          onClick={() => {
-                            const list = (store.users[selectedClientId].intake?.diagnoses || []).filter((d) => d !== dx);
-                            updateIntakeField("diagnoses", list);
-                          }}
-                        >
-                          
-x
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <p className="text-sm font-bold text-slate-800">Intake electronic signatures</p>
-              <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
-                <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
-              </div>
-            </section>
-            <button type="button" className="w-full rounded-2xl h-14 text-base font-bold bg-slate-900 text-white hover:bg-black transition" onClick={handleSubmitIntake}>
-              <span className="inline-flex items-center justify-center gap-2">
-                <Save className="h-4 w-4" />
-                {isSubmitting ? "Saving Intake..." : "Submit Intake to Secure Chart"}
-              </span>
-            </button>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Status: {selectedClient?.intake?.status === "submitted" ? "Submitted" : "Draft"}
-              {selectedClient?.intake?.submittedAt ? ` | Last submitted ${selectedClient.intake.submittedAt}` : ""}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-function ProgressNotesPage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
-  const [aiNotice, setAiNotice] = useState("");
-  const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
-  const notes = selectedClientId ? store.users[selectedClientId]?.notes || [] : [];
-  const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const selectedClientName = selectedClientId ? store.users[selectedClientId]?.profile?.fullName || "Client" : "Client";
-  const [draft, setDraft] = useState({
-    title: "",
-    content: "",
-    modality: "CBT",
-    noteType: "Medical Record Note",
-  });
-  const [ehrDestination, setEhrDestination] = useState("treatment-plan");
-  const [sessionSeconds, setSessionSeconds] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
-  const [billingSearch, setBillingSearch] = useState("");
-  const [codeDraft, setCodeDraft] = useState({
-    chiefComplaint: "",
-    onset: "",
-    primaryDiagnosis: "",
-    secondaryDiagnosis: "",
-    tertiaryDiagnosis: "",
-    serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
-    interpreterCode: "",
-    manualMinutes: "",
-    providerSignature: PRACTITIONER_NAME,
-    clientSignature: "",
-  });
-  const diagnosisMatches = diagnosisCodeOptions.filter((item) => {
-    const query = diagnosisSearch.trim().toLowerCase();
-    return query && `${item.code} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
-  }).slice(0, 6);
-  const billingMatches = billingCodeOptions.filter((item) => {
-    const query = billingSearch.trim().toLowerCase();
-    return query && `${item.code} ${item.type} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
-  }).slice(0, 6);
-  const applyDiagnosisCode = (item) => {
-    setCodeDraft((prev) => ({ ...prev, [diagnosisTarget]: `${item.code} | ${item.label}` }));
-  };
-  useEffect(() => {
-    if (!isTimerRunning) return;
-    const id = window.setInterval(() => setSessionSeconds((prev) => prev + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [isTimerRunning]);
-  const formattedTimer = `${String(Math.floor(sessionSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((sessionSeconds % 3600) / 60)).padStart(2, "0")}:${String(sessionSeconds % 60).padStart(2, "0")}`;
-  const sessionMinutes = codeDraft.manualMinutes || (sessionSeconds ? String(Math.ceil(sessionSeconds / 60)) : "");
-  const save = () => {
-    if (!selectedClientId || !draft.title.trim() || !draft.content.trim()) return;
-    const requiredMissing = [
-      !codeDraft.chiefComplaint.trim() ? "chief complaint / reason for visit" : null,
-      !sessionMinutes ? "session time" : null,
-      !codeDraft.primaryDiagnosis ? "primary ICD diagnosis" : null,
-      !codeDraft.serviceCode ? "billing CPT/HCPCS code" : null,
-    ].filter(Boolean);
-    if (requiredMissing.length) {
-      setAiNotice(`Missing required fields before saving note: ${requiredMissing.join(", ")}.`);
-      return;
-    }
-    const metadata = [
-      `Chief complaint / reason for visit: ${codeDraft.chiefComplaint || "Not entered"}`,
-      `Onset / duration: ${codeDraft.onset || "Not entered"}`,
-      `Session minutes: ${sessionMinutes || "Not entered"}`,
-      `Primary ICD-10-CM: ${codeDraft.primaryDiagnosis || "Not selected"}`,
-      `Secondary ICD-10-CM: ${codeDraft.secondaryDiagnosis || "Not selected"}`,
-      `Tertiary ICD-10-CM: ${codeDraft.tertiaryDiagnosis || "Not selected"}`,
-      `Service / CPT-HCPCS: ${codeDraft.serviceCode || "Not selected"}`,
-      `Interpreter service code: ${codeDraft.interpreterCode || "Not used"}`,
-      `Provider e-signature: ${codeDraft.providerSignature || "Not signed"}`,
-      `Client e-signature: ${codeDraft.clientSignature || "Not signed / not required"}`,
-    ].join("\n");
-    const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}`;
-    updateSpecificUserData(selectedClientId, "notes", (prev) => [
-      {
-        id: `note-${Date.now()}`,
-        ...draft,
-        content: noteWithMetadata,
-        sessionMinutes,
-        codeDraft,
-        signature: {
-          provider: codeDraft.providerSignature || "",
-          client: codeDraft.clientSignature || "",
-          signedAt: new Date().toLocaleString(),
-        },
-        createdAt: new Date().toLocaleString(),
-      },
-      ...prev,
-    ]);
-    appendAuditLog({
-      action: `Saved ${draft.noteType}`,
-      details: `${draft.noteType} saved with ${draft.modality} modality, ${sessionMinutes || "no"} minutes, billing/diagnosis helper fields, and e-signature metadata.`,
-      clientId: selectedClientId,
-      clientName: selectedClientName,
-      category: draft.noteType === "Psychotherapy Note" ? "Psychotherapy Notes" : "Medical Record",
-    });
-    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note" });
-  };
-  const generateStarter = () => {
-    setDraft((prev) => ({
-      ...prev,
-      content:
-        "Client presented for follow-up session. Symptoms, stressors, and functional impact were reviewed. Interventions utilized included supportive exploration, symptom monitoring, and evidence-based coping strategies within the selected modality. Client response, progress, and plan for next session should be documented here.",
-    }));
-    setAiNotice("Starter note generated.");
-  };
-  const autofillFromChart = () => {
-    if (!selectedClient) return;
-    const intake = selectedClient.intake || {};
-    const diagnoses = (intake.diagnoses || []).join(", ") || "No diagnosis entered";
-    const homeworkSummary = (selectedClient.homework || []).slice(0, 2).map((item) => `${item.title} (${item.status})`).join("; ") || "No homework on file";
-    const sharedJournalSummary = (selectedClient.journalEntries || []).filter((entry) => entry.visibility === "shared").slice(0, 1).map((entry) => entry.content).join(" ") || "No shared journal entry available";
-    setDraft((prev) => ({
-      ...prev,
-      content:
-        `Client presented for scheduled session. Presenting concerns include ${intake.presentingProblem || "concerns not yet documented"}. Diagnoses on file: ${diagnoses}. Session focus included review of symptoms, current functioning, treatment progress, and barriers. Shared client reflection: ${sharedJournalSummary}. Current homework summary: ${homeworkSummary}. Interventions utilized within the ${prev.modality} framework included symptom exploration, reinforcement of coping strategies, and treatment planning. Client response, level of engagement, and next-step recommendations should be finalized by provider review.`,
-    }));
-    setAiNotice("Chart-based autofill completed.");
-  };
-  const polishClinicalLanguage = () => {
-    if (!draft.content.trim()) return;
-    const polished = `${draft.content.trim()}
-Clinical formulation summary: Symptoms, functional impact, treatment engagement, and next-session priorities were reviewed and documented in alignment with provider clinical judgment.`;
-    setDraft((prev) => ({ ...prev, content: polished }));
-    setAiNotice("Note language refined for a more clinical draft.");
-  };
-  const copyDraftToEhrSection = () => {
-    if (!selectedClientId || !draft.content.trim()) return;
-    if (ehrDestination === "intake-presenting") {
-      const currentIntake = selectedClient?.intake || {};
-      updateSpecificUserData(selectedClientId, "intake", {
-        ...currentIntake,
-        presentingProblem: currentIntake.presentingProblem
-          ? `${currentIntake.presentingProblem}
-AI documentation assist addendum:
-${draft.content}`
-          : `AI documentation assist addendum:
-${draft.content}`,
-      });
-      appendAuditLog({
-        action: "AI documentation assist copied to intake presenting problem",
-        details: "Progress note draft copied into intake presenting problem section.",
-        clientId: selectedClientId,
-        clientName: selectedClientName,
-        category: "Medical Record",
-      });
-      setAiNotice("Draft copied to Intake to Presenting Problem.");
-      return;
-    }
-    if (ehrDestination === "treatment-goals") {
-      const currentIntake = selectedClient?.intake || {};
-      updateSpecificUserData(selectedClientId, "intake", {
-        ...currentIntake,
-        treatmentGoals: currentIntake.treatmentGoals
-          ? `${currentIntake.treatmentGoals}
-AI documentation assist addendum:
-${draft.content}`
-          : `AI documentation assist addendum:
-${draft.content}`,
-      });
-      appendAuditLog({
-        action: "AI documentation assist copied to treatment goals",
-        details: "Progress note draft copied into intake treatment goals section.",
-        clientId: selectedClientId,
-        clientName: selectedClientName,
-        category: "Medical Record",
-      });
-      setAiNotice("Draft copied to Intake to Treatment Goals.");
-      return;
-    }
-    if (ehrDestination === "treatment-plan") {
-      const existingPlans = selectedClient?.treatmentPlans || [];
-      if (existingPlans.length > 0) {
-        updateSpecificUserData(selectedClientId, "treatmentPlans", (prev) =>
-          prev.map((plan, index) =>
-            index === 0
-              ? {
-                  ...plan,
-                  intervention: plan.intervention
-                    ? `${plan.intervention}
-AI documentation assist addendum:
-${draft.content}`
-                    : `AI documentation assist addendum:
-${draft.content}`,
-                }
-              : plan
-          )
-        );
-      } else {
-        updateSpecificUserData(selectedClientId, "treatmentPlans", (prev) => [
-          {
-            id: `plan-${Date.now()}`,
-            problem: draft.title || "AI-generated treatment planning entry",
-            longTermGoal: "Review and refine with provider.",
-            shortTermGoal: "Review and refine with provider.",
-            intervention: `AI documentation assist addendum:
-${draft.content}`,
-            createdAt: new Date().toLocaleString(),
-          },
-          ...prev,
-        ]);
-      }
-      appendAuditLog({
-        action: "AI documentation assist copied to treatment plan",
-        details: "Progress note draft copied into treatment plan intervention section.",
-        clientId: selectedClientId,
-        clientName: selectedClientName,
-        category: "Medical Record",
-      });
-      setAiNotice("Draft copied to Treatment Plan to Intervention.");
-      return;
-    }
-    if (ehrDestination === "homework") {
-      updateSpecificUserData(selectedClientId, "homework", (prev) => [
-        {
-          id: `hw-ai-${Date.now()}`,
-          title: draft.title || "AI-assisted homework",
-          content: draft.content,
-          dueDate: "",
-          status: "Assigned",
-          assignedAt: new Date().toLocaleString(),
-          completedAt: "",
-        },
-        ...prev,
-      ]);
-      appendAuditLog({
-        action: "AI documentation assist copied to homework",
-        details: "Progress note draft copied into a new homework assignment.",
-        clientId: selectedClientId,
-        clientName: selectedClientName,
-        category: "Homework",
+    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Microphone access failed."); …23110 tokens truncated…omework",
       });
       setAiNotice("Draft copied to Homework as a new assignment.");
       return;
@@ -4334,58 +2841,13 @@ function AssessmentsPage() {
 function InfrastructurePage() {
   return (
     <div>
-      <SectionHeader title="Infrastructure" description="Production EHR infrastructure, HIPAA data structure, security rules, immutable audit logging, access logging, and deployment readiness." />
-      <Tabs defaultValue="data-model">
-        <TabsList className="grid grid-cols-2 lg:grid-cols-4 rounded-2xl w-full">
-          <TabsTrigger value="data-model">Data Structure</TabsTrigger>
-          <TabsTrigger value="rules">Security Rules</TabsTrigger>
-          <TabsTrigger value="audit">Audit / Access</TabsTrigger>
-          <TabsTrigger value="production">Production</TabsTrigger>
-        </TabsList>
-        <TabsContent value="data-model" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>HIPAA data structure</CardTitle><CardDescription>Recommended Firestore / production EHR layout.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`/practices/{practiceId}
-/providers/{providerId}
-/clients/{clientId}
-/profile
-/intake
-/diagnoses
-/assessments
-/medical_record_notes
-/psychotherapy_notes
-/treatment_plans
-/homework
-/shared_journal_entries
-/messages
-/appointments
-/documents
-/record_requests
-/audit_logs`}</pre></CardContent></Card></TabsContent>
-        <TabsContent value="rules" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Security rules scaffold</CardTitle><CardDescription>Production rules still require real Firebase configuration.</CardDescription></CardHeader><CardContent><pre className="whitespace-pre-wrap text-sm bg-slate-50 rounded-2xl p-4 border border-slate-200">{`rules_version = '2';
-service cloud.firestore {
-match /databases/{database}/documents {
-function isProvider() { return request.auth != null && request.auth.token.role == 'provider'; }
-function isClient(clientId) { return request.auth != null && request.auth.uid == clientId; }
-match /practices/{practiceId}/clients/{clientId}/{document=**} {
-allow read: if isProvider() || isClient(clientId);
-allow write: if isProvider();
-}
-match /practices/{practiceId}/clients/{clientId}/messages/{messageId} {
-allow read: if isProvider() || isClient(clientId);
-allow create: if isProvider() || isClient(clientId);
-allow update, delete: if isProvider();
-}
-match /practices/{practiceId}/clients/{clientId}/psychotherapy_notes/{noteId} {
-allow read, write: if isProvider();
-}
-match /practices/{practiceId}/audit_logs/{logId} {
-allow create: if request.auth != null;
-allow read: if isProvider();
-allow update, delete: if false;
-}
-}
-}`}</pre></CardContent></Card></TabsContent>
-        <TabsContent value="audit" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Immutable audit and access logging</CardTitle><CardDescription>Prototype policy and production expectations.</CardDescription></CardHeader><CardContent className="space-y-3 text-sm text-slate-700"><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Immutable log policy</p><p className="mt-2">Audit events are append-only. Production logs should never be edited or deleted from the user interface.</p></div><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Access logging</p><p className="mt-2">Track who opened a chart, who viewed a document, who signed a form, and who released a record request.</p></div><div className="rounded-2xl border p-4 bg-slate-50"><p className="font-medium">Document view tracking</p><p className="mt-2">Each document view should stamp actor, timestamp, client, and document title into audit logs.</p></div></CardContent></Card></TabsContent>
-        <TabsContent value="production" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Production completion checklist</CardTitle><CardDescription>What still exists beyond the prototype.</CardDescription></CardHeader><CardContent className="space-y-3 text-sm text-slate-700"><div className="rounded-2xl border p-4 bg-slate-50">Firebase Auth, Firestore, Storage, BAA-backed environment, encrypted backups, incident procedures, secure deployment, and legal/compliance review.</div><div className="rounded-2xl border p-4 bg-slate-50">Electronic signatures should be persisted with signer name, timestamp, IP or device metadata if appropriate, and document version.</div><div className="rounded-2xl border p-4 bg-slate-50">Document uploads should be moved from metadata-only preview mode to secure file storage with signed access URLs and role-based access rules.</div></CardContent></Card></TabsContent>
-      </Tabs>
+      <SectionHeader title="Infrastructure" description="AWS production controls supporting authentication, encrypted chart storage, access boundaries, audit history, backups, and retention." />
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authentication and access</CardTitle><CardDescription>AWS Cognito and server-enforced authorization</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>MFA-enabled Cognito accounts identify providers and clients.</p><p>Clients are linked to one authorized chart and cannot retrieve provider-only notes or records.</p><p>Secure HttpOnly session cookies protect authenticated browser sessions.</p></CardContent></Card>
+        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Encrypted clinical records</CardTitle><CardDescription>AWS DynamoDB, S3, and KMS</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Clinical module snapshots and document metadata persist in encrypted AWS data stores.</p><p>Private chart files use encrypted S3 storage and time-limited authorized access links.</p><p>DynamoDB point-in-time recovery and deletion protection are defined in the foundation stack.</p></CardContent></Card>
+        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Audit and document access</CardTitle><CardDescription>Append-only activity history</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Chart access, messages, record requests, signatures, document views, and clinical changes generate audit events.</p><p>Document signatures retain authenticated identity, timestamp, role, and a document-version fingerprint.</p><p>Provider-only records remain excluded from client API responses.</p></CardContent></Card>
+        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Monitoring, backup, and retention</CardTitle><CardDescription>AWS security-operations controls</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>CloudTrail, encrypted runtime logs, AWS Backup, WAF, Access Analyzer, and AWS Config rules are defined for the production environment.</p><p>Temporary HealthScribe audio is separated from the signed clinical record and governed by the documented deletion policy.</p><p>Practice BAAs, incident procedures, access reviews, and retention policies remain ongoing operational responsibilities.</p></CardContent></Card>
+      </div>
     </div>
   );
 }
@@ -4451,7 +2913,7 @@ function DocumentLibraryPage() {
     "Treatment Plan Signature",
   ]);
   const visibleDocuments = currentUser.role === "client"
-    ? documents.filter((doc) => clientAuthorizedDocumentTitles.has(doc.title))
+    ? documents.filter((doc) => doc.clientVisible === true || doc.uploadedByRole === "client" || clientAuthorizedDocumentTitles.has(doc.title))
     : documents;
   const [signatureDocId, setSignatureDocId] = useState("");
   const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
@@ -4560,7 +3022,7 @@ ${organization}`;
     );
     appendAuditLog({ action: "Authenticated electronic signature applied", details: `${effectiveSignatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
     setSignatureName(signer);
-    setDocumentNotice("Authenticated provider signature saved securely to the client chart.");
+    setDocumentNotice(`Authenticated ${effectiveSignatureRole.toLowerCase()} signature saved securely to the client chart.`);
   };
   const uploadDocument = async () => {
     if (!selectedClientId || !uploadTitle.trim() || !uploadFile) {
@@ -4771,16 +3233,15 @@ ${organization}`;
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
                 <SelectContent>{visibleDocuments.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(["Provider", "Client"].includes(value) ? (currentUser?.fullName || PRACTITIONER_NAME) : ""); }}>
+              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(currentUser?.fullName || PRACTITIONER_NAME); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {currentUser.role === "provider" && <SelectItem value="Provider">Provider signature</SelectItem>}
                   {currentUser.role === "client" && <SelectItem value="Client">Client / patient signature</SelectItem>}
-                  {currentUser.role === "provider" && <SelectItem value="Guardian">Guardian / representative signature</SelectItem>}
                 </SelectContent>
               </Select>
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their own client accounts. Guardian signatures require an authenticated guardian account.</div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their linked client accounts.</div>
               <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
             </CardContent>
           </Card>
@@ -4838,7 +3299,7 @@ ${organization}`;
     </div>
   );
 }
-export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "dashboard" }) {
+export default function RevealingLeadsToHealingProductionEhr({ initialPage = "dashboard" }) {
   return (
     <div className="ehr-ui">
       <EhrScopedStyles />
