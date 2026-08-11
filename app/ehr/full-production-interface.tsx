@@ -1759,6 +1759,11 @@ function TelehealthPage() {
     finally { setIsAudioBusy(false); }
   };
   useEffect(() => {
+    if (!awsScribeJob.jobName || ["COMPLETED", "FAILED"].includes(awsScribeJob.status)) return;
+    const id = window.setInterval(() => { void checkHealthScribeJob(); }, 10000);
+    return () => window.clearInterval(id);
+  }, [awsScribeJob.jobName, awsScribeJob.status]);
+  useEffect(() => {
     if (!isScribeTimerRunning) return;
     const id = window.setInterval(() => setScribeSeconds((prev) => prev + 1), 1000);
     return () => window.clearInterval(id);
@@ -1866,6 +1871,11 @@ ${sessionForm.recordingVerbiage}`);
     }
   };
   const generateClinicalDocumentation = () => {
+    if (!transcriptText.trim()) {
+      setGeneratedDocs(null);
+      setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before generating a clinical draft.");
+      return;
+    }
     const docs = buildGeneratedClinicalDocumentation();
     setGeneratedDocs(docs);
     appendAuditLog({
@@ -1887,7 +1897,10 @@ ${sessionForm.recordingVerbiage}`);
     }
   };
   const saveStructuredDraftToChart = () => {
-    if (!generatedDocs?.structuredNote || !activeClientId) return;
+    if (!generatedDocs?.structuredNote || !activeClientId || !transcriptText.trim()) {
+      setCopyNotice("A completed transcript is required before a generated draft can be saved to the chart.");
+      return;
+    }
     const structured = generatedDocs.structuredNote;
     updateSpecificUserData(activeClientId, "notes", (prev) => [
       {
@@ -1924,6 +1937,10 @@ ${sessionForm.recordingVerbiage}`);
   };
   const mergeScribeToEhr = () => {
     if (!activeClientId) return;
+    if (!transcriptText.trim()) {
+      setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before merging into the EHR.");
+      return;
+    }
     const requiredMissing = [
       !scribeMeta.chiefComplaint.trim() ? "chief complaint / reason for visit" : null,
       !scribeSessionMinutes ? "session time" : null,
@@ -2239,12 +2256,13 @@ ${sessionForm.recordingVerbiage}`);
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-slate-900">Encrypted AWS HealthScribe audio transcription</p>
               <p className="text-xs text-slate-600">Recording consent must be checked above. Audio is encrypted during upload, used to create a preliminary draft, and deleted after successful retrieval.</p>
+              <p className="text-xs font-medium text-slate-800">For a live recording, click Start, then Stop and securely transcribe. Stopping automatically encrypts, uploads, and starts AWS HealthScribe.</p>
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
                   ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
                   : <Button type="button" disabled={isAudioBusy || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start consented audio capture</Button>}
                 <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
-                  Upload consented audio
+                  Upload an existing audio file
                   <input hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
                 </label>
                 {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
@@ -2253,9 +2271,9 @@ ${sessionForm.recordingVerbiage}`);
             </div>
             <Textarea value={transcriptText} onChange={(e) => setTranscriptText(e.target.value)} className="min-h-[180px] rounded-2xl" placeholder="Paste Spruce transcript/summary or EHR session transcript here. The EHR maps it into the selected note template fields." />
             <div className="flex flex-wrap gap-2">
-              <Button className="rounded-2xl" onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
-              <Button variant="outline" className="rounded-2xl" onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={!generatedDocs} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
+              <Button className="rounded-2xl" disabled={!transcriptText.trim()} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={!transcriptText.trim()} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={!generatedDocs || !transcriptText.trim()} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
             </div>
             {generatedDocs && (
               <div className="space-y-4 pt-2">
@@ -2325,12 +2343,12 @@ ${generatedDocs.intakeDraft.biopsychosocialSummary}`}</div>
               <p className="text-sm"><span className="font-medium">Consent obtained:</span> {entry.consentObtained ? "Yes" : "No"}</p>
               <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Consent text:</span> {entry.consentVerbiage}</p>
               <p className="text-sm"><span className="font-medium">Recording consent:</span> {entry.recordingConsent ? "Yes" : "No"}</p>
-              <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Recording text:</span> {entry.recordingVerbiage}</p>
+              {entry.recordingConsent && <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Recording text:</span> {entry.recordingVerbiage}</p>}
               <p className="text-sm"><span className="font-medium">Language used:</span> {entry.languageUsed || "Not entered"}</p>
               <p className="text-sm"><span className="font-medium">Interpreter used:</span> {entry.interpreterNeeded ? "Yes" : "No"}</p>
-              <p className="text-sm"><span className="font-medium">Interpreter type:</span> {entry.interpreterType || "Not entered"}</p>
-              <p className="text-sm"><span className="font-medium">Interpreter / translator:</span> {entry.interpreterName || "Not entered"}</p>
-              <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Translation notes:</span> {entry.translationNotes || "None"}</p>
+              {entry.interpreterNeeded && <p className="text-sm"><span className="font-medium">Interpreter type:</span> {entry.interpreterType || "Not entered"}</p>}
+              {entry.interpreterNeeded && <p className="text-sm"><span className="font-medium">Interpreter / translator:</span> {entry.interpreterName || "Not entered"}</p>}
+              {entry.interpreterNeeded && <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Translation notes:</span> {entry.translationNotes || "None"}</p>}
             </div>
           ))}
         </CardContent>
@@ -4427,6 +4445,5 @@ export default function RevealingLeadsToHealingFirebaseStarter({ initialPage = "
     </div>
   );
 }
-
 
 
