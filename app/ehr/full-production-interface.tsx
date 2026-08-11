@@ -3886,8 +3886,8 @@ function ClientRecordRequestPage() {
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const requests = (store.recordRequests || []).filter((item) => item.clientId === currentClientId);
   const handleSubmit = () => {
-    if (!reason.trim()) return;
-    submitRecordRequest({ requestType, reason });
+    const requestReason = reason.trim() || "No additional details provided.";
+    submitRecordRequest({ requestType, reason: requestReason });
     appendAuditLog({
       action: "Submitted records request",
       details: `${requestType} requested by client through portal.`,
@@ -3918,7 +3918,18 @@ function ClientRecordRequestPage() {
                 <SelectItem value="Progress Note Request">Progress Note Request</SelectItem>
               </SelectContent>
             </Select>
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="min-h-[220px] rounded-2xl" placeholder="Reason for request" />
+            <div className="space-y-2">
+              <Label htmlFor="record-request-details" className="block text-sm font-semibold text-slate-900">
+                Additional details (optional)
+              </Label>
+              <Textarea
+                id="record-request-details"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                className="min-h-[160px] rounded-2xl border-2 border-slate-400 bg-white text-slate-950 placeholder:text-slate-500"
+                placeholder="Add any details you want the practice to know. You may leave this blank."
+              />
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               Psychotherapy notes are provider restricted and are not released through routine portal access.
             </div>
