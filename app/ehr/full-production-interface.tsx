@@ -567,7 +567,7 @@ function AuthProvider({ children }) {
           action: event.action,
           details: event.summary || "",
           clientId: event.clientId || "",
-          clientName: "",
+          clientName: users[event.clientId]?.profile?.fullName || "",
         }));
         const recordRequests = Object.values(users).flatMap((bucket) => bucket.recordRequests || []);
         const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests, users };
