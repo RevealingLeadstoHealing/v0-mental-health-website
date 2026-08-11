@@ -1,2 +1,2 @@
-Release: consolidated production EHR validation and security corrections
-Base commit: 641d2234e9e6a888c016427b8ed3536bd65b1e60
+Release: complete validated production EHR interface and corrected Ohio security operations template
+Base commit: eb777d55adfd09a8e1ff834930d0884355e335ff
