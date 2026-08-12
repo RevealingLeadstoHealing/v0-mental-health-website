@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Login failed.",
+        error: `${error instanceof Error ? error.message : "Login failed."} Reference: ${diagnosticId}`,
         diagnosticId,
       },
       { status: 401 }
