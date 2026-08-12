@@ -31,6 +31,18 @@ export async function POST(request: Request) {
       },
     });
 
+    console.info(
+      JSON.stringify({
+        event: "ehr-login-accepted",
+        diagnosticId,
+        requestHost,
+        submittedEmailLength,
+        normalizedEmailLength,
+        submittedPasswordLength,
+        challengeName: typeof data.ChallengeName === "string" ? data.ChallengeName : "authenticated",
+      })
+    );
+
     return authResponseFromCognito(data, email);
   } catch (error) {
     console.error(
