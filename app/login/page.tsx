@@ -34,6 +34,7 @@ export default function LoginPage() {
   const [user, setUser] = useState<LoginUser | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [recoveryMode, setRecoveryMode] = useState<"" | "request" | "confirm">("");
@@ -315,6 +316,8 @@ export default function LoginPage() {
         .rlth-login label { display: block; margin-top: .9rem; color: #514a41; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
         .rlth-login input { width: 100%; min-height: 2.55rem; margin-top: .35rem; padding: .6rem .75rem; border: 1px solid #cfc4b2; border-radius: 8px; background: #fff; color: #2b2926; font: inherit; outline: none; }
         .rlth-login input:focus { border-color: #2b2926; box-shadow: 0 0 0 2px rgba(221, 211, 193, .75); }
+        .rlth-login-password-toggle { display: inline-flex !important; align-items: center; gap: .5rem; margin-top: .65rem !important; color: #514a41 !important; font-size: .9rem !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
+        .rlth-login-password-toggle input { width: 1rem; min-height: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: #2b2926; }
         .rlth-login-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.1rem; }
         .rlth-login button, .rlth-login-link { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; padding: .6rem 1rem; border: 1px solid #2b2926; border-radius: 8px; background: #2b2926; color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; cursor: pointer; }
         .rlth-login button.secondary, .rlth-login-link.secondary { background: #fff; color: #2b2926; }
@@ -338,7 +341,15 @@ export default function LoginPage() {
             <label>Email</label>
             <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
             <label>Password</label>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <label className="rlth-login-password-toggle">
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(event) => setShowPassword(event.target.checked)}
+              />
+              Show password
+            </label>
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={handleLogin}>Sign in</button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("request")}>Forgot password</button>
