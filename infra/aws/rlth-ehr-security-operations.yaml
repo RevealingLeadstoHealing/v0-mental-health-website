@@ -115,6 +115,77 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+      Policies:
+        - PolicyName: !Sub "${PracticeSlug}-${EnvironmentName}-ehr-s3-backup-restore"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BackupServiceDiscovery
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - events:ListRules
+                  - s3:ListAllMyBuckets
+                Resource: "*"
+              - Sid: BackupManagedEventRule
+                Effect: Allow
+                Action:
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:DescribeRule
+                  - events:EnableRule
+                  - events:PutRule
+                  - events:RemoveTargets
+                  - events:ListTargetsByRule
+                  - events:DisableRule
+                Resource: !Sub "arn:${AWS::Partition}:events:*:${AWS::AccountId}:rule/AwsBackupManagedRule*"
+              - Sid: EhrDocumentsBucketBackupRestore
+                Effect: Allow
+                Action:
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                  - s3:GetBucketNotification
+                  - s3:GetBucketOwnershipControls
+                  - s3:GetBucketTagging
+                  - s3:GetBucketVersioning
+                  - s3:GetInventoryConfiguration
+                  - s3:ListBucket
+                  - s3:ListBucketVersions
+                  - s3:PutBucketNotification
+                  - s3:PutBucketOwnershipControls
+                  - s3:PutBucketVersioning
+                  - s3:PutInventoryConfiguration
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${PracticeSlug}-${EnvironmentName}-ehr-documents-${AWS::AccountId}"
+              - Sid: EhrDocumentsObjectBackupRestore
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:GetObjectAcl
+                  - s3:GetObjectTagging
+                  - s3:GetObjectVersion
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                  - s3:ListMultipartUploadParts
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:PutObjectTagging
+                  - s3:PutObjectVersionAcl
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${PracticeSlug}-${EnvironmentName}-ehr-documents-${AWS::AccountId}/*"
+              - Sid: EhrKmsBackupRestore
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                  - kms:GenerateDataKey
+                Resource: !Ref KmsKeyArn
+                Condition:
+                  StringLike:
+                    kms:ViaService: !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"
+              - Sid: RecoveryPointTagging
+                Effect: Allow
+                Action: backup:TagResource
+                Resource: !Sub "arn:${AWS::Partition}:backup:*:${AWS::AccountId}:recovery-point:*"
       Tags:
         - Key: Application
           Value: RLTH-EHR
