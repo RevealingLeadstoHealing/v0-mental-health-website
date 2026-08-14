@@ -402,6 +402,7 @@ function normalizeUserBucket(bucket = {}, fallback = {}) {
       safetyPlan: null,
     } : {}),
     documents: Array.isArray(bucket.documents) ? bucket.documents : [],
+    billingClaims: Array.isArray(bucket.billingClaims) ? bucket.billingClaims : [],
     intake: typeof bucket.intake !== "undefined" ? bucket.intake : (isClient ? { fullName: profile.fullName || "", presentingProblem: "", diagnoses: [] } : null),
     messages: Array.isArray(bucket.messages) ? bucket.messages : [],
     appointments: Array.isArray(bucket.appointments) ? bucket.appointments : [],
@@ -3572,16 +3573,64 @@ ${draft.content}`,
     </div>
   );
 }
+const billingPayerDefinitions = [
+  { id: "all", label: "All Claims", aliases: [] },
+  { id: "healthfirst", label: "Healthfirst", aliases: ["healthfirst", "health first"] },
+  { id: "aetna", label: "Aetna", aliases: ["aetna"] },
+  { id: "bcbs", label: "Blue Cross Blue Shield", aliases: ["blue cross", "blue shield", "bcbs", "anthem", "empire"] },
+  { id: "cigna", label: "Cigna", aliases: ["cigna", "evernorth"] },
+  { id: "medicare-medicaid", label: "Medicare / Medicaid", aliases: ["medicare", "medicaid", "emmedny", "emedny"] },
+  { id: "self-pay", label: "Self-Pay", aliases: ["self pay", "self-pay", "private pay", "cash"] },
+  { id: "other", label: "Other", aliases: [] },
+];
+const billingClaimStatuses = ["Draft", "Action Required", "Ready", "Queued", "Submitted", "Paid", "Rejected", "Denied"];
+function classifyBillingPayer(value = "") {
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return "other";
+  return billingPayerDefinitions.find((payer) => payer.id !== "all" && payer.id !== "other" && payer.aliases.some((alias) => normalized.includes(alias)))?.id || "other";
+}
+function billingPayerLabel(id) {
+  return billingPayerDefinitions.find((payer) => payer.id === id)?.label || "Other";
+}
+function billingMoney(value) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value) || 0);
+}
+function billingStatusClass(status) {
+  if (status === "Paid") return "bg-emerald-100 text-emerald-800";
+  if (status === "Ready" || status === "Queued") return "bg-blue-100 text-blue-800";
+  if (status === "Rejected" || status === "Denied" || status === "Action Required") return "bg-red-100 text-red-800";
+  if (status === "Submitted") return "bg-violet-100 text-violet-800";
+  return "bg-stone-100 text-stone-700";
+}
+
 function BillingPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const [activePayer, setActivePayer] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const intake = selectedClient?.intake || {};
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [notice, setNotice] = useState("");
+  const claims = useMemo(() => clients.flatMap(([clientId, bucket]) =>
+    (bucket.billingClaims || []).map((claim) => ({
+      ...claim,
+      clientId,
+      clientName: bucket.profile.fullName || "Client",
+      payerId: claim.payerId || classifyBillingPayer(claim.payerName),
+    }))
+  ).sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))), [store.users]);
+  const filteredClaims = claims.filter((claim) =>
+    (activePayer === "all" || claim.payerId === activePayer) &&
+    (statusFilter === "all" || claim.status === statusFilter)
+  );
+  const totals = filteredClaims.reduce((summary, claim) => ({
+    billed: summary.billed + (Number(claim.chargeAmount) || 0),
+    paid: summary.paid + (Number(claim.paidAmount) || 0),
+  }), { billed: 0, paid: 0 });
   const diagnosisMatches = diagnosisCodeOptions.filter((item) => {
     const query = diagnosisSearch.trim().toLowerCase();
     return query && `${item.code} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
@@ -3619,7 +3668,24 @@ function BillingPage() {
   const saveBillingSnapshot = () => {
     if (!selectedClientId) return;
     const current = store.users[selectedClientId].intake || {};
-    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nProvider signature: ${current.providerSignature || PRACTITIONER_NAME}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
+    const payerName = current.insurancePayer || "Other";
+    const payerId = classifyBillingPayer(payerName);
+    const ready = Boolean(current.primaryDiagnosis && (current.billingCodes || []).length && current.dateOfService && current.chargeAmount);
+    const claim = {
+      id: `claim-${Date.now()}`,
+      payerId,
+      payerName,
+      dateOfService: current.dateOfService || "",
+      status: ready ? "Ready" : "Action Required",
+      billingCodes: current.billingCodes || [],
+      diagnoses: [current.primaryDiagnosis, current.secondaryDiagnosis, current.tertiaryDiagnosis].filter(Boolean),
+      chargeAmount: Number(current.chargeAmount) || 0,
+      paidAmount: 0,
+      transmissionEnabled: false,
+      createdAt: new Date().toISOString(),
+    };
+    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${current.providerSignature || PRACTITIONER_NAME}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
+    updateSpecificUserData(selectedClientId, "billingClaims", (prev) => [claim, ...(prev || [])]);
     updateSpecificUserData(selectedClientId, "documents", (prev) => [
       {
         id: `billing-${Date.now()}`,
@@ -3635,30 +3701,77 @@ function BillingPage() {
       ...((prev || [])),
     ]);
     appendAuditLog({
-      action: "Saved quick billing snapshot",
-      details: "Billing diagnosis, CPT/HCPCS, time, and signature fields saved to chart documents.",
+      action: "Created billing claim draft",
+      details: `Billing snapshot routed to ${billingPayerLabel(payerId)} with claim transmission disabled.`,
       clientId: selectedClientId,
       clientName: selectedClient?.profile?.fullName || "Client",
       category: "Billing",
     });
-    setNotice("Quick billing snapshot saved to Document Library.");
-    setTimeout(() => setNotice(""), 3000);
+    setActivePayer(payerId);
+    setNotice(`Claim draft saved to ${billingPayerLabel(payerId)} and Document Library. No claim was transmitted.`);
+    setTimeout(() => setNotice(""), 5000);
   };
   return (
     <div>
-      <SectionHeader title="Billing" description="Quick billing workspace for ICD diagnosis, CPT/HCPCS service codes, interpreter code, session minutes, and signatures." />
+      <SectionHeader title="Billing" description="Payer-organized claim workspace with a central ledger, review statuses, totals, and audit-ready routing." />
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{notice}</div>}
+      <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <span className="font-semibold">Claim transmission is disabled.</span> Drafts remain inside the EHR until payer enrollment, submission rules, and end-to-end testing are confirmed.
+      </div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Visible claims</p><p className="mt-1 text-2xl font-bold">{filteredClaims.length}</p></CardContent></Card>
+        <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Billed</p><p className="mt-1 text-2xl font-bold">{billingMoney(totals.billed)}</p></CardContent></Card>
+        <Card className="rounded-2xl"><CardContent className="p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Paid</p><p className="mt-1 text-2xl font-bold text-emerald-700">{billingMoney(totals.paid)}</p></CardContent></Card>
+      </div>
+      <Card className="mb-4 rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle>Central claim ledger</CardTitle>
+          <CardDescription>One ledger, organized by payer. Payer views do not duplicate records.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {billingPayerDefinitions.map((payer) => {
+              const count = payer.id === "all" ? claims.length : claims.filter((claim) => claim.payerId === payer.id).length;
+              return <Button key={payer.id} type="button" size="sm" variant={activePayer === payer.id ? "default" : "outline"} className="rounded-2xl" onClick={() => setActivePayer(payer.id)}>{payer.label} ({count})</Button>;
+            })}
+          </div>
+          <div className="max-w-xs">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {billingClaimStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {filteredClaims.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-600">No claim drafts match this payer and status. Use the billing fields below to create one.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead><tr className="border-b text-xs uppercase tracking-wide text-stone-500"><th className="p-3">Client</th><th className="p-3">Payer</th><th className="p-3">Date of service</th><th className="p-3">Status</th><th className="p-3 text-right">Billed</th><th className="p-3 text-right">Paid</th></tr></thead>
+                <tbody>{filteredClaims.map((claim) => <tr key={claim.id} className="border-b border-stone-100"><td className="p-3 font-medium">{claim.clientName}</td><td className="p-3">{billingPayerLabel(claim.payerId)}</td><td className="p-3">{claim.dateOfService || "Not entered"}</td><td className="p-3"><Badge className={billingStatusClass(claim.status)}>{claim.status || "Draft"}</Badge></td><td className="p-3 text-right">{billingMoney(claim.chargeAmount)}</td><td className="p-3 text-right">{billingMoney(claim.paidAmount)}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Billing fields</CardTitle>
-            <CardDescription>Codes save back to the selected client chart.</CardDescription>
+            <CardDescription>Codes save to the selected chart; the payer determines the ledger view.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Select value={selectedClientId} onValueChange={setSelectedClientId}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
             </Select>
+            <div className="grid md:grid-cols-3 gap-3">
+              <Input label="Insurance / Payer" value={intake.insurancePayer || ""} onChange={(e) => updateBillingField("insurancePayer", e.target.value)} placeholder="Healthfirst, Aetna, BCBS..." />
+              <Input label="Date of Service" type="date" value={intake.dateOfService || ""} onChange={(e) => updateBillingField("dateOfService", e.target.value)} />
+              <Input label="Charge Amount" type="number" min="0" step="0.01" value={intake.chargeAmount || ""} onChange={(e) => updateBillingField("chargeAmount", e.target.value)} placeholder="0.00" />
+            </div>
             <div className="grid md:grid-cols-2 gap-3">
               <Input label="Chief Complaint / Reason for Visit" value={intake.chiefComplaint || ""} onChange={(e) => updateBillingField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" />
               <Input label="Session Minutes" value={intake.sessionMinutes || ""} onChange={(e) => updateBillingField("sessionMinutes", e.target.value)} placeholder="Session minutes" />
@@ -3679,32 +3792,27 @@ function BillingPage() {
               </Select>
               <Input value={diagnosisSearch} onChange={(e) => setDiagnosisSearch(e.target.value)} placeholder="Type ICD code or diagnosis keyword" />
             </div>
-            {diagnosisMatches.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {diagnosisMatches.map((item) => <Button key={item.code} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyDiagnosisCode(item)}>{item.code} | {item.label}</Button>)}
-              </div>
-            )}
+            {diagnosisMatches.length > 0 && <div className="flex flex-wrap gap-2">{diagnosisMatches.map((item) => <Button key={item.code} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyDiagnosisCode(item)}>{item.code} | {item.label}</Button>)}</div>}
             <Input label="CPT / HCPCS Billing Codes" value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateBillingField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" />
             <Input value={billingSearch} onChange={(e) => setBillingSearch(e.target.value)} placeholder="Type billing keyword, e.g. intake, bio, 60, interpreter" />
-            {billingMatches.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {billingMatches.map((item) => <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyBillingCode(item)}>{item.code} | {item.label}</Button>)}
-              </div>
-            )}
+            {billingMatches.length > 0 && <div className="flex flex-wrap gap-2">{billingMatches.map((item) => <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyBillingCode(item)}>{item.code} | {item.label}</Button>)}</div>}
             <div className="grid md:grid-cols-2 gap-3">
               <Input label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder="Provider electronic signature" />
               <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateBillingField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" />
             </div>
-            <Button className="rounded-2xl" onClick={saveBillingSnapshot}><Save className="mr-2 h-4 w-4" />Save quick billing snapshot</Button>
+            <Button className="rounded-2xl" onClick={saveBillingSnapshot}><Save className="mr-2 h-4 w-4" />Save claim draft and billing snapshot</Button>
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Current billing summary</CardTitle>
-            <CardDescription>Review before claim entry or payer submission.</CardDescription>
+            <CardDescription>Review before saving the internal claim draft.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p><span className="font-medium">Client:</span> {selectedClient?.profile?.fullName || "No client selected"}</p>
+            <p><span className="font-medium">Payer:</span> {intake.insurancePayer || "Not entered"} → {billingPayerLabel(classifyBillingPayer(intake.insurancePayer))}</p>
+            <p><span className="font-medium">Date of service:</span> {intake.dateOfService || "Not entered"}</p>
+            <p><span className="font-medium">Charge:</span> {billingMoney(intake.chargeAmount)}</p>
             <p><span className="font-medium">Chief complaint:</span> {intake.chiefComplaint || "Not entered"}</p>
             <p><span className="font-medium">Session minutes:</span> {intake.sessionMinutes || "Not entered"}</p>
             <p><span className="font-medium">Primary:</span> {intake.primaryDiagnosis || "Not selected"}</p>
