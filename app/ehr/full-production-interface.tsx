@@ -284,9 +284,9 @@ const BRAND_TAGLINE = "ChitChat brings the construction. KitKat brings the visio
 
 function BrandFooter() {
   return (
-    <footer className="mt-8 border-t border-slate-200 px-4 py-5 text-center" aria-label="EHR brand">
-      <p className="text-sm font-semibold text-slate-800">{BRAND_TEAM_NAME}</p>
-      <p className="mt-1 text-xs text-slate-600">{BRAND_TAGLINE}</p>
+    <footer className="mt-8 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-5 text-center" aria-label="EHR brand">
+      <p className="text-sm font-bold text-slate-900">{BRAND_TEAM_NAME}</p>
+      <p className="mt-1 text-sm font-bold text-slate-800">{BRAND_TAGLINE}</p>
     </footer>
   );
 }
