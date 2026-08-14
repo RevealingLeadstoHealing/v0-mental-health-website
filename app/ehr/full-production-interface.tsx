@@ -279,8 +279,8 @@ function EhrScopedStyles() {
 const APP_NAME = "Revealing Leads to Healing Wellness Services LLC";
 const VERSION = "EHR Proprietary System v2.0.25";
 const PRACTITIONER_NAME = "Kenseener Carpenter";
-const BRAND_TEAM_NAME = "ChitChat and KitKat—the Thinking Twins Team.";
-const BRAND_TAGLINE = "ChitChat brings the construction. KitKat brings the vision. Together, we build seamlessly.";
+const BRAND_TEAM_NAME = "ChitChat and KitKat—the Thinking Twins.";
+const BRAND_TAGLINE = "ChitChat brings the structure. KitKat brings the vision. Together, we build seamlessly.";
 
 function BrandFooter() {
   return (
