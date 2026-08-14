@@ -471,7 +471,7 @@ export default function LoginPage() {
         {apiResult && <pre className="rlth-login-code">{apiResult}</pre>}
         {error && <div className="rlth-login-alert">{error}</div>}
         <div className="rlth-login-panel">
-          Do not enter PHI until authenticated API writes, audit logging, signed BAAs, backup verification, and operating policies are confirmed end-to-end.
+          Secure patient portal. Sign in to access your account.
         </div>
       </section>
     </main>
