@@ -406,6 +406,7 @@ function normalizeUserBucket(bucket = {}, fallback = {}) {
     intake: typeof bucket.intake !== "undefined" ? bucket.intake : (isClient ? { fullName: profile.fullName || "", presentingProblem: "", diagnoses: [] } : null),
     messages: Array.isArray(bucket.messages) ? bucket.messages : [],
     appointments: Array.isArray(bucket.appointments) ? bucket.appointments : [],
+    patientOnboarding: bucket.patientOnboarding && typeof bucket.patientOnboarding === "object" ? bucket.patientOnboarding : {},
     telehealth: Array.isArray(bucket.telehealth) ? bucket.telehealth : [],
     recordRequests: Array.isArray(bucket.recordRequests) ? bucket.recordRequests : [],
   };
@@ -727,6 +728,35 @@ function AuthProvider({ children }) {
     });
     const client = response.client;
     if (!client?.clientId) throw new Error("The patient record could not be created.");
+    const onboardingDocuments = consentTemplateDefinitions.map((template, index) => ({
+      id: `onboarding-${client.clientId}-${index}`,
+      title: template.title,
+      type: template.category,
+      category: template.category,
+      status: "Pending patient signature",
+      viewedAt: "",
+      signature: null,
+      signatures: [],
+      uploadedFileName: "",
+      generatedLetterText: template.body,
+      clientVisible: true,
+      onboardingRequired: template.category !== "ROI",
+      createdAt: new Date().toISOString(),
+    }));
+    const onboardingIntake = {
+      fullName: client.fullName,
+      firstName: client.fullName.split(/\s+/)[0] || "",
+      lastName: client.fullName.split(/\s+/).slice(1).join(" "),
+      dateOfBirth: client.dateOfBirth || "",
+      phone: client.phone || "",
+      presentingProblem: "",
+      diagnoses: [],
+      insurancePayer: String(profile?.insurancePayer || "").trim(),
+      insuranceMemberId: String(profile?.insuranceMemberId || "").trim(),
+      insuranceGroupNumber: String(profile?.insuranceGroupNumber || "").trim(),
+      insuranceVerificationStatus: "Not verified",
+      onboardingStatus: "Pending patient completion",
+    };
     const bucket = normalizeUserBucket({
       profile: {
         fullName: client.fullName,
@@ -737,6 +767,8 @@ function AuthProvider({ children }) {
         dateOfBirth: client.dateOfBirth || "",
         status: client.status || "active",
       },
+      intake: onboardingIntake,
+      documents: onboardingDocuments,
     });
     setStore((previous) => {
       const next = {
@@ -746,7 +778,13 @@ function AuthProvider({ children }) {
       storeRef.current = next;
       return next;
     });
-    setSaveStatus("Patient record saved securely to AWS.");
+    await Promise.all([
+      persistModuleSnapshot(client.clientId, "documents", onboardingDocuments),
+      persistModuleSnapshot(client.clientId, "intake", onboardingIntake),
+    ]);
+    setSaveStatus(response.invitationSent
+      ? "Patient chart, onboarding packet, and secure email invitation are ready."
+      : "Patient chart and onboarding packet saved. Add an email address to send a portal invitation.");
     return client;
   };
   const value = useMemo(() => ({
@@ -2572,6 +2610,7 @@ function ClientManagementPage() {
   const [patientError, setPatientError] = useState("");
   const [patientForm, setPatientForm] = useState({
     fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "",
+    insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "",
   });
   const clients = Object.entries(store.users)
     .filter(([, bucket]) => bucket.profile.role === "client")
@@ -2582,7 +2621,7 @@ function ClientManagementPage() {
     try {
       const client = await createClient(patientForm);
       setSelectedChartClientId(client.clientId);
-      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "" });
+      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setShowAddPatient(false);
     } catch (error) {
       setPatientError(error instanceof Error ? error.message : "Unable to add the patient.");
@@ -2619,7 +2658,11 @@ function ClientManagementPage() {
               <Input label="Email address" type="email" value={patientForm.email} onChange={(event) => setPatientForm({ ...patientForm, email: event.target.value })} autoComplete="email" />
               <Input label="Phone number" type="tel" value={patientForm.phone} onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })} autoComplete="tel" />
               <Input label="Date of birth" type="date" value={patientForm.dateOfBirth} onChange={(event) => setPatientForm({ ...patientForm, dateOfBirth: event.target.value })} />
+              <Input label="Insurance company / payer" value={patientForm.insurancePayer} onChange={(event) => setPatientForm({ ...patientForm, insurancePayer: event.target.value })} />
+              <Input label="Insurance member ID" value={patientForm.insuranceMemberId} onChange={(event) => setPatientForm({ ...patientForm, insuranceMemberId: event.target.value })} />
+              <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />
             </div>
+            <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
             {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
             <div className="flex flex-wrap gap-3">
               <Button className="rounded-2xl" disabled={savingPatient || !patientForm.fullName.trim()} onClick={savePatient}>
@@ -2963,7 +3006,7 @@ function IntakePage() {
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake || { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
+  const intake = selectedClient?.intake ? { ...selectedClient.intake, ...(selectedClient.patientOnboarding || {}) } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
   const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
@@ -3704,7 +3747,7 @@ function BillingPage() {
   const [activePayer, setActivePayer] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake || {};
+  const intake = { ...(selectedClient?.intake || {}), ...(selectedClient?.patientOnboarding || {}) };
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
@@ -4620,7 +4663,7 @@ function ProviderTrainingsPage() {
   );
 }
 function DocumentLibraryPage() {
-  const { currentUser, store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
   const { setPage, workflowTarget } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(currentUser.role === "client" ? (currentUser.chartClientId || currentUser.id) : (clients[0]?.[0] || ""));
@@ -4641,6 +4684,31 @@ function DocumentLibraryPage() {
   const [uploadFile, setUploadFile] = useState(null);
   const [documentNotice, setDocumentNotice] = useState("");
   const [documentBusy, setDocumentBusy] = useState(false);
+  const [patientIntakeDraft, setPatientIntakeDraft] = useState({
+    phone: selectedClient?.intake?.phone || "",
+    presentingProblem: selectedClient?.intake?.presentingProblem || "",
+    treatmentGoals: selectedClient?.intake?.treatmentGoals || "",
+    insurancePayer: selectedClient?.intake?.insurancePayer || "",
+    insuranceMemberId: selectedClient?.intake?.insuranceMemberId || "",
+    insuranceGroupNumber: selectedClient?.intake?.insuranceGroupNumber || "",
+  });
+  const savePatientOnboarding = () => {
+    if (currentUser.role !== "client") return;
+    updateCurrentUserData("patientOnboarding", (previous) => ({
+      ...(previous || {}),
+      ...patientIntakeDraft,
+      onboardingStatus: "Submitted for provider review",
+      patientSubmittedAt: new Date().toISOString(),
+    }));
+    appendAuditLog({
+      action: "Patient submitted onboarding intake",
+      details: "Patient intake and insurance details submitted to the linked secure chart.",
+      clientId: selectedClientId,
+      clientName: currentUser.fullName,
+      category: "Patient Onboarding",
+    });
+    setDocumentNotice("Your intake and insurance information were saved securely for provider review.");
+  };
   const [advocacyTemplateType, setAdvocacyTemplateType] = useState("Human Resources / Leave");
   const [advocacyDetails, setAdvocacyDetails] = useState({ recipient: "", purpose: "", limitations: "", recommendations: "", collaboration: "" });
   useEffect(() => {
@@ -4734,7 +4802,21 @@ ${organization}`;
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) =>
         doc.id === signatureDocId
-          ? { ...doc, status: "Signed", signature: { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, signedAt, documentVersionSha256 } }
+          ? (() => {
+              const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, signedAt, documentVersionSha256 };
+              const previousSignatures = Array.isArray(doc.signatures)
+                ? doc.signatures.filter((entry) => entry.authenticatedRole !== currentUser.role)
+                : doc.signature && doc.signature.authenticatedRole !== currentUser.role ? [doc.signature] : [];
+              const signatures = [...previousSignatures, nextSignature];
+              const signedByClient = signatures.some((entry) => entry.authenticatedRole === "client");
+              const signedByProvider = signatures.some((entry) => entry.authenticatedRole === "provider" || entry.authenticatedRole === "owner");
+              return {
+                ...doc,
+                status: signedByClient && signedByProvider ? "Signed by patient and provider" : signedByClient ? "Patient signed — provider review pending" : "Provider signed — patient signature pending",
+                signature: nextSignature,
+                signatures,
+              };
+            })()
           : doc
       )
     );
@@ -4900,6 +4982,25 @@ ${organization}`;
     <div>
       <SectionHeader title="Document Library" description="Encrypted AWS document storage, authenticated electronic signatures, immutable audit logging, and document access tracking." />
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
+      {currentUser.role === "client" && (
+        <Card className="mb-4 rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle>New Patient Intake and Insurance</CardTitle>
+            <CardDescription>Complete your information, then review and electronically sign the practice forms below.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input label="Phone number" value={patientIntakeDraft.phone} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, phone: event.target.value })} />
+              <Input label="Insurance company / payer" value={patientIntakeDraft.insurancePayer} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insurancePayer: event.target.value })} />
+              <Input label="Insurance member ID" value={patientIntakeDraft.insuranceMemberId} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceMemberId: event.target.value })} />
+              <Input label="Insurance group number" value={patientIntakeDraft.insuranceGroupNumber} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceGroupNumber: event.target.value })} />
+            </div>
+            <Textarea label="Reason for seeking services" value={patientIntakeDraft.presentingProblem} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, presentingProblem: event.target.value })} />
+            <Textarea label="What would you like help with?" value={patientIntakeDraft.treatmentGoals} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, treatmentGoals: event.target.value })} />
+            <Button className="rounded-2xl" onClick={savePatientOnboarding}>Submit Intake to My Secure Chart</Button>
+          </CardContent>
+        </Card>
+      )}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
           {currentUser.role === "provider" ? (
@@ -4931,6 +5032,7 @@ ${organization}`;
                   <p>Viewed: {doc.viewedAt || "Not viewed"}</p>
                   <p>File: {doc.uploadedFileName || "No file uploaded"}</p>
                   <p>Signature: {doc.signature ? `${doc.signature.role || "Signer"}: ${doc.signature.signer} | ${doc.signature.signedAt}` : "Not signed"}</p>
+                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {entry.signer} | {entry.signedAt}</p>)}
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">

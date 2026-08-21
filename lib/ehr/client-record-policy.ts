@@ -18,6 +18,7 @@ export const CLIENT_READABLE_MODULE_KEYS = new Set([
   "telehealth",
   "recordRequests",
   "documents",
+  "patientOnboarding",
 ]);
 
 export const CLIENT_WRITABLE_MODULE_KEYS = new Set([
@@ -27,6 +28,7 @@ export const CLIENT_WRITABLE_MODULE_KEYS = new Set([
   "appointments",
   "recordRequests",
   "documents",
+  "patientOnboarding",
 ]);
 
 function arrayValue(value: unknown): Array<Record<string, any>> {
@@ -101,6 +103,28 @@ export function mergeClientModuleValue(
       resolvedAt: "",
     }));
     return [...additions, ...existing];
+  }
+
+  if (moduleKey === "patientOnboarding") {
+    const existing = existingValue && typeof existingValue === "object"
+      ? existingValue as Record<string, unknown>
+      : {};
+    const submitted = submittedValue && typeof submittedValue === "object"
+      ? submittedValue as Record<string, unknown>
+      : {};
+    const allowed = [
+      "phone", "presentingProblem", "treatmentGoals",
+      "insurancePayer", "insuranceMemberId", "insuranceGroupNumber",
+    ] as const;
+    const safeFields = Object.fromEntries(
+      allowed.map((field) => [field, String(submitted[field] || existing[field] || "").slice(0, 5000)])
+    );
+    return {
+      ...safeFields,
+      onboardingStatus: "Submitted for provider review",
+      patientSubmittedAt: new Date().toISOString(),
+      patientUserId: actor.sub,
+    };
   }
 
   if (moduleKey === "documents") {
