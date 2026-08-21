@@ -734,6 +734,11 @@ function AuthProvider({ children }) {
         email: String(profile?.email || "").trim(),
         phone: String(profile?.phone || "").trim(),
         dateOfBirth: String(profile?.dateOfBirth || ""),
+        addressLine1: String(profile?.addressLine1 || "").trim(),
+        addressLine2: String(profile?.addressLine2 || "").trim(),
+        city: String(profile?.city || "").trim(),
+        state: String(profile?.state || "").trim(),
+        zipCode: String(profile?.zipCode || "").trim(),
       }),
     });
     const client = response.client;
@@ -797,6 +802,11 @@ function AuthProvider({ children }) {
       lastName: client.fullName.split(/\s+/).slice(1).join(" "),
       dateOfBirth: client.dateOfBirth || "",
       phone: client.phone || "",
+      addressLine1: client.addressLine1 || "",
+      addressLine2: client.addressLine2 || "",
+      city: client.city || "",
+      state: client.state || "",
+      zipCode: client.zipCode || "",
       presentingProblem: "",
       diagnoses: [],
       insurancePayer: String(profile?.insurancePayer || "").trim(),
@@ -813,6 +823,11 @@ function AuthProvider({ children }) {
         role: "client",
         preferredName: client.preferredName || "",
         dateOfBirth: client.dateOfBirth || "",
+        addressLine1: client.addressLine1 || "",
+        addressLine2: client.addressLine2 || "",
+        city: client.city || "",
+        state: client.state || "",
+        zipCode: client.zipCode || "",
         status: client.status || "active",
       },
       intake: onboardingIntake,
@@ -2660,6 +2675,7 @@ function ClientManagementPage() {
   const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
   const [patientForm, setPatientForm] = useState({
     fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "",
+    addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "",
     insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "",
   });
   const clients = Object.entries(store.users)
@@ -2671,7 +2687,7 @@ function ClientManagementPage() {
     try {
       const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile });
       setSelectedChartClientId(client.clientId);
-      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
+      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setInsuranceCardFrontFile(null);
       setInsuranceCardBackFile(null);
       setShowAddPatient(false);
@@ -2710,6 +2726,11 @@ function ClientManagementPage() {
               <Input label="Email address" type="email" value={patientForm.email} onChange={(event) => setPatientForm({ ...patientForm, email: event.target.value })} autoComplete="email" />
               <Input label="Phone number" type="tel" value={patientForm.phone} onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })} autoComplete="tel" />
               <Input label="Date of birth" type="date" value={patientForm.dateOfBirth} onChange={(event) => setPatientForm({ ...patientForm, dateOfBirth: event.target.value })} />
+              <Input label="Street address" value={patientForm.addressLine1} onChange={(event) => setPatientForm({ ...patientForm, addressLine1: event.target.value })} autoComplete="address-line1" />
+              <Input label="Apartment, suite, or unit" value={patientForm.addressLine2} onChange={(event) => setPatientForm({ ...patientForm, addressLine2: event.target.value })} autoComplete="address-line2" />
+              <Input label="City" value={patientForm.city} onChange={(event) => setPatientForm({ ...patientForm, city: event.target.value })} autoComplete="address-level2" />
+              <Input label="State" value={patientForm.state} onChange={(event) => setPatientForm({ ...patientForm, state: event.target.value })} autoComplete="address-level1" />
+              <Input label="ZIP code" value={patientForm.zipCode} onChange={(event) => setPatientForm({ ...patientForm, zipCode: event.target.value })} autoComplete="postal-code" />
               <Input label="Insurance company / payer" value={patientForm.insurancePayer} onChange={(event) => setPatientForm({ ...patientForm, insurancePayer: event.target.value })} />
               <Input label="Insurance member ID" value={patientForm.insuranceMemberId} onChange={(event) => setPatientForm({ ...patientForm, insuranceMemberId: event.target.value })} />
               <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />

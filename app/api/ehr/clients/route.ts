@@ -144,6 +144,11 @@ export async function POST(request: Request) {
       dateOfBirth: typeof body.dateOfBirth === "string" ? body.dateOfBirth : "",
       email,
       phone: typeof body.phone === "string" ? body.phone.trim() : "",
+      addressLine1: typeof body.addressLine1 === "string" ? body.addressLine1.trim() : "",
+      addressLine2: typeof body.addressLine2 === "string" ? body.addressLine2.trim() : "",
+      city: typeof body.city === "string" ? body.city.trim() : "",
+      state: typeof body.state === "string" ? body.state.trim() : "",
+      zipCode: typeof body.zipCode === "string" ? body.zipCode.trim() : "",
       assignedProviderIds: Array.isArray(body.assignedProviderIds)
         ? body.assignedProviderIds.filter((value: unknown): value is string => typeof value === "string")
         : [actor.sub],

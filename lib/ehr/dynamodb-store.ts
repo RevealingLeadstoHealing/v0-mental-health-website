@@ -18,6 +18,11 @@ export type ClientProfileInput = {
   dateOfBirth?: string;
   email?: string;
   phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
   status?: "active" | "inactive" | "archived";
   assignedProviderIds?: string[];
 };
@@ -148,6 +153,11 @@ export async function putClientProfile(actor: EhrActor, input: ClientProfileInpu
     dateOfBirth: input.dateOfBirth || "",
     email: input.email || "",
     phone: input.phone || "",
+    addressLine1: input.addressLine1 || "",
+    addressLine2: input.addressLine2 || "",
+    city: input.city || "",
+    state: input.state || "",
+    zipCode: input.zipCode || "",
     status: input.status || "active",
     assignedProviderIds: input.assignedProviderIds?.length ? input.assignedProviderIds : [actor.sub],
     createdAt: timestamp,
