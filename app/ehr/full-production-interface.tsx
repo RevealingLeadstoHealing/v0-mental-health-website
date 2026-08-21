@@ -1057,7 +1057,8 @@ function MainApp() {
     ["schedule", "Scheduling", Calendar],
   ];
   const providerItems = [
-    ["dashboard", "Client Management", Users],
+    ["dashboard", "Patient Dashboard", HeartHandshake],
+    ["clients", "Client Management", Users],
     ["chart", "Client Chart", FileText],
     ["schedule", "Scheduling", Calendar],
     ["documents", "Patient Intake & Consents", Lock],
@@ -1133,7 +1134,7 @@ function MainApp() {
 function PageRouter() {
   const { page } = usePage();
   const { currentUser } = useAuth();
-  if (page === "dashboard") return currentUser.role === "provider" ? <ClientManagementPage /> : <DashboardPage />;
+  if (page === "dashboard") return currentUser.role === "provider" ? <ProviderPatientDashboard /> : <DashboardPage />;
   if (page === "journal") return <JournalPage />;
   if (page === "affirmations") return <AffirmationsPage />;
   if (page === "psychoeducation") return <PsychoeducationPage />;
@@ -1166,6 +1167,31 @@ function SectionHeader({ title, description, right }) {
         <p className="text-slate-600 mt-2 max-w-3xl">{description}</p>
       </div>
       {right}
+    </div>
+  );
+}
+function ProviderPatientDashboard() {
+  const { store } = useAuth();
+  const { selectedChartClientId, setSelectedChartClientId, setPage } = usePage();
+  const [patientSearch, setPatientSearch] = useState("");
+  const patients = Object.entries(store.users)
+    .filter(([, bucket]) => bucket.profile.role === "client")
+    .map(([id, bucket]) => ({ id, profile: bucket.profile, intake: bucket.intake || {}, documents: bucket.documents || [] }));
+  const normalizedSearch = patientSearch.trim().toLowerCase();
+  const matchingPatients = normalizedSearch
+    ? patients.filter(({ profile }) => [profile.fullName, profile.medicalRecordNumber, profile.email].some((value) => String(value || "").toLowerCase().includes(normalizedSearch)))
+    : patients;
+  const selectedPatient = patients.find(({ id }) => id === selectedChartClientId) || matchingPatients[0] || null;
+  const profile = selectedPatient?.profile || {};
+  const intake = selectedPatient?.intake || {};
+  const address = [profile.addressLine1 || intake.addressLine1, profile.addressLine2 || intake.addressLine2, profile.city || intake.city, profile.state || intake.state, profile.zipCode || intake.zipCode].filter(Boolean).join(", ");
+  return (
+    <div>
+      <SectionHeader title="Patient Dashboard" description="Find a patient by name, medical record number, or email to open their individual record." right={<Button className="rounded-2xl" onClick={() => setPage("clients")}>Client Management</Button>} />
+      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient records</CardTitle></CardHeader><CardContent className="space-y-3"><Input label="Search by name or medical record number" value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} />{matchingPatients.length === 0 && <p className="text-sm text-slate-500">No matching patients.</p>}{matchingPatients.map(({ id, profile: patientProfile }) => <button key={id} type="button" className={`w-full rounded-2xl border p-3 text-left ${selectedPatient?.id === id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`} onClick={() => setSelectedChartClientId(id)}><p className="font-medium">{patientProfile.fullName}</p><p className="mt-1 text-xs text-slate-500">{patientProfile.medicalRecordNumber || "Medical record number pending"}</p></button>)}</CardContent></Card>
+        {!selectedPatient ? <Card className="rounded-2xl shadow-sm"><CardContent className="p-6"><p className="text-slate-600">Select a patient or open Client Management to add a new patient.</p></CardContent></Card> : <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>{profile.fullName || "Patient"}</CardTitle><CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Pending"}</CardDescription></CardHeader><CardContent className="space-y-4 text-sm"><div className="rounded-2xl border p-4"><p className="font-medium">Demographics</p><p className="mt-2">Date of birth: {profile.dateOfBirth || intake.dateOfBirth || "Not entered"}</p><p className="mt-1">Sex: {profile.sex || intake.sex || "Not entered"}</p><p className="mt-1">Address: {address || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Contact information</p><p className="mt-2">Phone: {profile.phone || intake.phone || "Not entered"}</p><p className="mt-1">Email: {profile.email || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Insurance information</p><p className="mt-2">Carrier: {intake.insurancePayer || "Not entered"}</p><p className="mt-1">Plan: {intake.insurancePlanName || profile.insurancePlanName || "Not entered"}</p><p className="mt-1">Network: {intake.insuranceNetworkStatus || profile.insuranceNetworkStatus || "Not verified"}</p><p className="mt-1">Member ID: {intake.insuranceMemberId || "Not entered"}</p><p className="mt-1">Group number: {intake.insuranceGroupNumber || "Not entered"}</p><p className="mt-1">Eligibility: {intake.insuranceVerificationStatus || "Not verified"}</p></div><div className="flex flex-wrap gap-2"><Button className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("chart"); }}>Open Client Chart</Button><Button variant="outline" className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("schedule"); }}>Scheduling</Button></div></CardContent></Card>}
+      </div>
     </div>
   );
 }
@@ -2930,7 +2956,7 @@ function ClientChartPage() {
           </Card>
           <Tabs defaultValue="intake">
             <TabsList className="flex flex-wrap rounded-2xl w-full h-auto">
-              <TabsTrigger value="intake">Intake</TabsTrigger><TabsTrigger value="biopsychosocial">Biopsychosocial</TabsTrigger><TabsTrigger value="plans">Treatment Plan</TabsTrigger><TabsTrigger value="notes">Follow-Up Notes</TabsTrigger><TabsTrigger value="assessments">Assessments</TabsTrigger><TabsTrigger value="documents">Forms & Records</TabsTrigger>
+              <TabsTrigger value="intake">Intake</TabsTrigger><TabsTrigger value="biopsychosocial">Biopsychosocial</TabsTrigger><TabsTrigger value="plans">Treatment Plan</TabsTrigger><TabsTrigger value="assessments">Assessments</TabsTrigger><TabsTrigger value="notes">Follow-Up Notes</TabsTrigger><TabsTrigger value="documents">Consents & Records</TabsTrigger>
             </TabsList>
             <TabsContent value="intake" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient intake</CardTitle><CardDescription>Brief intake submitted electronically by the patient.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("documents")}>Open patient intake</Button></CardContent></Card></TabsContent>
             <TabsContent value="biopsychosocial" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Biopsychosocial assessment</CardTitle><CardDescription>Provider-completed clinical evaluation and diagnostic formulation.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("intake")}>Open biopsychosocial assessment</Button></CardContent></Card></TabsContent>
