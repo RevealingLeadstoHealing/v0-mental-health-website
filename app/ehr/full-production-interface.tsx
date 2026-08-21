@@ -3804,7 +3804,10 @@ function BillingPage() {
   };
   const saveBillingSnapshot = () => {
     if (!selectedClientId) return;
-    const current = store.users[selectedClientId].intake || {};
+    const current = {
+      ...(store.users[selectedClientId].intake || {}),
+      ...(store.users[selectedClientId].patientOnboarding || {}),
+    };
     const payerName = current.insurancePayer || "Other";
     const payerId = classifyBillingPayer(payerName);
     const ready = Boolean(current.primaryDiagnosis && (current.billingCodes || []).length && current.dateOfService && current.chargeAmount);
@@ -3868,8 +3871,16 @@ function BillingPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {billingPayerDefinitions.map((payer) => {
-              const count = payer.id === "all" ? claims.length : claims.filter((claim) => claim.payerId === payer.id).length;
-              return <Button key={payer.id} type="button" size="sm" variant={activePayer === payer.id ? "default" : "outline"} className="rounded-2xl" onClick={() => setActivePayer(payer.id)}>{payer.label} ({count})</Button>;
+              const payerClaims = payer.id === "all" ? claims : claims.filter((claim) => claim.payerId === payer.id);
+              const pendingCount = payerClaims.filter((claim) => ["Draft", "Action Required", "Ready", "Queued"].includes(claim.status || "Draft")).length;
+              return (
+                <Button key={payer.id} type="button" size="sm" variant={activePayer === payer.id ? "default" : "outline"} className="rounded-2xl" onClick={() => setActivePayer(payer.id)}>
+                  {payer.label}
+                  <span className={pendingCount > 0 ? "ml-1 inline-flex min-w-6 items-center justify-center rounded-full bg-amber-200 px-2 py-0.5 font-bold text-stone-950" : "ml-1 text-stone-500"}>
+                    {pendingCount}
+                  </span>
+                </Button>
+              );
             })}
           </div>
           <div className="max-w-xs">
@@ -4686,6 +4697,7 @@ function DocumentLibraryPage() {
   const [documentBusy, setDocumentBusy] = useState(false);
   const [patientIntakeDraft, setPatientIntakeDraft] = useState({
     phone: selectedClient?.intake?.phone || "",
+    chiefComplaint: selectedClient?.intake?.chiefComplaint || "",
     presentingProblem: selectedClient?.intake?.presentingProblem || "",
     treatmentGoals: selectedClient?.intake?.treatmentGoals || "",
     insurancePayer: selectedClient?.intake?.insurancePayer || "",
@@ -4990,13 +5002,15 @@ ${organization}`;
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
+              <Input label="Patient name" value={selectedClient?.profile?.fullName || currentUser.fullName || ""} readOnly />
+              <Input label="Email address" type="email" value={selectedClient?.profile?.email || currentUser.email || ""} readOnly />
+              <Input label="Date of birth" type="date" value={selectedClient?.profile?.dateOfBirth || selectedClient?.intake?.dateOfBirth || ""} readOnly />
               <Input label="Phone number" value={patientIntakeDraft.phone} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, phone: event.target.value })} />
               <Input label="Insurance company / payer" value={patientIntakeDraft.insurancePayer} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insurancePayer: event.target.value })} />
               <Input label="Insurance member ID" value={patientIntakeDraft.insuranceMemberId} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceMemberId: event.target.value })} />
               <Input label="Insurance group number" value={patientIntakeDraft.insuranceGroupNumber} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceGroupNumber: event.target.value })} />
             </div>
-            <Textarea label="Reason for seeking services" value={patientIntakeDraft.presentingProblem} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, presentingProblem: event.target.value })} />
-            <Textarea label="What would you like help with?" value={patientIntakeDraft.treatmentGoals} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, treatmentGoals: event.target.value })} />
+            <Textarea label="Chief Complaint / Reason for Seeking Services" value={patientIntakeDraft.chiefComplaint} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, chiefComplaint: event.target.value, presentingProblem: event.target.value })} />
             <Button className="rounded-2xl" onClick={savePatientOnboarding}>Submit Intake to My Secure Chart</Button>
           </CardContent>
         </Card>

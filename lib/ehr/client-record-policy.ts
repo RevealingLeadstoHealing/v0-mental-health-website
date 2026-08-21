@@ -113,7 +113,7 @@ export function mergeClientModuleValue(
       ? submittedValue as Record<string, unknown>
       : {};
     const allowed = [
-      "phone", "presentingProblem", "treatmentGoals",
+      "phone", "chiefComplaint", "presentingProblem", "treatmentGoals",
       "insurancePayer", "insuranceMemberId", "insuranceGroupNumber",
     ] as const;
     const safeFields = Object.fromEntries(
