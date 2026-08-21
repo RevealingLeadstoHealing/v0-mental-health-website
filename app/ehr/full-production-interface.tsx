@@ -711,8 +711,46 @@ function AuthProvider({ children }) {
     });
     enqueueModuleSave(userId, key, updatedValue);
   };
+  const createClient = async (profile) => {
+    const fullName = String(profile?.fullName || "").trim();
+    if (!fullName) throw new Error("Patient full name is required.");
+    const response = await productionApi("/api/ehr/clients", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fullName,
+        preferredName: String(profile?.preferredName || "").trim(),
+        email: String(profile?.email || "").trim(),
+        phone: String(profile?.phone || "").trim(),
+        dateOfBirth: String(profile?.dateOfBirth || ""),
+      }),
+    });
+    const client = response.client;
+    if (!client?.clientId) throw new Error("The patient record could not be created.");
+    const bucket = normalizeUserBucket({
+      profile: {
+        fullName: client.fullName,
+        email: client.email || "",
+        phone: client.phone || "",
+        role: "client",
+        preferredName: client.preferredName || "",
+        dateOfBirth: client.dateOfBirth || "",
+        status: client.status || "active",
+      },
+    });
+    setStore((previous) => {
+      const next = {
+        ...previous,
+        users: { ...previous.users, [client.clientId]: bucket },
+      };
+      storeRef.current = next;
+      return next;
+    });
+    setSaveStatus("Patient record saved securely to AWS.");
+    return client;
+  };
   const value = useMemo(() => ({
-    currentUser, store, login, signup, logout, updateCurrentUserData, updateSpecificUserData,
+    currentUser, store, login, signup, logout, createClient, updateCurrentUserData, updateSpecificUserData,
     appendAuditLog, submitRecordRequest, updateRecordRequestStatus, saveStatus, isMockMode: false,
   }), [currentUser, store]);
 
@@ -2527,18 +2565,74 @@ ${generatedDocs.intakeDraft.biopsychosocialSummary}`}</div>
   );
 }
 function ClientManagementPage() {
-  const { store } = useAuth();
+  const { store, createClient } = useAuth();
   const { setPage, setSelectedChartClientId } = usePage();
+  const [showAddPatient, setShowAddPatient] = useState(false);
+  const [savingPatient, setSavingPatient] = useState(false);
+  const [patientError, setPatientError] = useState("");
+  const [patientForm, setPatientForm] = useState({
+    fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "",
+  });
   const clients = Object.entries(store.users)
     .filter(([, bucket]) => bucket.profile.role === "client")
     .map(([id, bucket]) => ({ id, ...bucket.profile, bucket }));
+  const savePatient = async () => {
+    setSavingPatient(true);
+    setPatientError("");
+    try {
+      const client = await createClient(patientForm);
+      setSelectedChartClientId(client.clientId);
+      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "" });
+      setShowAddPatient(false);
+    } catch (error) {
+      setPatientError(error instanceof Error ? error.message : "Unable to add the patient.");
+    } finally {
+      setSavingPatient(false);
+    }
+  };
   return (
     <div>
       <SectionHeader
         title="Client Management"
         description="Provider-facing client list and central access point for authorized charts, assessments, notes, plans, outcomes, and messaging."
       />
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <Button className="rounded-2xl" onClick={() => {
+          setPatientError("");
+          setShowAddPatient((previous) => !previous);
+        }}>
+          <UserPlus className="h-4 w-4" />
+          {showAddPatient ? "Close patient form" : "Add Patient"}
+        </Button>
+        <span className="text-sm text-slate-500">{clients.length} patient{clients.length === 1 ? "" : "s"}</span>
+      </div>
+      {showAddPatient && (
+        <Card className="mb-5 rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle>Add a new patient</CardTitle>
+            <CardDescription>Create a secure patient chart for scheduling, intake, clinical documentation, and billing.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input label="Patient full name" value={patientForm.fullName} onChange={(event) => setPatientForm({ ...patientForm, fullName: event.target.value })} autoComplete="name" />
+              <Input label="Preferred name" value={patientForm.preferredName} onChange={(event) => setPatientForm({ ...patientForm, preferredName: event.target.value })} />
+              <Input label="Email address" type="email" value={patientForm.email} onChange={(event) => setPatientForm({ ...patientForm, email: event.target.value })} autoComplete="email" />
+              <Input label="Phone number" type="tel" value={patientForm.phone} onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })} autoComplete="tel" />
+              <Input label="Date of birth" type="date" value={patientForm.dateOfBirth} onChange={(event) => setPatientForm({ ...patientForm, dateOfBirth: event.target.value })} />
+            </div>
+            {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
+            <div className="flex flex-wrap gap-3">
+              <Button className="rounded-2xl" disabled={savingPatient || !patientForm.fullName.trim()} onClick={savePatient}>
+                <Save className="h-4 w-4" />
+                {savingPatient ? "Saving securely…" : "Save Patient"}
+              </Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingPatient} onClick={() => setShowAddPatient(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {clients.length === 0 && <p className="text-sm text-slate-500">No patients yet. Select Add Patient to create the first secure chart.</p>}
         {clients.map((client) => (
           <Card key={client.id} className="rounded-2xl shadow-sm">
             <CardContent className="p-4">
