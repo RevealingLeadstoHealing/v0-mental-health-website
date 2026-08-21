@@ -542,6 +542,16 @@ function AuthProvider({ children }) {
               role: "client",
               preferredName: client.preferredName || "",
               dateOfBirth: client.dateOfBirth || "",
+              sex: client.sex || "",
+              medicalRecordNumber: client.medicalRecordNumber || "",
+              phone: client.phone || "",
+              addressLine1: client.addressLine1 || "",
+              addressLine2: client.addressLine2 || "",
+              city: client.city || "",
+              state: client.state || "",
+              zipCode: client.zipCode || "",
+              insuranceNetworkStatus: client.insuranceNetworkStatus || "",
+              insurancePlanName: client.insurancePlanName || "",
               status: client.status || "active",
             },
           });
@@ -1047,25 +1057,24 @@ function MainApp() {
     ["schedule", "Scheduling", Calendar],
   ];
   const providerItems = [
-    ["dashboard", "Dashboard", HeartHandshake],
-    ["affirmations", "Affirmations", Sparkles],
-    ["clients", "Client Management", Users],
+    ["dashboard", "Client Management", Users],
     ["chart", "Client Chart", FileText],
-    ["intake", "Intake", ClipboardList],
-    ["notes", "Progress Notes", FileText],
-    ["billing", "Billing", ClipboardList],
+    ["schedule", "Scheduling", Calendar],
+    ["documents", "Patient Intake & Consents", Lock],
+    ["intake", "Biopsychosocial Assessment", ClipboardList],
     ["plans", "Treatment Plans", Stethoscope],
-    ["homework", "Homework", BookOpen],
+    ["notes", "Follow-Up Notes", FileText],
     ["assessments", "Assessments", ClipboardList],
-    ["documents", "Document Library", Lock],
-    ["infrastructure", "Infrastructure", Shield],
+    ["telehealth", "Telehealth", Video],
+    ["billing", "Billing", ClipboardList],
+    ["messages", "Messages", MessageSquare],
+    ["homework", "Homework", BookOpen],
+    ["psychoeducation", "Psychoeducation", Brain],
+    ["affirmations", "Affirmations", Sparkles],
     ["trainings", "Provider Trainings", GraduationCap],
     ["record-requests", "Record Requests", FileText],
     ["audit-log", "Audit Log", Lock],
-    ["telehealth", "Telehealth", Video],
-    ["messages", "Messages", MessageSquare],
-    ["schedule", "Scheduling", Calendar],
-    ["psychoeducation", "Psychoeducation", Brain],
+    ["infrastructure", "Infrastructure", Shield],
   ];
   const navItems = currentUser.role === "provider" ? providerItems : clientItems;
   return (
@@ -1124,7 +1133,7 @@ function MainApp() {
 function PageRouter() {
   const { page } = usePage();
   const { currentUser } = useAuth();
-  if (page === "dashboard") return <DashboardPage />;
+  if (page === "dashboard") return currentUser.role === "provider" ? <ClientManagementPage /> : <DashboardPage />;
   if (page === "journal") return <JournalPage />;
   if (page === "affirmations") return <AffirmationsPage />;
   if (page === "psychoeducation") return <PsychoeducationPage />;
@@ -2682,6 +2691,8 @@ function ClientManagementPage() {
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
   const [patientError, setPatientError] = useState("");
+  const [patientNotice, setPatientNotice] = useState("");
+  const [sendingInvitationId, setSendingInvitationId] = useState("");
   const [insuranceCardFrontFile, setInsuranceCardFrontFile] = useState<File | null>(null);
   const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
   const [photoIdFrontFile, setPhotoIdFrontFile] = useState<File | null>(null);
@@ -2694,11 +2705,25 @@ function ClientManagementPage() {
   const clients = Object.entries(store.users)
     .filter(([, bucket]) => bucket.profile.role === "client")
     .map(([id, bucket]) => ({ id, ...bucket.profile, bucket }));
+  const resendPatientInvitation = async (clientId) => {
+    setSendingInvitationId(clientId);
+    setPatientError("");
+    setPatientNotice("");
+    try {
+      await productionApi("/api/ehr/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resendInvitation", clientId }) });
+      setPatientNotice("Patient invitation sent successfully.");
+    } catch (error) {
+      setPatientError(error instanceof Error ? error.message : "The patient invitation could not be sent.");
+    } finally {
+      setSendingInvitationId("");
+    }
+  };
   const savePatient = async () => {
     setSavingPatient(true);
     setPatientError("");
     try {
       const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile, photoIdFrontFile, photoIdBackFile });
+      setPatientNotice(patientForm.email.trim() ? "Patient record saved and secure invitation sent." : "Patient record saved. Add an email address to send an invitation.");
       setSelectedChartClientId(client.clientId);
       setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceNetworkStatus: "", insurancePlanName: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setInsuranceCardFrontFile(null);
@@ -2728,6 +2753,8 @@ function ClientManagementPage() {
         </Button>
         <span className="text-sm text-slate-500">{clients.length} patient{clients.length === 1 ? "" : "s"}</span>
       </div>
+      {patientNotice && <p role="status" className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">{patientNotice}</p>}
+      {!showAddPatient && patientError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
       {showAddPatient && (
         <Card className="mb-5 rounded-2xl shadow-sm">
           <CardHeader>
@@ -2817,6 +2844,9 @@ function ClientManagementPage() {
                 }}
               >
                 Open client chart
+              </Button>
+              <Button variant="outline" className="w-full mt-2 rounded-2xl" disabled={sendingInvitationId === client.id || !client.email} onClick={() => resendPatientInvitation(client.id)}>
+                {sendingInvitationId === client.id ? "Sending invitation…" : "Send / Resend Patient Invitation"}
               </Button>
             </CardContent>
           </Card>

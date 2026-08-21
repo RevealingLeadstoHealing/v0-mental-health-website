@@ -107,6 +107,20 @@ export async function POST(request: Request) {
     const actor = await requireEhrActor(request);
     requireRole(actor, ["owner", "provider"]);
     const body = await request.json();
+    if (body.action === "resendInvitation") {
+      const clientId = typeof body.clientId === "string" ? body.clientId : "";
+      const client = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
+      if (!client) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
+      if (!client.email) throw new ApiError(400, "Add a patient email address before sending an invitation.");
+      await cognitoAdmin("AdminCreateUser", {
+        UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
+        Username: client.email,
+        MessageAction: "RESEND",
+        DesiredDeliveryMediums: ["EMAIL"],
+      });
+      await appendAuditEvent(actor, { action: "Resent patient login invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: "A secure Cognito patient invitation was resent." });
+      return NextResponse.json({ invitationSent: true, clientId });
+    }
     const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!fullName) throw new ApiError(400, "Client full name is required.");
