@@ -715,6 +715,16 @@ function AuthProvider({ children }) {
   const createClient = async (profile) => {
     const fullName = String(profile?.fullName || "").trim();
     if (!fullName) throw new Error("Patient full name is required.");
+    const insuranceCardFiles = [
+      { file: profile?.insuranceCardFrontFile, title: "Insurance Card - Front", documentType: "insurance-card-front" },
+      { file: profile?.insuranceCardBackFile, title: "Insurance Card - Back", documentType: "insurance-card-back" },
+    ].filter((item) => item.file);
+    for (const item of insuranceCardFiles) {
+      if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
+      if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
+        throw new Error(`${item.title} must be an image or PDF.`);
+      }
+    }
     const response = await productionApi("/api/ehr/clients", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -743,6 +753,44 @@ function AuthProvider({ children }) {
       onboardingRequired: template.category !== "ROI",
       createdAt: new Date().toISOString(),
     }));
+    for (const item of insuranceCardFiles) {
+      const authorization = await productionApi("/api/ehr/documents/presign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: client.clientId,
+          documentType: item.documentType,
+          fileName: item.file.name,
+          contentType: item.file.type || "application/octet-stream",
+        }),
+      });
+      const uploadResponse = await fetch(authorization.uploadUrl, {
+        method: "PUT",
+        headers: authorization.uploadHeaders,
+        body: item.file,
+      });
+      if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+      const uploadedInsuranceDocument = {
+        id: authorization.documentId,
+        title: item.title,
+        type: "Insurance",
+        category: "Insurance",
+        status: "Uploaded",
+        viewedAt: "",
+        signature: null,
+        signatures: [],
+        uploadedFileName: item.file.name,
+        generatedLetterText: "",
+        clientVisible: true,
+        onboardingRequired: false,
+        createdAt: new Date().toISOString(),
+        contentType: item.file.type || "application/octet-stream",
+        sizeBytes: item.file.size,
+        storageKey: authorization.key,
+        uploadedByRole: currentUser.role,
+      };
+      onboardingDocuments.push(uploadedInsuranceDocument);
+    }
     const onboardingIntake = {
       fullName: client.fullName,
       firstName: client.fullName.split(/\s+/)[0] || "",
@@ -2608,6 +2656,8 @@ function ClientManagementPage() {
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
   const [patientError, setPatientError] = useState("");
+  const [insuranceCardFrontFile, setInsuranceCardFrontFile] = useState<File | null>(null);
+  const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
   const [patientForm, setPatientForm] = useState({
     fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "",
     insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "",
@@ -2619,9 +2669,11 @@ function ClientManagementPage() {
     setSavingPatient(true);
     setPatientError("");
     try {
-      const client = await createClient(patientForm);
+      const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile });
       setSelectedChartClientId(client.clientId);
       setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
+      setInsuranceCardFrontFile(null);
+      setInsuranceCardBackFile(null);
       setShowAddPatient(false);
     } catch (error) {
       setPatientError(error instanceof Error ? error.message : "Unable to add the patient.");
@@ -2661,6 +2713,14 @@ function ClientManagementPage() {
               <Input label="Insurance company / payer" value={patientForm.insurancePayer} onChange={(event) => setPatientForm({ ...patientForm, insurancePayer: event.target.value })} />
               <Input label="Insurance member ID" value={patientForm.insuranceMemberId} onChange={(event) => setPatientForm({ ...patientForm, insuranceMemberId: event.target.value })} />
               <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Insurance card - front
+                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardFrontFile(event.target.files?.[0] || null)} />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Insurance card - back
+                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
+              </label>
             </div>
             <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
             {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
