@@ -734,6 +734,7 @@ function AuthProvider({ children }) {
         email: String(profile?.email || "").trim(),
         phone: String(profile?.phone || "").trim(),
         dateOfBirth: String(profile?.dateOfBirth || ""),
+        sex: String(profile?.sex || "").trim(),
         addressLine1: String(profile?.addressLine1 || "").trim(),
         addressLine2: String(profile?.addressLine2 || "").trim(),
         city: String(profile?.city || "").trim(),
@@ -801,6 +802,8 @@ function AuthProvider({ children }) {
       firstName: client.fullName.split(/\s+/)[0] || "",
       lastName: client.fullName.split(/\s+/).slice(1).join(" "),
       dateOfBirth: client.dateOfBirth || "",
+      sex: client.sex || "",
+      medicalRecordNumber: client.medicalRecordNumber || "",
       phone: client.phone || "",
       addressLine1: client.addressLine1 || "",
       addressLine2: client.addressLine2 || "",
@@ -823,6 +826,8 @@ function AuthProvider({ children }) {
         role: "client",
         preferredName: client.preferredName || "",
         dateOfBirth: client.dateOfBirth || "",
+        sex: client.sex || "",
+        medicalRecordNumber: client.medicalRecordNumber || "",
         addressLine1: client.addressLine1 || "",
         addressLine2: client.addressLine2 || "",
         city: client.city || "",
@@ -2674,7 +2679,7 @@ function ClientManagementPage() {
   const [insuranceCardFrontFile, setInsuranceCardFrontFile] = useState<File | null>(null);
   const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
   const [patientForm, setPatientForm] = useState({
-    fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "",
+    fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "",
     addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "",
     insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "",
   });
@@ -2687,7 +2692,7 @@ function ClientManagementPage() {
     try {
       const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile });
       setSelectedChartClientId(client.clientId);
-      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
+      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setInsuranceCardFrontFile(null);
       setInsuranceCardBackFile(null);
       setShowAddPatient(false);
@@ -2726,6 +2731,16 @@ function ClientManagementPage() {
               <Input label="Email address" type="email" value={patientForm.email} onChange={(event) => setPatientForm({ ...patientForm, email: event.target.value })} autoComplete="email" />
               <Input label="Phone number" type="tel" value={patientForm.phone} onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })} autoComplete="tel" />
               <Input label="Date of birth" type="date" value={patientForm.dateOfBirth} onChange={(event) => setPatientForm({ ...patientForm, dateOfBirth: event.target.value })} />
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Sex
+                <select className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" value={patientForm.sex} onChange={(event) => setPatientForm({ ...patientForm, sex: event.target.value })}>
+                  <option value="">Select sex</option>
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </label>
               <Input label="Street address" value={patientForm.addressLine1} onChange={(event) => setPatientForm({ ...patientForm, addressLine1: event.target.value })} autoComplete="address-line1" />
               <Input label="Apartment, suite, or unit" value={patientForm.addressLine2} onChange={(event) => setPatientForm({ ...patientForm, addressLine2: event.target.value })} autoComplete="address-line2" />
               <Input label="City" value={patientForm.city} onChange={(event) => setPatientForm({ ...patientForm, city: event.target.value })} autoComplete="address-level2" />
@@ -2763,6 +2778,7 @@ function ClientManagementPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{client.fullName}</p>
+                  <p className="text-sm font-medium text-slate-700 mt-1">MRN: {client.medicalRecordNumber || "Not assigned"}</p>
                   <p className="text-sm text-slate-500 mt-1">{client.email}</p>
                 </div>
                 <Badge className="rounded-xl">client</Badge>
@@ -2853,9 +2869,26 @@ function ClientChartPage() {
           <Card className="rounded-2xl shadow-sm">
             <CardHeader>
               <CardTitle>{profile.fullName || "Client"}</CardTitle>
-              <CardDescription>{profile.email || "No email on file"}</CardDescription>
+              <CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Not assigned"}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-slate-700">
+              <div className="rounded-2xl border p-4">
+                <p className="font-medium">Demographic information</p>
+                <p className="mt-2"><span className="font-medium">Sex:</span> {profile.sex || intake.sex || "Not entered"}</p>
+                <p className="mt-1"><span className="font-medium">Address:</span> {[profile.addressLine1 || intake.addressLine1, profile.addressLine2 || intake.addressLine2, profile.city || intake.city, profile.state || intake.state, profile.zipCode || intake.zipCode].filter(Boolean).join(", ") || "Not entered"}</p>
+              </div>
+              <div className="rounded-2xl border p-4">
+                <p className="font-medium">Contact information</p>
+                <p className="mt-2"><span className="font-medium">Phone:</span> {profile.phone || intake.phone || "Not entered"}</p>
+                <p className="mt-1"><span className="font-medium">Email:</span> {profile.email || "Not entered"}</p>
+              </div>
+              <div className="rounded-2xl border p-4">
+                <p className="font-medium">Insurance information</p>
+                <p className="mt-2"><span className="font-medium">Insurance:</span> {intake.insurancePayer || "Not entered"}</p>
+                <p className="mt-1"><span className="font-medium">Member ID:</span> {intake.insuranceMemberId || "Not entered"}</p>
+                <p className="mt-1"><span className="font-medium">Group number:</span> {intake.insuranceGroupNumber || "Not entered"}</p>
+                <p className="mt-1"><span className="font-medium">Verification:</span> {intake.insuranceVerificationStatus || "Not verified"}</p>
+              </div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-2xl border p-4 bg-slate-50">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Date of birth</p>

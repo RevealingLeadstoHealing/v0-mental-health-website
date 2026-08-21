@@ -142,6 +142,7 @@ export async function POST(request: Request) {
       fullName,
       preferredName: typeof body.preferredName === "string" ? body.preferredName.trim() : "",
       dateOfBirth: typeof body.dateOfBirth === "string" ? body.dateOfBirth : "",
+      sex: typeof body.sex === "string" ? body.sex.trim() : "",
       email,
       phone: typeof body.phone === "string" ? body.phone.trim() : "",
       addressLine1: typeof body.addressLine1 === "string" ? body.addressLine1.trim() : "",

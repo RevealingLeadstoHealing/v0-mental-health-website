@@ -16,6 +16,7 @@ export type ClientProfileInput = {
   fullName: string;
   preferredName?: string;
   dateOfBirth?: string;
+  sex?: string;
   email?: string;
   phone?: string;
   addressLine1?: string;
@@ -140,6 +141,7 @@ export async function putClientProfile(actor: EhrActor, input: ClientProfileInpu
   const dynamo = getDynamoDocumentClient();
   const timestamp = nowIso();
   const clientId = input.clientId || makeId("client");
+  const medicalRecordNumber = `RLTH-${timestamp.slice(0, 10).replace(/-/g, "")}-${clientId.split("_").pop()?.toUpperCase() || Date.now().toString(36).toUpperCase()}`;
   const item = {
     PK: clientPartition(actor.practiceId, clientId),
     SK: "PROFILE",
@@ -148,9 +150,11 @@ export async function putClientProfile(actor: EhrActor, input: ClientProfileInpu
     recordType: "client-profile",
     practiceId: actor.practiceId,
     clientId,
+    medicalRecordNumber,
     fullName: input.fullName,
     preferredName: input.preferredName || "",
     dateOfBirth: input.dateOfBirth || "",
+    sex: input.sex || "",
     email: input.email || "",
     phone: input.phone || "",
     addressLine1: input.addressLine1 || "",
