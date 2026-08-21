@@ -718,6 +718,8 @@ function AuthProvider({ children }) {
     const insuranceCardFiles = [
       { file: profile?.insuranceCardFrontFile, title: "Insurance Card - Front", documentType: "insurance-card-front" },
       { file: profile?.insuranceCardBackFile, title: "Insurance Card - Back", documentType: "insurance-card-back" },
+      { file: profile?.photoIdFrontFile, title: "Photo ID - Front", documentType: "photo-id-front" },
+      { file: profile?.photoIdBackFile, title: "Photo ID - Back", documentType: "photo-id-back" },
     ].filter((item) => item.file);
     for (const item of insuranceCardFiles) {
       if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
@@ -740,6 +742,8 @@ function AuthProvider({ children }) {
         city: String(profile?.city || "").trim(),
         state: String(profile?.state || "").trim(),
         zipCode: String(profile?.zipCode || "").trim(),
+        insuranceNetworkStatus: String(profile?.insuranceNetworkStatus || "").trim(),
+        insurancePlanName: String(profile?.insurancePlanName || "").trim(),
       }),
     });
     const client = response.client;
@@ -813,6 +817,8 @@ function AuthProvider({ children }) {
       presentingProblem: "",
       diagnoses: [],
       insurancePayer: String(profile?.insurancePayer || "").trim(),
+      insuranceNetworkStatus: String(profile?.insuranceNetworkStatus || "").trim(),
+      insurancePlanName: String(profile?.insurancePlanName || "").trim(),
       insuranceMemberId: String(profile?.insuranceMemberId || "").trim(),
       insuranceGroupNumber: String(profile?.insuranceGroupNumber || "").trim(),
       insuranceVerificationStatus: "Not verified",
@@ -2678,10 +2684,12 @@ function ClientManagementPage() {
   const [patientError, setPatientError] = useState("");
   const [insuranceCardFrontFile, setInsuranceCardFrontFile] = useState<File | null>(null);
   const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
+  const [photoIdFrontFile, setPhotoIdFrontFile] = useState<File | null>(null);
+  const [photoIdBackFile, setPhotoIdBackFile] = useState<File | null>(null);
   const [patientForm, setPatientForm] = useState({
     fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "",
     addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "",
-    insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "",
+    insurancePayer: "", insuranceNetworkStatus: "", insurancePlanName: "", insuranceMemberId: "", insuranceGroupNumber: "",
   });
   const clients = Object.entries(store.users)
     .filter(([, bucket]) => bucket.profile.role === "client")
@@ -2690,11 +2698,13 @@ function ClientManagementPage() {
     setSavingPatient(true);
     setPatientError("");
     try {
-      const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile });
+      const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile, photoIdFrontFile, photoIdBackFile });
       setSelectedChartClientId(client.clientId);
-      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceMemberId: "", insuranceGroupNumber: "" });
+      setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceNetworkStatus: "", insurancePlanName: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setInsuranceCardFrontFile(null);
       setInsuranceCardBackFile(null);
+      setPhotoIdFrontFile(null);
+      setPhotoIdBackFile(null);
       setShowAddPatient(false);
     } catch (error) {
       setPatientError(error instanceof Error ? error.message : "Unable to add the patient.");
@@ -2746,7 +2756,14 @@ function ClientManagementPage() {
               <Input label="City" value={patientForm.city} onChange={(event) => setPatientForm({ ...patientForm, city: event.target.value })} autoComplete="address-level2" />
               <Input label="State" value={patientForm.state} onChange={(event) => setPatientForm({ ...patientForm, state: event.target.value })} autoComplete="address-level1" />
               <Input label="ZIP code" value={patientForm.zipCode} onChange={(event) => setPatientForm({ ...patientForm, zipCode: event.target.value })} autoComplete="postal-code" />
-              <Input label="Insurance company / payer" value={patientForm.insurancePayer} onChange={(event) => setPatientForm({ ...patientForm, insurancePayer: event.target.value })} />
+              <Input label="Insurance carrier" value={patientForm.insurancePayer} onChange={(event) => setPatientForm({ ...patientForm, insurancePayer: event.target.value })} />
+              <Input label="Plan name" value={patientForm.insurancePlanName} onChange={(event) => setPatientForm({ ...patientForm, insurancePlanName: event.target.value })} />
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Network status
+                <select className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" value={patientForm.insuranceNetworkStatus} onChange={(event) => setPatientForm({ ...patientForm, insuranceNetworkStatus: event.target.value })}>
+                  <option value="">Select network status</option><option value="In-network">In-network</option><option value="Out-of-network">Out-of-network</option><option value="Not verified">Not verified</option>
+                </select>
+              </label>
               <Input label="Insurance member ID" value={patientForm.insuranceMemberId} onChange={(event) => setPatientForm({ ...patientForm, insuranceMemberId: event.target.value })} />
               <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />
               <label className="grid gap-2 text-sm font-medium text-slate-700">
@@ -2757,6 +2774,8 @@ function ClientManagementPage() {
                 Insurance card - back
                 <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
               </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
             </div>
             <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
             {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
@@ -2872,86 +2891,23 @@ function ClientChartPage() {
               <CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Not assigned"}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-slate-700">
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Demographic information</p>
-                <p className="mt-2"><span className="font-medium">Sex:</span> {profile.sex || intake.sex || "Not entered"}</p>
-                <p className="mt-1"><span className="font-medium">Address:</span> {[profile.addressLine1 || intake.addressLine1, profile.addressLine2 || intake.addressLine2, profile.city || intake.city, profile.state || intake.state, profile.zipCode || intake.zipCode].filter(Boolean).join(", ") || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Contact information</p>
-                <p className="mt-2"><span className="font-medium">Phone:</span> {profile.phone || intake.phone || "Not entered"}</p>
-                <p className="mt-1"><span className="font-medium">Email:</span> {profile.email || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Insurance information</p>
-                <p className="mt-2"><span className="font-medium">Insurance:</span> {intake.insurancePayer || "Not entered"}</p>
-                <p className="mt-1"><span className="font-medium">Member ID:</span> {intake.insuranceMemberId || "Not entered"}</p>
-                <p className="mt-1"><span className="font-medium">Group number:</span> {intake.insuranceGroupNumber || "Not entered"}</p>
-                <p className="mt-1"><span className="font-medium">Verification:</span> {intake.insuranceVerificationStatus || "Not verified"}</p>
-              </div>
               <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Date of birth</p>
-                  <p className="mt-1 font-medium">{intake.dateOfBirth || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Contact phone</p>
-                  <p className="mt-1 font-medium">{intake.phone || "Not entered"}</p>
-                </div>
+                <div className="rounded-2xl border p-4"><p className="font-medium">Demographic information</p><p className="mt-2"><span className="font-medium">DOB:</span> {profile.dateOfBirth || intake.dateOfBirth || "Not entered"}</p><p className="mt-1"><span className="font-medium">Sex:</span> {profile.sex || intake.sex || "Not entered"}</p><p className="mt-1"><span className="font-medium">Address:</span> {[profile.addressLine1 || intake.addressLine1, profile.addressLine2 || intake.addressLine2, profile.city || intake.city, profile.state || intake.state, profile.zipCode || intake.zipCode].filter(Boolean).join(", ") || "Not entered"}</p></div>
+                <div className="rounded-2xl border p-4"><p className="font-medium">Contact information</p><p className="mt-2"><span className="font-medium">Phone:</span> {profile.phone || intake.phone || "Not entered"}</p><p className="mt-1"><span className="font-medium">Email:</span> {profile.email || "Not entered"}</p></div>
               </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Chief complaint / reason for visit</p>
-                  <p className="mt-2 whitespace-pre-wrap">{intake.chiefComplaint || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Onset / duration</p>
-                  <p className="mt-2 whitespace-pre-wrap">{intake.onset || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Session minutes</p>
-                  <p className="mt-1 font-medium">{intake.sessionMinutes || "Not entered"}</p>
-                </div>
-                <div className="rounded-2xl border p-4 bg-slate-50">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Billing codes</p>
-                  <p className="mt-1 font-medium">{(intake.billingCodes || []).join(", ") || "Not entered"}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Presenting problem</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.presentingProblem || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Clinical objectives and treatment goals</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.treatmentGoals || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Biopsychosocial summary</p>
-                <p className="mt-2 whitespace-pre-wrap">{intake.biopsychosocialSummary || "Not entered"}</p>
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="font-medium">Diagnostic formulation</p>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {diagnoses.length === 0 ? <p className="text-slate-500">No diagnoses entered.</p> : diagnoses.map((dx) => <Badge key={dx} variant="secondary" className="rounded-xl">{dx}</Badge>)}
-                </div>
-              </div>
+              <div className="rounded-2xl border p-4"><p className="font-medium">Insurance information</p><p className="mt-2"><span className="font-medium">Network:</span> {intake.insuranceNetworkStatus || profile.insuranceNetworkStatus || "Not verified"}</p><p className="mt-1"><span className="font-medium">Carrier:</span> {intake.insurancePayer || "Not entered"}</p><p className="mt-1"><span className="font-medium">Plan:</span> {intake.insurancePlanName || profile.insurancePlanName || "Not entered"}</p><p className="mt-1"><span className="font-medium">Member ID:</span> {intake.insuranceMemberId || "Not entered"}</p><p className="mt-1"><span className="font-medium">Group number:</span> {intake.insuranceGroupNumber || "Not entered"}</p><p className="mt-1"><span className="font-medium">Verification:</span> {intake.insuranceVerificationStatus || "Not verified"}</p></div>
             </CardContent>
           </Card>
-          <Tabs defaultValue="notes">
-            <TabsList className="grid grid-cols-6 rounded-2xl w-full">
-              <TabsTrigger value="notes">Notes</TabsTrigger>
-              <TabsTrigger value="plans">Plans</TabsTrigger>
-              <TabsTrigger value="assessments">Assessments</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
-              <TabsTrigger value="journal">Shared Journal</TabsTrigger>
-              <TabsTrigger value="messages">Messages</TabsTrigger>
+          <Tabs defaultValue="intake">
+            <TabsList className="flex flex-wrap rounded-2xl w-full h-auto">
+              <TabsTrigger value="intake">Intake</TabsTrigger><TabsTrigger value="biopsychosocial">Biopsychosocial</TabsTrigger><TabsTrigger value="plans">Treatment Plan</TabsTrigger><TabsTrigger value="notes">Follow-Up Notes</TabsTrigger><TabsTrigger value="assessments">Assessments</TabsTrigger><TabsTrigger value="documents">Forms & Records</TabsTrigger>
             </TabsList>
+            <TabsContent value="intake" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient intake</CardTitle><CardDescription>Brief intake submitted electronically by the patient.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("documents")}>Open patient intake</Button></CardContent></Card></TabsContent>
+            <TabsContent value="biopsychosocial" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Biopsychosocial assessment</CardTitle><CardDescription>Provider-completed clinical evaluation and diagnostic formulation.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("intake")}>Open biopsychosocial assessment</Button></CardContent></Card></TabsContent>
             <TabsContent value="notes" className="mt-4">
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader>
-                  <CardTitle>Provider-only notes</CardTitle>
+                  <CardTitle>Follow-up notes</CardTitle>
                   <CardDescription>Medical record notes and psychotherapy notes are not visible in the client portal.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[360px] overflow-auto">
@@ -2975,7 +2931,7 @@ function ClientChartPage() {
             <TabsContent value="plans" className="mt-4">
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader>
-                  <CardTitle>Provider-only treatment plans</CardTitle>
+                  <CardTitle>Treatment plan</CardTitle>
                   <CardDescription>Treatment plans remain provider visible unless released through a formal records process.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[360px] overflow-auto">
@@ -3018,8 +2974,8 @@ function ClientChartPage() {
             <TabsContent value="documents" className="mt-4">
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader>
-                  <CardTitle>Chart documents</CardTitle>
-                  <CardDescription>Clinical forms, uploads, signatures, and advocacy letters.</CardDescription>
+                  <CardTitle>Forms, consents, and other records</CardTitle>
+                  <CardDescription>Signed consents, identification, insurance cards, uploads, and later records.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[360px] overflow-auto">
                   {documents.length === 0 && <p className="text-sm text-slate-500">No chart documents available.</p>}

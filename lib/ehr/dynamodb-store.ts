@@ -1,4 +1,4 @@
-import { GetCommand, QueryCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
 import type { EhrActor } from "./auth";
@@ -24,6 +24,8 @@ export type ClientProfileInput = {
   city?: string;
   state?: string;
   zipCode?: string;
+  insuranceNetworkStatus?: string;
+  insurancePlanName?: string;
   status?: "active" | "inactive" | "archived";
   assignedProviderIds?: string[];
 };
@@ -132,6 +134,18 @@ export async function listClientProfiles(actor: EhrActor, limit = 100) {
     Limit: Math.min(Math.max(limit, 1), 100),
   }));
   const items = response.Items || [];
+  for (const item of items) {
+    if ((actor.role !== "owner" && actor.role !== "provider") || item.medicalRecordNumber || !item.clientId) continue;
+    const createdDate = String(item.createdAt || nowIso()).slice(0, 10).replace(/-/g, "");
+    const medicalRecordNumber = `RLTH-${createdDate}-${String(item.clientId).split("_").pop()?.toUpperCase() || "RECORD"}`;
+    await dynamo.send(new UpdateCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Key: { PK: clientPartition(actor.practiceId, String(item.clientId)), SK: "PROFILE" },
+      UpdateExpression: "SET medicalRecordNumber = if_not_exists(medicalRecordNumber, :mrn)",
+      ExpressionAttributeValues: { ":mrn": medicalRecordNumber },
+    }));
+    item.medicalRecordNumber = medicalRecordNumber;
+  }
   if (actor.role === "owner" || actor.role === "auditor") return items;
   if (actor.role === "client") return items.filter((item) => item.cognitoUserId === actor.sub);
   return items.filter((item) => Array.isArray(item.assignedProviderIds) && item.assignedProviderIds.includes(actor.sub));
@@ -162,6 +176,8 @@ export async function putClientProfile(actor: EhrActor, input: ClientProfileInpu
     city: input.city || "",
     state: input.state || "",
     zipCode: input.zipCode || "",
+    insuranceNetworkStatus: input.insuranceNetworkStatus || "",
+    insurancePlanName: input.insurancePlanName || "",
     status: input.status || "active",
     assignedProviderIds: input.assignedProviderIds?.length ? input.assignedProviderIds : [actor.sub],
     createdAt: timestamp,

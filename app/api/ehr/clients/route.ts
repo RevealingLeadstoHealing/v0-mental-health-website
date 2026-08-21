@@ -150,6 +150,8 @@ export async function POST(request: Request) {
       city: typeof body.city === "string" ? body.city.trim() : "",
       state: typeof body.state === "string" ? body.state.trim() : "",
       zipCode: typeof body.zipCode === "string" ? body.zipCode.trim() : "",
+      insuranceNetworkStatus: typeof body.insuranceNetworkStatus === "string" ? body.insuranceNetworkStatus.trim() : "",
+      insurancePlanName: typeof body.insurancePlanName === "string" ? body.insurancePlanName.trim() : "",
       assignedProviderIds: Array.isArray(body.assignedProviderIds)
         ? body.assignedProviderIds.filter((value: unknown): value is string => typeof value === "string")
         : [actor.sub],
