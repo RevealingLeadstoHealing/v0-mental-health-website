@@ -550,8 +550,11 @@ function AuthProvider({ children }) {
               city: client.city || "",
               state: client.state || "",
               zipCode: client.zipCode || "",
+              insurancePayer: client.insurancePayer || "",
               insuranceNetworkStatus: client.insuranceNetworkStatus || "",
               insurancePlanName: client.insurancePlanName || "",
+              insuranceMemberId: client.insuranceMemberId || "",
+              insuranceGroupNumber: client.insuranceGroupNumber || "",
               status: client.status || "active",
             },
           });
@@ -1171,9 +1174,14 @@ function SectionHeader({ title, description, right }) {
   );
 }
 function ProviderPatientDashboard() {
-  const { store } = useAuth();
+  const { store, updateSpecificUserData } = useAuth();
   const { selectedChartClientId, setSelectedChartClientId, setPage } = usePage();
   const [patientSearch, setPatientSearch] = useState("");
+  const [editingPatient, setEditingPatient] = useState(false);
+  const [editDraft, setEditDraft] = useState({});
+  const [editFiles, setEditFiles] = useState({});
+  const [editNotice, setEditNotice] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
   const patients = Object.entries(store.users)
     .filter(([, bucket]) => bucket.profile.role === "client")
     .map(([id, bucket]) => ({ id, profile: bucket.profile, intake: bucket.intake || {}, documents: bucket.documents || [] }));
@@ -1185,12 +1193,100 @@ function ProviderPatientDashboard() {
   const profile = selectedPatient?.profile || {};
   const intake = selectedPatient?.intake || {};
   const address = [profile.addressLine1 || intake.addressLine1, profile.addressLine2 || intake.addressLine2, profile.city || intake.city, profile.state || intake.state, profile.zipCode || intake.zipCode].filter(Boolean).join(", ");
+
+  const beginPatientEdit = () => {
+    if (!selectedPatient) return;
+    const value = (key) => String(profile[key] || intake[key] || "");
+    setEditDraft({
+      fullName: value("fullName"), preferredName: value("preferredName"), dateOfBirth: value("dateOfBirth"),
+      sex: value("sex"), phone: value("phone"), addressLine1: value("addressLine1"),
+      addressLine2: value("addressLine2"), city: value("city"), state: value("state"),
+      zipCode: value("zipCode"), insurancePayer: value("insurancePayer"),
+      insurancePlanName: value("insurancePlanName"), insuranceNetworkStatus: value("insuranceNetworkStatus"),
+      insuranceMemberId: value("insuranceMemberId"), insuranceGroupNumber: value("insuranceGroupNumber"),
+    });
+    setEditFiles({});
+    setEditNotice("");
+    setEditingPatient(true);
+  };
+  const savePatientEdit = async () => {
+    if (!selectedPatient) return;
+    if (!String(editDraft.fullName || "").trim()) {
+      setEditNotice("Patient name is required.");
+      return;
+    }
+    setEditBusy(true);
+    setEditNotice("Saving patient record securely…");
+    try {
+      const result = await productionApi("/api/ehr/clients", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: selectedPatient.id, ...editDraft }),
+      });
+      const updatedClient = result.client || {};
+      const updatedProfile = { ...profile, ...updatedClient };
+      const updatedIntake = {
+        ...intake,
+        ...editDraft,
+        fullName: updatedClient.fullName || editDraft.fullName,
+        medicalRecordNumber: profile.medicalRecordNumber || intake.medicalRecordNumber || updatedClient.medicalRecordNumber || "",
+      };
+      const uploads = [
+        { file: editFiles.insuranceFront, title: "Insurance Card - Front", documentType: "insurance-card-front", category: "Insurance" },
+        { file: editFiles.insuranceBack, title: "Insurance Card - Back", documentType: "insurance-card-back", category: "Insurance" },
+        { file: editFiles.photoIdFront, title: "Photo ID - Front", documentType: "photo-id-front", category: "Identification" },
+        { file: editFiles.photoIdBack, title: "Photo ID - Back", documentType: "photo-id-back", category: "Identification" },
+      ].filter((item) => item.file);
+      const uploadedDocuments = [];
+      for (const item of uploads) {
+        if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
+        if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
+          throw new Error(`${item.title} must be an image or PDF.`);
+        }
+        const authorization = await productionApi("/api/ehr/documents/presign", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            clientId: selectedPatient.id,
+            documentType: item.documentType,
+            fileName: item.file.name,
+            contentType: item.file.type || "application/octet-stream",
+          }),
+        });
+        const uploadResponse = await fetch(authorization.uploadUrl, {
+          method: "PUT",
+          headers: authorization.uploadHeaders,
+          body: item.file,
+        });
+        if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+        uploadedDocuments.push({
+          id: authorization.documentId, title: item.title, type: item.category, category: item.category,
+          status: "Uploaded", viewedAt: "", signature: null, signatures: [],
+          uploadedFileName: item.file.name, generatedLetterText: "", clientVisible: true,
+          onboardingRequired: false, createdAt: new Date().toISOString(),
+          contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
+          storageKey: authorization.key, uploadedByRole: "provider",
+        });
+      }
+      updateSpecificUserData(selectedPatient.id, "profile", updatedProfile);
+      updateSpecificUserData(selectedPatient.id, "intake", updatedIntake);
+      if (uploadedDocuments.length) {
+        updateSpecificUserData(selectedPatient.id, "documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
+      }
+      setEditNotice("Patient record saved securely.");
+      setEditingPatient(false);
+    } catch (error) {
+      setEditNotice(error instanceof Error ? error.message : "Patient record could not be saved.");
+    } finally {
+      setEditBusy(false);
+    }
+  };
   return (
     <div>
       <SectionHeader title="Patient Dashboard" description="Find a patient by name, medical record number, or email to open their individual record." right={<Button className="rounded-2xl" onClick={() => setPage("clients")}>Client Management</Button>} />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient records</CardTitle></CardHeader><CardContent className="space-y-3"><Input label="Search by name or medical record number" value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} />{matchingPatients.length === 0 && <p className="text-sm text-slate-500">No matching patients.</p>}{matchingPatients.map(({ id, profile: patientProfile }) => <button key={id} type="button" className={`w-full rounded-2xl border p-3 text-left ${selectedPatient?.id === id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`} onClick={() => setSelectedChartClientId(id)}><p className="font-medium">{patientProfile.fullName}</p><p className="mt-1 text-xs text-slate-500">{patientProfile.medicalRecordNumber || "Medical record number pending"}</p></button>)}</CardContent></Card>
-        {!selectedPatient ? <Card className="rounded-2xl shadow-sm"><CardContent className="p-6"><p className="text-slate-600">Select a patient or open Client Management to add a new patient.</p></CardContent></Card> : <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>{profile.fullName || "Patient"}</CardTitle><CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Pending"}</CardDescription></CardHeader><CardContent className="space-y-4 text-sm"><div className="rounded-2xl border p-4"><p className="font-medium">Demographics</p><p className="mt-2">Date of birth: {profile.dateOfBirth || intake.dateOfBirth || "Not entered"}</p><p className="mt-1">Sex: {profile.sex || intake.sex || "Not entered"}</p><p className="mt-1">Address: {address || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Contact information</p><p className="mt-2">Phone: {profile.phone || intake.phone || "Not entered"}</p><p className="mt-1">Email: {profile.email || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Insurance information</p><p className="mt-2">Carrier: {intake.insurancePayer || "Not entered"}</p><p className="mt-1">Plan: {intake.insurancePlanName || profile.insurancePlanName || "Not entered"}</p><p className="mt-1">Network: {intake.insuranceNetworkStatus || profile.insuranceNetworkStatus || "Not verified"}</p><p className="mt-1">Member ID: {intake.insuranceMemberId || "Not entered"}</p><p className="mt-1">Group number: {intake.insuranceGroupNumber || "Not entered"}</p><p className="mt-1">Eligibility: {intake.insuranceVerificationStatus || "Not verified"}</p></div><div className="flex flex-wrap gap-2"><Button className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("chart"); }}>Open Client Chart</Button><Button variant="outline" className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("schedule"); }}>Scheduling</Button></div></CardContent></Card>}
+        {!selectedPatient ? <Card className="rounded-2xl shadow-sm"><CardContent className="p-6"><p className="text-slate-600">Select a patient or open Client Management to add a new patient.</p></CardContent></Card> : <Card className="rounded-2xl shadow-sm"><CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle>{profile.fullName || "Patient"}</CardTitle><CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Pending"}</CardDescription></div><Button variant="outline" className="rounded-2xl" onClick={beginPatientEdit}>Edit</Button></div></CardHeader><CardContent className="space-y-4 text-sm">{editNotice && <div className="rounded-2xl border bg-slate-50 p-3">{editNotice}</div>}{editingPatient && <div className="space-y-4 rounded-2xl border p-4"><p className="font-medium">Edit patient information</p><div className="grid gap-3 md:grid-cols-2"><Input label="Full name" value={editDraft.fullName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, fullName: event.target.value }))} /><Input label="Preferred name" value={editDraft.preferredName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, preferredName: event.target.value }))} /><Input label="Date of birth" type="date" value={editDraft.dateOfBirth || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, dateOfBirth: event.target.value }))} /><Input label="Sex" value={editDraft.sex || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, sex: event.target.value }))} /><Input label="Phone" value={editDraft.phone || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, phone: event.target.value }))} /><Input label="Street address" value={editDraft.addressLine1 || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, addressLine1: event.target.value }))} /><Input label="Apartment / unit" value={editDraft.addressLine2 || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, addressLine2: event.target.value }))} /><Input label="City" value={editDraft.city || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, city: event.target.value }))} /><Input label="State" value={editDraft.state || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, state: event.target.value }))} /><Input label="ZIP code" value={editDraft.zipCode || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, zipCode: event.target.value }))} /><Input label="Insurance carrier" value={editDraft.insurancePayer || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insurancePayer: event.target.value }))} /><Input label="Insurance plan" value={editDraft.insurancePlanName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insurancePlanName: event.target.value }))} /><Input label="Network status" value={editDraft.insuranceNetworkStatus || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceNetworkStatus: event.target.value }))} /><Input label="Member ID" value={editDraft.insuranceMemberId || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceMemberId: event.target.value }))} /><Input label="Group number" value={editDraft.insuranceGroupNumber || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceGroupNumber: event.target.value }))} /></div><div className="grid gap-3 md:grid-cols-2">{[["insuranceFront","Insurance card - front"],["insuranceBack","Insurance card - back"],["photoIdFront","Photo ID - front"],["photoIdBack","Photo ID - back"]].map(([key,label]) => <label key={key} className="text-sm font-medium">{label}<input className="mt-1 block w-full text-sm" type="file" accept="image/*,application/pdf" onChange={(event) => setEditFiles((previous) => ({ ...previous, [key]: event.target.files?.[0] || null }))} /></label>)}</div><div className="flex gap-2"><Button className="rounded-2xl" disabled={editBusy} onClick={savePatientEdit}>{editBusy ? "Saving…" : "Save Changes"}</Button><Button variant="outline" className="rounded-2xl" disabled={editBusy} onClick={() => setEditingPatient(false)}>Cancel</Button></div></div>}<div className="rounded-2xl border p-4"><p className="font-medium">Demographics</p><p className="mt-2">Date of birth: {profile.dateOfBirth || intake.dateOfBirth || "Not entered"}</p><p className="mt-1">Sex: {profile.sex || intake.sex || "Not entered"}</p><p className="mt-1">Address: {address || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Contact information</p><p className="mt-2">Phone: {profile.phone || intake.phone || "Not entered"}</p><p className="mt-1">Email: {profile.email || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Insurance information</p><p className="mt-2">Carrier: {intake.insurancePayer || "Not entered"}</p><p className="mt-1">Plan: {intake.insurancePlanName || profile.insurancePlanName || "Not entered"}</p><p className="mt-1">Network: {intake.insuranceNetworkStatus || profile.insuranceNetworkStatus || "Not verified"}</p><p className="mt-1">Member ID: {intake.insuranceMemberId || "Not entered"}</p><p className="mt-1">Group number: {intake.insuranceGroupNumber || "Not entered"}</p><p className="mt-1">Eligibility: {intake.insuranceVerificationStatus || "Not verified"}</p></div><div className="flex flex-wrap gap-2"><Button className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("chart"); }}>Open Client Chart</Button><Button variant="outline" className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("schedule"); }}>Scheduling</Button></div></CardContent></Card>}
       </div>
     </div>
   );

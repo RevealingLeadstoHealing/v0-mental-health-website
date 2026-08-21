@@ -102,6 +102,61 @@ export async function GET(request: Request) {
   }
 }
 
+
+export async function PATCH(request: Request) {
+  try {
+    const actor = await requireEhrActor(request);
+    requireRole(actor, ["owner", "provider"]);
+    const body = await request.json();
+    const clientId = typeof body.clientId === "string" ? body.clientId : "";
+    if (!clientId) throw new ApiError(400, "Patient record is required.");
+    const existing = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
+    if (!existing) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
+    const editableFields = [
+      "fullName", "preferredName", "dateOfBirth", "sex", "phone",
+      "addressLine1", "addressLine2", "city", "state", "zipCode",
+      "insurancePayer", "insurancePlanName", "insuranceNetworkStatus",
+      "insuranceMemberId", "insuranceGroupNumber",
+    ];
+    const names: Record<string, string> = {};
+    const values: Record<string, unknown> = {};
+    const assignments: string[] = [];
+    const updates: Record<string, string> = {};
+    for (const field of editableFields) {
+      if (!(field in body)) continue;
+      const value = typeof body[field] === "string" ? body[field].trim() : "";
+      names[`#f${assignments.length}`] = field;
+      values[`:v${assignments.length}`] = value;
+      assignments.push(`#f${assignments.length} = :v${assignments.length}`);
+      updates[field] = value;
+    }
+    if (!assignments.length) throw new ApiError(400, "No patient information was provided to update.");
+    if (!String(updates.fullName ?? existing.fullName ?? "").trim()) throw new ApiError(400, "Patient full name is required.");
+    names["#updatedAt"] = "updatedAt";
+    values[":updatedAt"] = new Date().toISOString();
+    assignments.push("#updatedAt = :updatedAt");
+    await getDynamoDocumentClient().send(new UpdateCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Key: { PK: `PRACTICE#${actor.practiceId}#CLIENT#${clientId}`, SK: "PROFILE" },
+      UpdateExpression: `SET ${assignments.join(", ")}`,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+      ConditionExpression: "attribute_exists(PK) AND attribute_exists(SK)",
+    }));
+    await appendAuditEvent(actor, {
+      action: "Updated patient demographics",
+      category: "Client Administration",
+      clientId,
+      entityType: "client-profile",
+      entityId: clientId,
+      summary: "Patient demographic and insurance information was updated.",
+    });
+    return NextResponse.json({ client: { ...existing, ...updates, updatedAt: values[":updatedAt"] } });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const actor = await requireEhrActor(request);
