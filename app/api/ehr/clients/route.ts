@@ -32,7 +32,7 @@ function temporaryPatientPassword() {
   const groups = [upper, lower, digits, symbols];
   const alphabet = groups.join("");
   const characters = groups.map((group) => group[randomInt(group.length)]);
-  while (characters.length < 20) characters.push(alphabet[randomInt(alphabet.length)]);
+  while (characters.length < 14) characters.push(alphabet[randomInt(alphabet.length)]);
   for (let index = characters.length - 1; index > 0; index -= 1) {
     const other = randomInt(index + 1);
     [characters[index], characters[other]] = [characters[other], characters[index]];
