@@ -8,12 +8,15 @@ function pick(...vals: Array<string | undefined>) {
 }
 
 export const rlthAwsFoundation = {
-  region: pick(env.EHR_AWS_REGION, env.AWS_REGION, "us-east-2"),
-  cognitoUserPoolId: pick(env.EHR_COGNITO_USER_POOL_ID, "us-east-2_kSd3RAPsl"),
+  // Production EHR is anchored in Northern Virginia. Resource identifiers must
+  // come from the deployed AWS environment so the app cannot silently fall
+  // back to legacy Ohio authentication or encryption resources.
+  region: pick(env.EHR_AWS_REGION, env.NEXT_PUBLIC_AWS_REGION, env.AWS_REGION, "us-east-1"),
+  cognitoUserPoolId: pick(env.EHR_COGNITO_USER_POOL_ID, env.NEXT_PUBLIC_COGNITO_USER_POOL_ID),
   cognitoUserPoolClientId: pick(
     env.EHR_COGNITO_CLIENT_ID,
     env.NEXT_PUBLIC_EHR_COGNITO_CLIENT_ID,
-    "64q7036m6i0sl68t9an6dqksnn"
+    env.NEXT_PUBLIC_COGNITO_CLIENT_ID
   ),
   clinicalRecordsTableName: pick(
     env.EHR_RECORDS_TABLE,
@@ -38,15 +41,16 @@ export const rlthAwsFoundation = {
     "rlth-prod-ehr-documents-597936860711"
   ),
   cloudTrailName: pick(env.EHR_CLOUDTRAIL_NAME, "rlth-prod-ehr-management-events"),
-  kmsKeyArn: pick(
-    env.EHR_KMS_KEY_ARN,
-    "arn:aws:kms:us-east-2:597936860711:key/9114a3e2-b165-4db2-a1db-7d3a217e647a"
-  ),
+  kmsKeyArn: pick(env.EHR_KMS_KEY_ARN, env.RLTH_EHR_KMS_KEY_ID),
 } as const;
 
 export function getRlthAwsFoundationStatus() {
   return {
-    configured: true,
+    configured: Boolean(
+      rlthAwsFoundation.region &&
+      rlthAwsFoundation.cognitoUserPoolId &&
+      rlthAwsFoundation.cognitoUserPoolClientId
+    ),
     region: rlthAwsFoundation.region,
     cognitoConfigured: Boolean(
       rlthAwsFoundation.cognitoUserPoolId && rlthAwsFoundation.cognitoUserPoolClientId
@@ -57,6 +61,7 @@ export function getRlthAwsFoundationStatus() {
     auditConfigured: Boolean(
       rlthAwsFoundation.auditEventsTableName && rlthAwsFoundation.cloudTrailName
     ),
+    encryptionConfigured: Boolean(rlthAwsFoundation.kmsKeyArn),
     backupAndMonitoringStack: "rlth-ehr-prod-security-operations",
     foundationStack: "rlth-ehr-prod-foundation",
   };
