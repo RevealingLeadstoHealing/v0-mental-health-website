@@ -43,6 +43,7 @@ function temporaryPatientPassword() {
 async function cognitoAdmin(action: "AdminCreateUser" | "AdminAddUserToGroup", payload: Record<string, unknown>) {
   const region = getAwsRegion();
   if (!region) throw new ApiError(500, "AWS authentication region is not configured.");
+  if (!rlthAwsFoundation.cognitoUserPoolId) throw new ApiError(500, "AWS Cognito patient user pool is not configured.");
   const credentials = await new DynamoDBClient({ region }).config.credentials();
   const host = `cognito-idp.${region}.amazonaws.com`;
   const body = JSON.stringify(payload);
@@ -102,7 +103,6 @@ export async function GET(request: Request) {
   }
 }
 
-
 export async function PATCH(request: Request) {
   try {
     const actor = await requireEhrActor(request);
@@ -113,7 +113,7 @@ export async function PATCH(request: Request) {
     const existing = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
     if (!existing) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
     const editableFields = [
-      "fullName", "preferredName", "dateOfBirth", "sex", "phone",
+      "fullName", "preferredName", "dateOfBirth", "sex", "email", "phone",
       "addressLine1", "addressLine2", "city", "state", "zipCode",
       "insurancePayer", "insurancePlanName", "insuranceNetworkStatus",
       "insuranceMemberId", "insuranceGroupNumber",
@@ -124,7 +124,16 @@ export async function PATCH(request: Request) {
     const updates: Record<string, string> = {};
     for (const field of editableFields) {
       if (!(field in body)) continue;
-      const value = typeof body[field] === "string" ? body[field].trim() : "";
+      let value = typeof body[field] === "string" ? body[field].trim() : "";
+      if (field === "email") {
+        value = value.toLowerCase();
+        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          throw new ApiError(400, "Enter a valid patient email address before sending a portal invitation.");
+        }
+        if (existing.cognitoUserId && value !== String(existing.email || "").toLowerCase()) {
+          throw new ApiError(409, "This patient already has a linked portal account. Change the Cognito login email through the account workflow before changing the chart email.");
+        }
+      }
       names[`#f${assignments.length}`] = field;
       values[`:v${assignments.length}`] = value;
       assignments.push(`#f${assignments.length} = :v${assignments.length}`);
@@ -149,7 +158,7 @@ export async function PATCH(request: Request) {
       clientId,
       entityType: "client-profile",
       entityId: clientId,
-      summary: "Patient demographic and insurance information was updated.",
+      summary: "Patient demographic, contact, and insurance information was updated.",
     });
     return NextResponse.json({ client: { ...existing, ...updates, updatedAt: values[":updatedAt"] } });
   } catch (error) {
@@ -167,6 +176,7 @@ export async function POST(request: Request) {
       const client = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
       if (!client) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
       if (!client.email) throw new ApiError(400, "Add a patient email address before sending an invitation.");
+      if (!client.cognitoUserId) throw new ApiError(409, "This patient does not yet have a linked portal account. Create the portal account before using resend invitation.");
       await cognitoAdmin("AdminCreateUser", {
         UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
         Username: client.email,
@@ -185,6 +195,7 @@ export async function POST(request: Request) {
 
     let cognitoUserId = "";
     if (email) {
+      if (!rlthAwsFoundation.cognitoUserPoolId) throw new ApiError(500, "AWS Cognito patient user pool is not configured.");
       const account = await cognitoAdmin("AdminCreateUser", {
         UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
         Username: email,
