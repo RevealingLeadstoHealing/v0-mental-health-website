@@ -6,7 +6,7 @@ type Props = { assessmentKey: string; saved?: any; examiner: string; onSave: (ke
 export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner, onSave, onBusy }: Props) {
   const definition = specialtyAssessments.find(item => item.key === assessmentKey)!;
   const domains = clinicalDomains[assessmentKey];
-  const [data, setData] = useState<Record<string, string>>(() => ({ administrationDate: '', examiner, version: definition.version, ...saved?.data }));
+  const [data, setData] = useState<Record<string, string>>(() => ({ administrationDate: '', examiner, administeredBy: 'Primary clinician', referralStatus: '', version: definition.version, ...saved?.data }));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const field = (key: string, label: string, multiline = false, placeholder = '') => <label key={key} className="block space-y-1 text-sm">
@@ -20,7 +20,7 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
     if (error) { setNotice(error); return; }
     setBusy(true); onBusy(true); setNotice('Saving…');
     try {
-      await onSave(assessmentKey, { data: { ...data }, administrationMode: domains ? 'Clinical examination' : 'Official-form result entry' }, definition.label);
+      await onSave(assessmentKey, { data: { ...data }, ...(data.totalScore?.trim() ? { score: Number(data.totalScore) } : {}), administrationMode: domains ? 'Clinical examination' : 'Official-form result entry' }, definition.label);
       setNotice('Saved to this client’s assessments.');
     } catch { setNotice('Save could not be confirmed. Your entries are still here; retry saving.'); }
     finally { setBusy(false); onBusy(false); }
@@ -40,13 +40,18 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
     {assessmentKey === 'tec' && <p className="text-sm">Specify the full instrument title and author/version used; trauma exposure alone does not establish a diagnosis.</p>}
     <fieldset disabled={busy} className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">{field('administrationDate', 'Administration date')}{field('examiner', 'Examiner')}{field('setting', 'Setting / telehealth and examination limitations')}{field('ageAtAssessment', 'Age at assessment / developmental context')}</div>
+      <label className="block space-y-1 text-sm"><span className="font-medium">Administered by</span><select className="w-full rounded-xl border p-3" value={data.administeredBy || 'Primary clinician'} onChange={event => setData(previous => ({ ...previous, administeredBy: event.target.value }))}><option>Primary clinician</option><option>Other clinician / outside evaluator</option></select></label>
       {domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => field(domain, domain, true, 'Observed finding, client report, or not assessed and reason'))}</div> : <>
         <div className="grid md:grid-cols-2 gap-4">{field('version', 'Exact instrument / edition / language / age interval')}{field('respondent', 'Respondent and relationship to client')}</div>
         {field('source', 'Source form / document reference', false, 'Reference to the completed form in the client chart')}
-        {field('results', 'Recorded score, subscales, and results', true, 'Transcribe the results using the official form’s scoring instructions')}
+        {field('totalScore', 'Total score, if applicable', false, 'Leave blank for tools without a total score')}
+        {field('results', 'Scoring method, subscales, and results', true, 'Record the official scoring method, applicable norms, subscale results, and any scoring limitations')}
       </>}
       {field('interpretation', 'Clinical interpretation / summary', true)}
-      {field('followUp', 'Follow-up / disposition', true)}
+      <label className="block space-y-1 text-sm"><span className="font-medium">Further evaluation / referral decision</span><select className="w-full rounded-xl border p-3" value={data.referralStatus || ''} onChange={event => setData(previous => ({ ...previous, referralStatus: event.target.value }))}><option value="">Select a decision</option><option>No referral indicated at this time</option><option>Further evaluation by primary clinician</option><option>Referral recommended</option><option>Referral placed</option><option>Awaiting specialist evaluation</option><option>Specialist evaluation completed</option><option>Client declined referral</option><option>Urgent evaluation arranged</option></select></label>
+      {field('referralDestination', 'Referral destination / specialist, if applicable')}
+      {field('referralReason', 'Reason for referral / additional evaluation, if applicable', true)}
+      {field('followUp',  'Follow-up / disposition', true)}
       <button type="submit" className="rounded-xl bg-blue-600 text-white px-4 py-2 disabled:opacity-50">{busy ? 'Saving…' : `Save ${definition.label}`}</button>
     </fieldset>
     <p role="status" className="text-sm">{notice}</p>

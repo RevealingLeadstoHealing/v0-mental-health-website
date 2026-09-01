@@ -105,6 +105,10 @@ export function validateSpecialtyAssessment(key: string, data: Record<string, st
   if (!specialtyAssessments.some(item => item.key === key)) return 'Select an assessment.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data.administrationDate || '') || !Number.isFinite(Date.parse(data.administrationDate))) return 'Enter the administration date.';
   if (!data.examiner?.trim()) return 'Enter the examiner name.';
+  if (!data.referralStatus?.trim()) return 'Document the further evaluation or referral decision.';
+  if (data.totalScore?.trim() && !Number.isFinite(Number(data.totalScore))) return 'Enter a numeric total score, or leave it blank when not applicable.';
+  if (!['No referral indicated at this time', 'Further evaluation by primary clinician'].includes(data.referralStatus) && (!data.referralDestination?.trim() || !data.referralReason?.trim())) return 'Document the referral destination and reason.';
+
   if (!data.interpretation?.trim() || !data.followUp?.trim()) return 'Enter the clinical interpretation and follow-up plan.';
   if (clinicalDomains[key]) {
     if (clinicalDomains[key].some(domain => !data[domain]?.trim())) return 'Document each clinical area, or enter “Not assessed” with a reason.';
