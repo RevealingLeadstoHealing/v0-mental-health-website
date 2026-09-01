@@ -1,6 +1,8 @@
 ﻿// @ts-nocheck
 "use client";
 
+import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
+import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -536,6 +538,7 @@ function AuthProvider({ children }) {
   const [saveStatus, setSaveStatus] = useState("");
   const storeRef = useRef(store);
   const saveQueuesRef = useRef(new Map());
+  const saveFailuresRef = useRef(new Map());
   useEffect(() => { storeRef.current = store; }, [store]);
 
   useEffect(() => {
@@ -661,14 +664,23 @@ function AuthProvider({ children }) {
     const next = previous
       .catch(() => undefined)
       .then(() => persistModuleSnapshot(clientId, moduleKey, value))
-      .then(() => setSaveStatus("Saved securely to AWS."))
-      .catch((error) => setSaveStatus(`AWS save failed: ${error instanceof Error ? error.message : "Unknown error"}`))
+      .then(() => {
+        saveFailuresRef.current.delete(queueKey);
+        setSaveStatus(saveFailuresRef.current.size ? "Some chart changes have not saved. Please retry them." : "Saved securely to AWS.");
+      })
+      .catch((error) => {
+        saveFailuresRef.current.set(queueKey, error);
+        setSaveStatus(`AWS save failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      })
       .finally(() => {
         if (saveQueuesRef.current.get(queueKey) === next) saveQueuesRef.current.delete(queueKey);
       });
     saveQueuesRef.current.set(queueKey, next);
   };
 
+  const flushClientModuleSaves = async (clientId) => {
+    await flushModuleSaves(saveQueuesRef.current, saveFailuresRef.current, clientId);
+  };
   const login = () => window.location.replace("/login");
   const signup = () => { throw new Error("Public self-registration is disabled in production."); };
   const logout = async () => {
@@ -910,7 +922,7 @@ function AuthProvider({ children }) {
     return client;
   };
   const value = useMemo(() => ({
-    currentUser, store, login, signup, logout, createClient, updateCurrentUserData, updateSpecificUserData,
+    currentUser, store, login, signup, logout, createClient, updateCurrentUserData, updateSpecificUserData, flushClientModuleSaves,
     appendAuditLog, submitRecordRequest, updateRecordRequestStatus, saveStatus, isMockMode: false,
   }), [currentUser, store]);
 
@@ -925,6 +937,7 @@ function PageProvider({ children, initialPage = "dashboard" }) {
   const setPage = (requestedPage, target = null) => {
     setPageState(requestedPage);
     setWorkflowTarget(target);
+    if (target?.clientId) setSelectedChartClientId(target.clientId);
     const requestedPath = `/ehr/${encodeURIComponent(requestedPage)}`;
     if (window.location.pathname !== requestedPath) {
       window.history.pushState({}, "", requestedPath);
@@ -934,6 +947,7 @@ function PageProvider({ children, initialPage = "dashboard" }) {
     const syncPageFromPath = () => {
       const requestedPage = window.location.pathname.split("/").filter(Boolean)[1] || "dashboard";
       setPageState(requestedPage);
+      setWorkflowTarget(null);
     };
     setPageState(initialPage);
     window.addEventListener("popstate", syncPageFromPath);
@@ -3167,7 +3181,7 @@ function ClientChartPage() {
               <TabsTrigger value="intake">Intake</TabsTrigger><TabsTrigger value="biopsychosocial">Biopsychosocial</TabsTrigger><TabsTrigger value="plans">Treatment Plan</TabsTrigger><TabsTrigger value="assessments">Assessments</TabsTrigger><TabsTrigger value="notes">Follow-Up Notes</TabsTrigger><TabsTrigger value="documents">Consents & Records</TabsTrigger>
             </TabsList>
             <TabsContent value="intake" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient intake</CardTitle><CardDescription>Brief intake submitted electronically by the patient.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("documents")}>Open patient intake</Button></CardContent></Card></TabsContent>
-            <TabsContent value="biopsychosocial" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Biopsychosocial assessment</CardTitle><CardDescription>Provider-completed clinical evaluation and diagnostic formulation.</CardDescription></CardHeader><CardContent><Button className="rounded-2xl" onClick={() => setPage("intake")}>Open biopsychosocial assessment</Button></CardContent></Card></TabsContent>
+            <TabsContent value="biopsychosocial" className="mt-4"><Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Biopsychosocial assessment</CardTitle><CardDescription>Provider-completed clinical evaluation and diagnostic formulation.</CardDescription></CardHeader><CardContent>{(intake.combinedBiopsychosocialSummary || intake.biopsychosocialSummary) && <p className="whitespace-pre-wrap mb-4 text-sm">{intake.combinedBiopsychosocialSummary || intake.biopsychosocialSummary}</p>}<Button className="rounded-2xl" onClick={() => setPage("intake")}>Open biopsychosocial assessment</Button></CardContent></Card></TabsContent>
             <TabsContent value="notes" className="mt-4">
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader>
@@ -3336,11 +3350,13 @@ function ClientChartPage() {
   );
 }
 function IntakePage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { store, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
+  const { setPage, selectedChartClientId, setSelectedChartClientId } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
+  const completedAssessments = completedAssessmentSummary(selectedClient?.assessments);
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
   const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
@@ -3374,6 +3390,7 @@ function IntakePage() {
   };
   const [saveNotice, setSaveNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const updateIntakeField = (field, value) => {
     if (!selectedClientId) return;
     updateSpecificUserData(selectedClientId, "intake", {
@@ -3416,34 +3433,31 @@ function IntakePage() {
     updateIntakeField("diagnoses", diagnoses);
     setDiagnosisInput("");
   };
-  const handleSubmitIntake = () => {
-    if (!selectedClientId) return;
+  const handleSubmitIntake = async () => {
+    if (!selectedClientId || isSubmitting) return;
     setIsSubmitting(true);
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...(store.users[selectedClientId].intake || intake),
-      status: "submitted",
-      submittedAt: new Date().toLocaleString(),
-      designation: "HIPAA Medical Record Entry",
-    });
-    appendAuditLog({
-      action: "Submitted biopsychosocial assessment",
-      details: "Biopsychosocial assessment submitted to secure chart.",
-      clientId: selectedClientId,
-      clientName: selectedClient?.profile?.fullName || "Client",
-      category: "Medical Record",
-    });
-    setSaveNotice("Biopsychosocial assessment saved to the secure chart for this client.");
-    setTimeout(() => {
-      setSaveNotice("");
-      setIsSubmitting(false);
-    }, 3000);
+    setSaveNotice("");
+    setSaveFailed(false);
+    try {
+      await flushClientModuleSaves(selectedClientId);
+      const value = {
+        ...(store.users[selectedClientId].intake || intake),
+        assessmentResults: completedAssessments,
+        combinedBiopsychosocialSummary: composeBiopsychosocialSummary(intake.biopsychosocialSummary || "", selectedClient?.assessments),
+        status: "submitted", submittedAt: new Date().toLocaleString(), designation: "HIPAA Medical Record Entry",
+      };
+      await productionApi("/api/ehr/records", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: selectedClientId, recordType: "ehr-module-snapshot", status: "draft", payload: { moduleKey: "intake", value, providerReviewRequired: true } }) });
+      updateSpecificUserData(selectedClientId, "intake", value, false);
+      setSaveNotice("Biopsychosocial assessment and completed assessment results saved to the secure chart.");
+    } catch (error) { setSaveFailed(true); setSaveNotice(error instanceof Error ? error.message : "Assessment was not saved. Please try again."); }
+    finally { setIsSubmitting(false); }
   };
   return (
     <div>
       <SectionHeader title="Biopsychosocial Assessment" description="Revealing Leads to Healing Wellness Services LLC | EHR Proprietary System | Licensed for RLHW Services LLC" />
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4">
-          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+          <Select disabled={isSubmitting} value={selectedClientId} onValueChange={(id) => { setSelectedClientId(id); setSelectedChartClientId(id); setSaveNotice(""); }}>
             <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
             <SelectContent>
               {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
@@ -3451,10 +3465,11 @@ function IntakePage() {
           </Select>
         </CardContent>
       </Card>
-      {saveNotice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{saveNotice}</div>}
+      {saveNotice && <div role={saveFailed ? "alert" : "status"} className={cn("mb-4 rounded-2xl border px-4 py-3 text-sm font-medium", saveFailed ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800")}>{saveNotice}</div>}
       {selectedClient && (
         <Card className="rounded-[2rem] shadow-sm border border-slate-100 bg-white">
           <CardContent className="p-6 md:p-10 space-y-10">
+            <fieldset disabled={isSubmitting} className="space-y-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-100 pb-8">
               <div>
                 <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">Biopsychosocial Assessment</h3>
@@ -3528,6 +3543,16 @@ function IntakePage() {
                   <label className="block text-sm font-bold text-slate-700">Complete Biopsychosocial Summary</label>
                   <Textarea value={intake.biopsychosocialSummary || ""} onChange={(e) => updateIntakeField("biopsychosocialSummary", e.target.value)} className="min-h-[190px] rounded-[1.25rem]" placeholder="Demographics, social/family history, abuse/trauma history, medical and mental health history, hospitalizations, substance use, risk, strengths, diagnostic rationale, and clinical formulation..." />
                 </div>
+                <section aria-label="Completed Assessments" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <h5 className="text-base font-bold">Completed Assessments</h5>
+                  <p className="text-sm">Saved results for this patient are included with the summary when you submit this biopsychosocial assessment.</p>
+                  {completedAssessments.length === 0 && <p>No completed assessments saved for this patient.</p>}
+                  {completedAssessments.map((entry) => <div key={entry.key} className="border rounded-2xl p-3 space-y-2">
+                    <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
+                    {completedAssessmentTabs[entry.key] && <Button type="button" variant="outline" onClick={() => { setSelectedChartClientId(selectedClientId); setPage("assessments", { tab: completedAssessmentTabs[entry.key], clientId: selectedClientId }); }}>Open full {entry.name}</Button>}
+                  </div>)}
+                  <Button type="button" variant="outline" onClick={() => { setSelectedChartClientId(selectedClientId); setPage("assessments", { clientId: selectedClientId }); }}>Open Assessments</Button>
+                </section>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Diagnostic Formulation</label>
                   <div className="grid md:grid-cols-3 gap-3">
@@ -3615,7 +3640,7 @@ x
                 <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
               </div>
             </section>
-            <button type="button" className="w-full rounded-2xl h-14 text-base font-bold bg-slate-900 text-white hover:bg-black transition" onClick={handleSubmitIntake}>
+            <button type="button" className="w-full rounded-2xl h-14 text-base font-bold bg-slate-900 text-white hover:bg-black transition" disabled={isSubmitting} onClick={handleSubmitIntake}>
               <span className="inline-flex items-center justify-center gap-2">
                 <Save className="h-4 w-4" />
                 {isSubmitting ? "Saving Assessment..." : "Submit Assessment to Secure Chart"}
@@ -3625,6 +3650,7 @@ x
               Status: {selectedClient?.intake?.status === "submitted" ? "Submitted" : "Draft"}
               {selectedClient?.intake?.submittedAt ? ` | Last submitted ${selectedClient.intake.submittedAt}` : ""}
             </div>
+            </fieldset>
           </CardContent>
         </Card>
       )}
@@ -4707,9 +4733,9 @@ function AuditLogPage() {
 }
 function AssessmentsPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
-  const { workflowTarget } = usePage();
+  const { workflowTarget, selectedChartClientId, setSelectedChartClientId } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const [selectedClientId, setSelectedClientId] = useState(workflowTarget?.clientId || (store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || ""));
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const assessments = selectedClient?.assessments || {};
   const [phq9, setPhq9] = useState(Array(9).fill(0));
@@ -4752,7 +4778,7 @@ function AssessmentsPage() {
     if (!selectedClientId) return;
     updateSpecificUserData(selectedClientId, "assessments", {
       ...(selectedClient?.assessments || {}),
-      [key]: { ...payload, completedAt: new Date().toLocaleString(), reviewedByProvider: true },
+      [key]: { ...payload, label, completedAt: new Date().toLocaleString(), reviewedByProvider: true },
     });
     appendAuditLog({
       action: `Completed ${label}`,
@@ -4791,7 +4817,7 @@ function AssessmentsPage() {
       <SectionHeader title="Assessments" description="Interactive clinical forms with scoring, completion status, and provider review state." />
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4">
-          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+          <Select value={selectedClientId} onValueChange={(id) => { setSelectedClientId(id); setSelectedChartClientId(id); }}>
             <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
             <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
           </Select>
