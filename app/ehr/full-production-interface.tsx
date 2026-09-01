@@ -140,7 +140,40 @@ function Separator({ className = "", ...props }) { return <div className={cn("h-
 
 function EhrScopedStyles() {
   return <style jsx global>{`
+    @font-face { font-family: "Great Vibes"; src: url("/fonts/great-vibes.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
     .ehr-ui, .ehr-ui * { box-sizing: border-box; }
+    .ehr-ui .ehr-workspace-shell { height: 100dvh; display: flex; flex-direction: column; background: #fff; color: #1a1c1f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .ehr-ui .ehr-workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px 18px; border-bottom: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-workspace-brand { display: flex; align-items: center; gap: 12px; }
+    .ehr-ui .ehr-workspace-brand-name { font-family: "Great Vibes", cursive; font-size: 30px; line-height: 1.3; color: #956d35; }
+    .ehr-ui .ehr-workspace-identity { display: grid; gap: 3px; text-align: right; font-size: 13px; }
+    .ehr-ui .ehr-workspace-identity span { font-weight: 400; }
+    .ehr-ui .ehr-workspace-body { display: grid; grid-template-columns: minmax(188px, 220px) minmax(0, 1fr); flex: 1; min-height: 0; gap: 24px; padding: 20px 24px 0; }
+    .ehr-ui .ehr-workspace-sidebar { min-height: 0; overflow-y: auto; padding-bottom: 20px; }
+    .ehr-ui nav.ehr-feature-navigation { display: grid; gap: 17px; margin: 0; }
+    .ehr-ui .ehr-navigation-group { display: grid; gap: 5px; }
+    .ehr-ui .ehr-navigation-label { font-size: 12px; font-weight: 500; padding-bottom: 5px; }
+    .ehr-ui nav.ehr-feature-navigation a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 8px; font-family: inherit; font-size: 14px; line-height: 1.35; font-weight: 500; text-transform: none; color: #1a1c1f !important; background: transparent; }
+    .ehr-ui nav.ehr-feature-navigation a svg { flex-shrink: 0; }
+    .ehr-ui nav.ehr-feature-navigation a:hover { background: #e5f2ff; }
+    .ehr-ui nav.ehr-feature-navigation a[aria-current="page"] { background: #339cff; color: #fff !important; }
+    .ehr-ui nav.ehr-feature-navigation a:focus-visible, .ehr-ui .ehr-menu-toggle:focus-visible { outline: 2px solid #1764ad; outline-offset: 2px; }
+    .ehr-ui .ehr-workspace-content { min-width: 0; min-height: 0; overflow: auto; padding: 0 4px 24px; scroll-behavior: auto; }
+    .ehr-ui .ehr-workspace-content:focus { outline: none; }
+    .ehr-ui .ehr-workspace-content button.bg-slate-50,
+    .ehr-ui .ehr-workspace-content button.bg-white,
+    .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #2b2926; }
+    .ehr-ui .ehr-menu-toggle { display: none; }
+    @media (max-width: 590px) {
+      .ehr-ui .ehr-workspace-header { padding: 12px; flex-wrap: wrap; gap: 8px; }
+      .ehr-ui .ehr-workspace-brand-name { font-size: 26px; }
+      .ehr-ui .ehr-workspace-identity { text-align: left; }
+      .ehr-ui .ehr-workspace-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; padding: 12px 12px 0; }
+      .ehr-ui .ehr-workspace-sidebar { padding: 0; max-height: 40dvh; }
+      .ehr-ui .ehr-menu-toggle { display: block; width: 100%; padding: 10px; border-radius: 8px; text-align: left; font: inherit; }
+      .ehr-ui nav.ehr-feature-navigation { display: none; }
+      .ehr-ui nav.ehr-feature-navigation.is-open { display: grid; margin-top: 12px; padding-bottom: 12px; }
+    }
     .ehr-ui { min-height: 100vh; background: #f7f3ea; color: #2b2926; font-family: Montserrat, Arial, sans-serif; font-size: 14px; line-height: 1.45; }
     .ehr-ui h1, .ehr-ui h2, .ehr-ui h3 { color: #2b2926 !important; font-family: Montserrat, Arial, sans-serif !important; letter-spacing: 0 !important; line-height: 1.2 !important; text-transform: none !important; }
     .ehr-ui h1 { font-size: 1.35rem !important; margin: 0; }
@@ -1081,49 +1114,64 @@ function MainApp() {
     ["infrastructure", "Infrastructure", Shield],
   ];
   const navItems = currentUser.role === "provider" ? providerItems : clientItems;
+  const groups = currentUser.role === "provider" ? [
+    ["Overview", providerItems.slice(0, 4)],
+    ["Clinical documentation", providerItems.slice(4, 9)],
+    ["Existing features", providerItems.slice(9)],
+  ] : [["Overview", clientItems]];
+  const [menuOpen, setMenuOpen] = useState(false);
+  const workspaceRef = useRef(null);
+  useEffect(() => {
+    setMenuOpen(false);
+    workspaceRef.current?.scrollTo({ top: 0 });
+    workspaceRef.current?.focus({ preventScroll: true });
+  }, [page]);
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="grid lg:grid-cols-[260px_1fr] min-h-screen">
-        <aside className="border-r bg-white p-4 lg:p-6">
-          <div className="flex items-start gap-3">
-            <div className="p-3 rounded-2xl bg-slate-900 text-white">
-              <Shield className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold leading-tight">Revealing Leads to Healing</h2>
-              <p className="text-sm text-slate-500">{VERSION}</p>
-            </div>
+    <div className="ehr-workspace-shell">
+      <header className="ehr-workspace-header">
+        <div className="ehr-workspace-brand">
+          <Shield className="h-5 w-5" aria-hidden="true" />
+          <div>
+            <div className="ehr-workspace-brand-name">Revealing Leads to Healing</div>
+            <p className="text-xs">{VERSION}</p>
           </div>
-          <div className="rounded-2xl border p-4 mt-5 bg-slate-50">
-            <p className="text-xs text-slate-500">Signed in as</p>
-            <p className="font-medium mt-1">{currentUser.fullName}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <Badge className="rounded-xl">{currentUser.role}</Badge>
-            </div>
-          </div>
-          <nav className="space-y-1 mt-6">
-            {navItems.map(([id, label, Icon]) => (
-              <a
-                key={id}
-                href={`/ehr/${encodeURIComponent(id)}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setPage(id);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${
-                  page === id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="text-sm font-medium">{label}</span>
-              </a>
+        </div>
+        <div className="ehr-workspace-identity">
+          <strong>{currentUser.fullName}</strong>
+          <span>{currentUser.role === "provider" ? "Provider" : "Client"}</span>
+        </div>
+      </header>
+      <div className="ehr-workspace-body">
+        <aside className="ehr-workspace-sidebar">
+          <button type="button" className="ehr-menu-toggle" aria-expanded={menuOpen}
+            aria-controls="ehr-feature-navigation" onClick={() => setMenuOpen(!menuOpen)}>
+            {menuOpen ? "Close menu" : `Menu · ${navItems.find(([id]) => id === page)?.[1] || "EHR"}`}
+          </button>
+          <nav id="ehr-feature-navigation" aria-label="EHR features" className={menuOpen ? "ehr-feature-navigation is-open" : "ehr-feature-navigation"}>
+            {groups.map(([title, items]) => (
+              <section className="ehr-navigation-group" key={title} aria-label={title}>
+                <div className="ehr-navigation-label">{title}</div>
+                {items.map(([id, label, Icon]) => (
+                  <a key={id} href={`/ehr/${encodeURIComponent(id)}`}
+                    aria-current={page === id ? "page" : undefined}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      setMenuOpen(false);
+                      setPage(id);
+                    }}>
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    <span>{label}</span>
+                  </a>
+                ))}
+              </section>
             ))}
+            <Button variant="outline" className="w-full mt-6 rounded-2xl" onClick={logout}>
+              <LogOut className="mr-2 h-4 w-4" />Logout
+            </Button>
           </nav>
-          <Button variant="outline" className="w-full mt-6 rounded-2xl" onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" />Logout
-          </Button>
         </aside>
-        <main className="p-4 lg:p-8">
+        <main className="ehr-workspace-content" ref={workspaceRef} tabIndex={-1} aria-label={navItems.find(([id]) => id === page)?.[1] || "EHR workspace"}>
           {saveStatus && <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-medium ${saveStatus.includes("failed") || saveStatus.includes("not saved") ? "border-red-200 bg-red-50 text-red-800" : saveStatus.includes("Saving") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{saveStatus}</div>}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <PageRouter />
