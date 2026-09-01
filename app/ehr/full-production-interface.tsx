@@ -2345,6 +2345,27 @@ function TelehealthPage() {
     providerSignature: PRACTITIONER_NAME,
     clientSignature: "",
   });
+  const resetTestBusy = isAudioRecording || isAudioBusy || nativeCallActive || savingDraft || statusBusy || awsScribeJob.status === "IN_PROGRESS";
+  const startNewMicrophoneTest = () => {
+    if (resetTestBusy) return;
+    setMicrophoneTest(true);
+    setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime("");
+    setAwsScribeJob({ jobName: "", mediaKey: "", status: "" });
+    setTranscriptText(""); setSupportedSections({}); setGeneratedDocs(null); setReviewConfirmed(false);
+    setScribeSeconds(0); setIsScribeTimerRunning(false); recordingStartRef.current = 0;
+    mediaChunksRef.current = []; mediaRecorderRef.current = null;
+    setScribeTemplate("Progress Note - SOAP"); setScribeDiagnosisSearch(""); setScribeBillingSearch("");
+    setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", serviceCode: "", interpreterCode: "", manualMinutes: "", clientSignature: "" }));
+    setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, dialNumber: "", sessionUrl: "", interpreterNeeded: false, interpreterName: "", translationNotes: "", technicalNotes: "" }));
+    setCopyNotice("New test ready. Timer, transcript, draft and appointment selection cleared. Confirm recording consent below. Saved chart history has not changed.");
+  };
+  const recordingBlockedReason = appointmentBlocked ? `The selected appointment is ${selectedAppointment.status}. Choose Start new test for a fresh test without changing that appointment.`
+    : nativeCallActive ? "End the active call before recording a local microphone test."
+    : isAudioBusy ? "Waiting for microphone access or audio processing. Check the browser's microphone permission if recording has not started."
+    : awsScribeJob.status === "IN_PROGRESS" ? "AWS transcription is still processing. Check its status before starting another test."
+    : !activeClientId ? "Select a test client below before recording."
+    : !sessionForm.recordingConsent ? "Check Recording consent obtained below to enable recording."
+    : "";
   const scribeDiagnosisMatches = diagnosisCodeOptions.filter((item) => {
     const query = scribeDiagnosisSearch.trim().toLowerCase();
     return query && `${item.code} ${item.label} ${item.keywords}`.toLowerCase().includes(query);
@@ -2810,7 +2831,22 @@ ${sessionForm.recordingVerbiage}`);
               <p className="font-medium text-slate-900">Microphone and recording</p>
               <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>
               <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Microphone test — no clinical note or chart merge</label>
-              <p className="text-xs text-slate-600">Confirm recording consent in session setup before starting. Audio is encrypted during upload, used to create a preliminary draft, and deleted after successful retrieval.</p>
+              <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Start new test</Button>
+              <p className="text-sm">Current client: {activeClient?.profile?.fullName || "None selected"}. {selectedAppointment ? `Appointment: ${selectedAppointment.date || ""} · ${selectedAppointment.status}` : "No appointment selected."}</p>
+            {isProvider && (
+              <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
+                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
+                <SelectContent>
+                  {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
+              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => setSessionForm({ ...sessionForm, recordingConsent: e.target.checked })} />
+              Recording consent obtained
+            </label>
+              <p className="text-xs text-slate-600">Audio is uploaded to AWS for transcription for the selected client. Microphone test results cannot be merged into clinical notes. Temporary audio is deleted after successful retrieval.</p>
+              {!isAudioRecording && recordingBlockedReason && <p role="status" className="text-sm font-medium">{recordingBlockedReason}</p>}
               <p className="text-xs font-medium text-slate-800">Recording starts the timer automatically. Stop recording to transcribe. Camera preview does not record audio.</p>
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
@@ -2836,14 +2872,6 @@ ${sessionForm.recordingVerbiage}`);
             <CardDescription>Document modality, consent, recording language, interpreter use, and technical details.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {isProvider && (
-              <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
-                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>
-                  {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
             <Select value={sessionForm.sessionType} onValueChange={(value) => setSessionForm({ ...sessionForm, sessionType: value })}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -2862,10 +2890,7 @@ ${sessionForm.recordingVerbiage}`);
               Telehealth consent obtained verbally
             </label>
             <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
-            <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => setSessionForm({ ...sessionForm, recordingConsent: e.target.checked })} />
-              Recording consent obtained
-            </label>
+
             <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
             <div className="grid md:grid-cols-2 gap-3">
               <Input value={sessionForm.languageUsed} onChange={(e) => setSessionForm({ ...sessionForm, languageUsed: e.target.value })} placeholder="Language used in session" />
@@ -3066,8 +3091,8 @@ ${generatedDocs.structuredNote.content}`}</div>
         </Card>      </div>
       <Card className="rounded-2xl shadow-sm mt-4">
         <CardHeader>
-          <CardTitle>Telehealth chart history</CardTitle>
-          <CardDescription>Client-specific telehealth entries with consent, recording, interpreter, and language documentation.</CardDescription>
+          <CardTitle>Previously saved telehealth chart history</CardTitle>
+          <CardDescription>These are saved entries, separate from the current test. Starting a new test does not reuse or delete them.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 max-h-[520px] overflow-auto">
           {(telehealthLog || []).length === 0 && <p className="text-sm text-slate-500">No telehealth entries saved yet.</p>}
