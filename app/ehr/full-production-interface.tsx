@@ -4783,6 +4783,8 @@ function AuditLogPage() {
 function AssessmentsPage() {
   const { store, currentUser, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
   const [specialtyKey, setSpecialtyKey] = useState("mse");
+  const [specialtySearch, setSpecialtySearch] = useState("");
+  const matchingSpecialties = specialtyAssessments.filter(item => item.key === specialtyKey || `${item.label} ${item.group}`.toLowerCase().includes(specialtySearch.trim().toLowerCase()));
   const [specialtyBusy, setSpecialtyBusy] = useState(false);
   const { workflowTarget, selectedChartClientId, setSelectedChartClientId } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
@@ -4878,9 +4880,10 @@ function AssessmentsPage() {
       <section className="mb-6 space-y-4">
         <h2 className="text-xl font-semibold">Mental status and specialty assessments</h2>
         <p className="text-sm text-slate-600">Screening questionnaires support initial screening and monitoring; they do not replace a structured clinical interview by a licensed professional.</p>
+        <Input label="Find an assessment" placeholder="Search by name or specialty" value={specialtySearch} disabled={specialtyBusy} onChange={event => setSpecialtySearch(event.target.value)} />
         <label className="block space-y-1"><span className="text-sm font-medium">Choose specialty assessment</span>
           <select className="w-full rounded-xl border p-3" disabled={specialtyBusy} value={specialtyKey} onChange={event => setSpecialtyKey(event.target.value)}>
-            {[...new Set(specialtyAssessments.map(item => item.group))].map(group => <optgroup key={group} label={group}>{specialtyAssessments.filter(item => item.group === group).map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</optgroup>)}
+            {[...new Set(matchingSpecialties.map(item => item.group))].map(group => <optgroup key={group} label={group}>{matchingSpecialties.filter(item => item.group === group).map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</optgroup>)}
           </select>
         </label>
         <p className="text-sm text-slate-600">DAST-10 and the existing assessment tools remain below.</p>
