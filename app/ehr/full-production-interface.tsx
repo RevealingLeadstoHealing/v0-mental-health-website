@@ -325,18 +325,6 @@ function EhrScopedStyles() {
 const APP_NAME = "Revealing Leads to Healing Wellness Services LLC";
 const VERSION = "EHR Proprietary System v2.0.25";
 const PRACTITIONER_NAME = "Kenseener Carpenter";
-const BRAND_TEAM_NAME = "ChitChat and KitKat—the Thinking Twins.";
-const BRAND_TAGLINE = "ChitChat brings the structure. KitKat brings the vision. Together, we build seamlessly.";
-
-function BrandFooter() {
-  return (
-    <footer className="mt-8 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-5 text-center" aria-label="EHR brand">
-      <p className="text-sm font-bold text-slate-900">{BRAND_TEAM_NAME}</p>
-      <p className="mt-1 text-sm font-bold text-slate-800">{BRAND_TAGLINE}</p>
-    </footer>
-  );
-}
-
 const affirmations = [
   "I can move through this moment with steadiness and care.",
   "Healing is not linear, and my effort still counts.",
@@ -1085,9 +1073,6 @@ function AuthPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="w-full max-w-5xl">
-        <BrandFooter />
-      </div>
     </div>
   );
 }
@@ -1190,7 +1175,6 @@ function MainApp() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <PageRouter />
           </motion.div>
-          <BrandFooter />
         </main>
       </div>
     </div>
