@@ -3,6 +3,7 @@
 
 import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
+import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -3244,6 +3245,17 @@ function ClientChartPage() {
                       {value.severity && <p className="mt-1">Severity: {value.severity}</p>}
                       {value.riskLevel && <p className="mt-1">Risk Level: {value.riskLevel}</p>}
                       {typeof value.concernCount !== "undefined" && <p className="mt-1">Concern Count: {value.concernCount}</p>}
+                      <details className="mt-3">
+                        <summary className="cursor-pointer font-medium">View saved assessment history ({assessmentHistory(value).length})</summary>
+                        <div className="mt-3 space-y-3">
+                          {assessmentHistory(value).map((result, index) => (
+                            <div key={`${result.completedAt}-${index}`} className="rounded-xl border p-3">
+                              <p className="whitespace-pre-wrap">{completedAssessmentSummary({ [key]: result })[0]?.text}</p>
+                              {Array.isArray(result.responses) && <p className="mt-2">Recorded responses: {result.responses.join(", ")}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     </div>
                   ))}
                 </CardContent>
@@ -4776,10 +4788,10 @@ function AssessmentsPage() {
 
   const saveAssessment = (key, payload, label) => {
     if (!selectedClientId) return;
-    updateSpecificUserData(selectedClientId, "assessments", {
-      ...(selectedClient?.assessments || {}),
-      [key]: { ...payload, label, completedAt: new Date().toLocaleString(), reviewedByProvider: true },
-    });
+    updateSpecificUserData(selectedClientId, "assessments", (previous) => ({
+      ...(previous || {}),
+      [key]: recordAssessment(previous?.[key], { ...payload, label, completedAt: new Date().toISOString(), reviewedByProvider: true }),
+    }));
     appendAuditLog({
       action: `Completed ${label}`,
       details: `${label} saved to clinical assessments.`,
