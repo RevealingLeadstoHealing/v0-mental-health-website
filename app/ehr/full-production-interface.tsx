@@ -4,6 +4,7 @@
 import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
+import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -86,6 +87,15 @@ function Textarea({ className = "", label, ...props }) {
   const field = <textarea className={cn("w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-950 outline-none focus:border-stone-700 focus:ring-2 focus:ring-stone-200", className)} {...props} />;
   if (!label) return field;
   return <label className="block w-full space-y-1"><span className="block text-xs font-bold uppercase tracking-wider text-slate-600">{label}</span>{field}</label>;
+}
+
+function ProviderSignatureInput(props) {
+  const identifiers = providerIdentifiersForName(props.value || "");
+  return <div className="space-y-2">
+    <Input {...props} />
+    <Input label="Provider NPI" value={identifiers.npi} readOnly placeholder="Provider NPI not configured" />
+    <Input label="Provider license number" value={identifiers.licenseNumber} readOnly placeholder="Provider license not configured" />
+  </div>;
 }
 
 function Badge({ children, className = "", variant = "default", ...props }) {
@@ -1153,6 +1163,7 @@ function MainApp() {
         <div className="ehr-workspace-identity">
           <strong>{currentUser.fullName}</strong>
           <span>{currentUser.role === "provider" ? "Provider" : "Client"}</span>
+          {currentUser.role === "provider" && providerNpiForName(currentUser.fullName) && <span className="text-xs">NPI: {providerNpiForName(currentUser.fullName)} | License: {providerIdentifiersForName(currentUser.fullName).licenseNumber}</span>}
         </div>
       </header>
       <div className="ehr-workspace-body">
@@ -2352,7 +2363,7 @@ function TelehealthPage() {
     `Tertiary ICD-10-CM: ${scribeMeta.tertiaryDiagnosis || "Not selected"}`,
     `Service / CPT-HCPCS: ${scribeMeta.serviceCode || "Not selected"}`,
     `Interpreter service code: ${scribeMeta.interpreterCode || "Not used"}`,
-    `Provider e-signature: ${scribeMeta.providerSignature || "Not signed"}`,
+    `Provider e-signature: ${providerSignatureText(scribeMeta.providerSignature)}`,
     `Client e-signature: ${scribeMeta.clientSignature || "Not signed / not required"}`,
   ].join("\n");
   const applyScribeDiagnosisCode = (item) => {
@@ -2541,6 +2552,8 @@ ${sessionForm.recordingVerbiage}`);
         codeDraft: docs.scribeMeta,
         signature: {
           provider: scribeMeta.providerSignature || "",
+          providerNpi: providerNpiForName(scribeMeta.providerSignature || ""),
+          providerLicense: providerIdentifiersForName(scribeMeta.providerSignature || "").licenseNumber,
           client: scribeMeta.clientSignature || "",
           signedAt: new Date().toLocaleString(),
         },
@@ -2824,7 +2837,7 @@ ${sessionForm.recordingVerbiage}`);
                 </div>
               )}
               <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
+                <ProviderSignatureInput label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
                 <Input label="Client Electronic Signature" value={scribeMeta.clientSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
               </div>
               <p className="text-xs text-slate-500">Merge writes matching fields into Progress Notes and Intake/Biopsychosocial. Treatment plan templates also create a plan draft.</p>
@@ -3279,7 +3292,7 @@ function ClientChartPage() {
                         <Badge className="rounded-xl">{doc.status}</Badge>
                       </div>
                       <p className="text-xs text-slate-500 mt-2">Viewed: {doc.viewedAt || "Not viewed"}</p>
-                      <p className="text-xs text-slate-500 mt-1">Signature: {doc.signature ? `${doc.signature.signer} | ${doc.signature.signedAt}` : "Not signed"}</p>
+                      <p className="text-xs text-slate-500 mt-1">Signature: {doc.signature ? `${documentSignatureText(doc.signature)} | ${doc.signature.signedAt}` : "Not signed"}</p>
                       <Button
                         type="button"
                         variant="outline"
@@ -3454,6 +3467,8 @@ function IntakePage() {
       await flushClientModuleSaves(selectedClientId);
       const value = {
         ...(store.users[selectedClientId].intake || intake),
+        providerNpi: providerNpiForName(intake.providerSignature || PRACTITIONER_NAME),
+        providerLicense: providerIdentifiersForName(intake.providerSignature || PRACTITIONER_NAME).licenseNumber,
         assessmentResults: completedAssessments,
         combinedBiopsychosocialSummary: composeBiopsychosocialSummary(intake.biopsychosocialSummary || "", selectedClient?.assessments),
         status: "submitted", submittedAt: new Date().toLocaleString(), designation: "HIPAA Medical Record Entry",
@@ -3648,7 +3663,7 @@ x
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <p className="text-sm font-bold text-slate-800">Assessment electronic signatures</p>
               <div className="grid md:grid-cols-2 gap-3">
-                <Input label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
+                <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
                 <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
               </div>
             </section>
@@ -3740,7 +3755,7 @@ function ProgressNotesPage() {
       `Tertiary ICD-10-CM: ${codeDraft.tertiaryDiagnosis || "Not selected"}`,
       `Service / CPT-HCPCS: ${codeDraft.serviceCode || "Not selected"}`,
       `Interpreter service code: ${codeDraft.interpreterCode || "Not used"}`,
-      `Provider e-signature: ${codeDraft.providerSignature || "Not signed"}`,
+      `Provider e-signature: ${providerSignatureText(codeDraft.providerSignature)}`,
       `Client e-signature: ${codeDraft.clientSignature || "Not signed / not required"}`,
     ].join("\n");
     const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}`;
@@ -3753,6 +3768,8 @@ function ProgressNotesPage() {
         codeDraft,
         signature: {
           provider: codeDraft.providerSignature || "",
+          providerNpi: providerNpiForName(codeDraft.providerSignature || ""),
+          providerLicense: providerIdentifiersForName(codeDraft.providerSignature || "").licenseNumber,
           client: codeDraft.clientSignature || "",
           signedAt: new Date().toLocaleString(),
         },
@@ -4039,7 +4056,7 @@ ${draft.content}`,
                   </div>
                 )}
                 <div className="grid md:grid-cols-2 gap-3">
-                  <Input label="Provider Electronic Signature" value={codeDraft.providerSignature} onChange={(e) => setCodeDraft({ ...codeDraft, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
+                  <ProviderSignatureInput label="Provider Electronic Signature" value={codeDraft.providerSignature} onChange={(e) => setCodeDraft({ ...codeDraft, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
                   <Input label="Client Electronic Signature" value={codeDraft.clientSignature} onChange={(e) => setCodeDraft({ ...codeDraft, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
                 </div>
               </CardContent>
@@ -4197,6 +4214,9 @@ function BillingPage() {
     const ready = Boolean(current.primaryDiagnosis && (current.billingCodes || []).length && current.dateOfService && current.chargeAmount);
     const claim = {
       id: `claim-${Date.now()}`,
+      renderingProviderName: current.providerSignature || PRACTITIONER_NAME,
+      renderingProviderNpi: providerNpiForName(current.providerSignature || PRACTITIONER_NAME),
+      renderingProviderLicense: providerIdentifiersForName(current.providerSignature || PRACTITIONER_NAME).licenseNumber,
       payerId,
       payerName,
       dateOfService: current.dateOfService || "",
@@ -4208,7 +4228,7 @@ function BillingPage() {
       transmissionEnabled: false,
       createdAt: new Date().toISOString(),
     };
-    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${current.providerSignature || PRACTITIONER_NAME}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
+    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${providerSignatureText(current.providerSignature || PRACTITIONER_NAME, current.providerNpi)}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
     updateSpecificUserData(selectedClientId, "billingClaims", (prev) => [claim, ...(prev || [])]);
     updateSpecificUserData(selectedClientId, "documents", (prev) => [
       {
@@ -4329,7 +4349,7 @@ function BillingPage() {
             <Input value={billingSearch} onChange={(e) => setBillingSearch(e.target.value)} placeholder="Type billing keyword, e.g. intake, bio, 60, interpreter" />
             {billingMatches.length > 0 && <div className="flex flex-wrap gap-2">{billingMatches.map((item) => <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyBillingCode(item)}>{item.code} | {item.label}</Button>)}</div>}
             <div className="grid md:grid-cols-2 gap-3">
-              <Input label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder="Provider electronic signature" />
+              <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder="Provider electronic signature" />
               <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateBillingField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" />
             </div>
             <Button className="rounded-2xl" onClick={saveBillingSnapshot}><Save className="mr-2 h-4 w-4" />Save claim draft and billing snapshot</Button>
@@ -4351,7 +4371,7 @@ function BillingPage() {
             <p><span className="font-medium">Secondary:</span> {intake.secondaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Tertiary:</span> {intake.tertiaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Billing codes:</span> {(intake.billingCodes || []).join(", ") || "Not selected"}</p>
-            <p><span className="font-medium">Provider signature:</span> {intake.providerSignature || PRACTITIONER_NAME}</p>
+            <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || PRACTITIONER_NAME, intake.providerNpi)}</p>
             <p><span className="font-medium">Client signature:</span> {intake.clientSignature || "Not signed / not required"}</p>
           </CardContent>
         </Card>
@@ -4995,9 +5015,22 @@ function AssessmentsPage() {
   );
 }
 function InfrastructurePage() {
+  const { currentUser } = useAuth();
+  const identifiers = providerIdentifiersForName(currentUser?.fullName || "");
   return (
     <div>
       <SectionHeader title="Infrastructure" description="AWS production controls supporting authentication, encrypted chart storage, access boundaries, audit history, backups, and retention." />
+      <Card className="rounded-2xl shadow-sm mb-4">
+        <CardHeader><CardTitle>Provider identification</CardTitle><CardDescription>{currentUser?.fullName}</CardDescription></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3 text-sm">
+          <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}</p>
+          <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}</p>
+          <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}</p>
+          <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}</p>
+          <p><span className="font-medium">CASAC effective date:</span> {identifiers.casacEffectiveDate || "Not configured"}</p>
+          <p><span className="font-medium">CASAC expiration date:</span> {identifiers.casacExpirationDate || "Not configured"}</p>
+        </CardContent>
+      </Card>
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authentication and access</CardTitle><CardDescription>AWS Cognito and server-enforced authorization</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>MFA-enabled Cognito accounts identify providers and clients.</p><p>Clients are linked to one authorized chart and cannot retrieve provider-only notes or records.</p><p>Secure HttpOnly session cookies protect authenticated browser sessions.</p></CardContent></Card>
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Encrypted clinical records</CardTitle><CardDescription>AWS DynamoDB, S3, and KMS</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Clinical module snapshots and document metadata persist in encrypted AWS data stores.</p><p>Private chart files use encrypted S3 storage and time-limited authorized access links.</p><p>DynamoDB point-in-time recovery and deletion protection are defined in the foundation stack.</p></CardContent></Card>
@@ -5210,7 +5243,7 @@ ${organization}`;
       prev.map((doc) =>
         doc.id === signatureDocId
           ? (() => {
-              const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, signedAt, documentVersionSha256 };
+              const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
               const previousSignatures = Array.isArray(doc.signatures)
                 ? doc.signatures.filter((entry) => entry.authenticatedRole !== currentUser.role)
                 : doc.signature && doc.signature.authenticatedRole !== currentUser.role ? [doc.signature] : [];
@@ -5440,8 +5473,8 @@ ${organization}`;
                 <div className="text-xs text-slate-500 space-y-1">
                   <p>Viewed: {doc.viewedAt || "Not viewed"}</p>
                   <p>File: {doc.uploadedFileName || "No file uploaded"}</p>
-                  <p>Signature: {doc.signature ? `${doc.signature.role || "Signer"}: ${doc.signature.signer} | ${doc.signature.signedAt}` : "Not signed"}</p>
-                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {entry.signer} | {entry.signedAt}</p>)}
+                  <p>Signature: {doc.signature ? `${doc.signature.role || "Signer"}: ${documentSignatureText(doc.signature)} | ${doc.signature.signedAt}` : "Not signed"}</p>
+                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {documentSignatureText(entry)} | {entry.signedAt}</p>)}
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -5470,6 +5503,8 @@ ${organization}`;
                 </SelectContent>
               </Select>
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
+              {currentUser.role === "provider" && <Input label="Provider NPI" value={providerNpiForName(currentUser.fullName || "")} readOnly placeholder="Provider NPI not configured" />}
+              {currentUser.role === "provider" && <Input label="Provider license number" value={providerIdentifiersForName(currentUser.fullName || "").licenseNumber} readOnly placeholder="Provider license not configured" />}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their linked client accounts.</div>
               <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
             </CardContent>
