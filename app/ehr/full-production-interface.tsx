@@ -3594,6 +3594,14 @@ x
                     )}
                   </div>
                 </div>
+                <section aria-label="Follow-Up Plan" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <h5 className="text-base font-bold text-slate-800">Follow-Up Plan</h5>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Input label="Agreed visit frequency" value={intake.followUpFrequency || ""} onChange={(e) => updateIntakeField("followUpFrequency", e.target.value)} placeholder="e.g., 2–3 times weekly, weekly, twice monthly, monthly" className="rounded-2xl" />
+                    <Input label="Next follow-up interval" value={intake.followUpInterval || ""} onChange={(e) => updateIntakeField("followUpInterval", e.target.value)} placeholder="e.g., in 2–3 days, one week, two weeks, one month" className="rounded-2xl" />
+                  </div>
+                  <Textarea label="Follow-up comments / patient agreement" value={intake.followUpComments || ""} onChange={(e) => updateIntakeField("followUpComments", e.target.value)} placeholder="Document the provider recommendation, patient agreement, and adjustments based on progress." className="min-h-[110px] rounded-2xl" />
+                </section>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
                   <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
