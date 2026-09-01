@@ -72,3 +72,15 @@ test("clients cannot write provider-only modules", () => {
   assert.equal(mergeClientModuleValue("notes", [], [], actor, "chart-1"), null);
   assert.equal(mergeClientModuleValue("assessments", [], [], actor, "chart-1"), null);
 });
+
+test("patient intake accepts demographics without accepting clinical or billing fields", () => {
+  const merged = mergeClientModuleValue("patientOnboarding", { phone: "old", chiefComplaint: "old reason" }, {
+    fullName: "Synthetic Patient", contactEmail: "test@example.test", phone: "", chiefComplaint: "Seeking support",
+    billingCodes: ["90791"], primaryDiagnosis: "injected", providerSignature: "injected", role: "provider",
+  }, actor, "chart-1") as Record<string, unknown>;
+  assert.equal(merged.fullName, "Synthetic Patient");
+  assert.equal(merged.phone, "");
+  assert.equal(merged.chiefComplaint, "Seeking support");
+  assert.equal(merged.patientUserId, actor.sub);
+  for (const key of ["billingCodes", "primaryDiagnosis", "providerSignature", "role"]) assert.equal(merged[key], undefined);
+});

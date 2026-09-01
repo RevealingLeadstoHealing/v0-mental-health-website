@@ -3089,7 +3089,7 @@ function ClientManagementPage() {
   );
 }
 function getDocumentWorkflow(doc) {
-  if (doc.storageKey) return { label: "Open encrypted file", page: "documents" };
+  if (doc.storageKey) return { label: "Open encrypted file", page: "documents", target: { documentMode: "library" } };
   if (doc.title === "Biopsychosocial Intake") return { label: "Open biopsychosocial intake", page: "intake" };
   if (doc.title === "Initial Progress Note Template") return { label: "Open progress-note form", page: "notes" };
   const assessmentTabs = {
@@ -3108,11 +3108,12 @@ function getDocumentWorkflow(doc) {
     label: "Open advocacy-letter builder",
     page: "documents",
     target: {
+      documentMode: "library",
       anchor: "advocacy-letter-builder",
       advocacyTemplateType: doc.title.split(" | ")[1] || "General Outside Resource Support",
     },
   };
-  return { label: "Review and sign this document", page: "documents" };
+  return { label: "Review and sign this document", page: "documents", target: { documentMode: "library" } };
 }
 function ClientChartPage() {
   const { store } = useAuth();
@@ -3339,7 +3340,7 @@ function IntakePage() {
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake ? { ...selectedClient.intake, ...(selectedClient.patientOnboarding || {}) } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
+  const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
   const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
@@ -3425,13 +3426,13 @@ function IntakePage() {
       designation: "HIPAA Medical Record Entry",
     });
     appendAuditLog({
-      action: "Submitted intake",
-      details: "HIPAA medical record intake entry submitted to secure chart.",
+      action: "Submitted biopsychosocial assessment",
+      details: "Biopsychosocial assessment submitted to secure chart.",
       clientId: selectedClientId,
       clientName: selectedClient?.profile?.fullName || "Client",
       category: "Medical Record",
     });
-    setSaveNotice("Intake saved to the secure chart for this client.");
+    setSaveNotice("Biopsychosocial assessment saved to the secure chart for this client.");
     setTimeout(() => {
       setSaveNotice("");
       setIsSubmitting(false);
@@ -3439,7 +3440,7 @@ function IntakePage() {
   };
   return (
     <div>
-      <SectionHeader title="Intake" description="Revealing Leads to Healing Wellness Services LLC | EHR Proprietary System | Licensed for RLHW Services LLC" />
+      <SectionHeader title="Biopsychosocial Assessment" description="Revealing Leads to Healing Wellness Services LLC | EHR Proprietary System | Licensed for RLHW Services LLC" />
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4">
           <Select value={selectedClientId} onValueChange={setSelectedClientId}>
@@ -3456,7 +3457,7 @@ function IntakePage() {
           <CardContent className="p-6 md:p-10 space-y-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-100 pb-8">
               <div>
-                <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">Client Intake</h3>
+                <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">Biopsychosocial Assessment</h3>
                 <p className="text-indigo-600 font-semibold tracking-wide text-sm uppercase mt-2">Revealing Leads to Healing Wellness Services LLC</p>
               </div>
               <div className="text-left md:text-right">
@@ -3507,7 +3508,7 @@ function IntakePage() {
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
                     <Input value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
-                    <Input value={intakeBillingSearch} onChange={(e) => setIntakeBillingSearch(e.target.value)} placeholder="Type billing code or keyword for intake, e.g. 90791, bio, interpreter" className="rounded-2xl" />
+                    <Input value={intakeBillingSearch} onChange={(e) => setIntakeBillingSearch(e.target.value)} placeholder="Type billing code or keyword for assessment, e.g. 90791, bio, interpreter" className="rounded-2xl" />
                     {intakeBillingMatches.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {intakeBillingMatches.map((item) => (
@@ -3604,7 +3605,7 @@ x
             <button type="button" className="w-full rounded-2xl h-14 text-base font-bold bg-slate-900 text-white hover:bg-black transition" onClick={handleSubmitIntake}>
               <span className="inline-flex items-center justify-center gap-2">
                 <Save className="h-4 w-4" />
-                {isSubmitting ? "Saving Intake..." : "Submit Intake to Secure Chart"}
+                {isSubmitting ? "Saving Assessment..." : "Submit Assessment to Secure Chart"}
               </span>
             </button>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -4080,7 +4081,7 @@ function BillingPage() {
   const [activePayer, setActivePayer] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = { ...(selectedClient?.intake || {}), ...(selectedClient?.patientOnboarding || {}) };
+  const intake = { ...(selectedClient?.intake || {}) };
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
@@ -4139,7 +4140,6 @@ function BillingPage() {
     if (!selectedClientId) return;
     const current = {
       ...(store.users[selectedClientId].intake || {}),
-      ...(store.users[selectedClientId].patientOnboarding || {}),
     };
     const payerName = current.insurancePayer || "Other";
     const payerId = classifyBillingPayer(payerName);
@@ -5008,18 +5008,21 @@ function ProviderTrainingsPage() {
 }
 function DocumentLibraryPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
-  const { setPage, workflowTarget } = usePage();
+  const { setPage, workflowTarget, selectedChartClientId } = usePage();
+  const [libraryMode, setLibraryMode] = useState(Boolean(workflowTarget?.anchor || workflowTarget?.documentMode === "library"));
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(currentUser.role === "client" ? (currentUser.chartClientId || currentUser.id) : (clients[0]?.[0] || ""));
+  const [selectedClientId, setSelectedClientId] = useState(currentUser.role === "client" ? (currentUser.chartClientId || currentUser.id) : (store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || ""));
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const documents = selectedClient?.documents || [];
   const clientAuthorizedDocumentTitles = new Set([
     ...consentTemplateDefinitions.map((item) => item.title),
     "Treatment Plan Signature",
   ]);
-  const visibleDocuments = currentUser.role === "client"
+  const consentTitles = new Set(consentTemplateDefinitions.map((item) => item.title));
+  const authorizedDocuments = currentUser.role === "client"
     ? documents.filter((doc) => doc.clientVisible === true || doc.uploadedByRole === "client" || clientAuthorizedDocumentTitles.has(doc.title))
     : documents;
+  const visibleDocuments = libraryMode ? authorizedDocuments : authorizedDocuments.filter((doc) => consentTitles.has(doc.title));
   const [signatureDocId, setSignatureDocId] = useState("");
   const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
   const [signatureRole, setSignatureRole] = useState("Provider");
@@ -5028,31 +5031,32 @@ function DocumentLibraryPage() {
   const [uploadFile, setUploadFile] = useState(null);
   const [documentNotice, setDocumentNotice] = useState("");
   const [documentBusy, setDocumentBusy] = useState(false);
-  const [patientIntakeDraft, setPatientIntakeDraft] = useState({
-    phone: selectedClient?.intake?.phone || "",
-    chiefComplaint: selectedClient?.intake?.chiefComplaint || "",
-    presentingProblem: selectedClient?.intake?.presentingProblem || "",
-    treatmentGoals: selectedClient?.intake?.treatmentGoals || "",
-    insurancePayer: selectedClient?.intake?.insurancePayer || "",
-    insuranceMemberId: selectedClient?.intake?.insuranceMemberId || "",
-    insuranceGroupNumber: selectedClient?.intake?.insuranceGroupNumber || "",
-  });
-  const savePatientOnboarding = () => {
-    if (currentUser.role !== "client") return;
-    updateCurrentUserData("patientOnboarding", (previous) => ({
-      ...(previous || {}),
-      ...patientIntakeDraft,
-      onboardingStatus: "Submitted for provider review",
-      patientSubmittedAt: new Date().toISOString(),
-    }));
-    appendAuditLog({
-      action: "Patient submitted onboarding intake",
-      details: "Patient intake and insurance details submitted to the linked secure chart.",
-      clientId: selectedClientId,
-      clientName: currentUser.fullName,
-      category: "Patient Onboarding",
-    });
-    setDocumentNotice("Your intake and insurance information were saved securely for provider review.");
+  const makePatientDraft = () => {
+    const saved = selectedClient?.patientOnboarding || {};
+    const profile = selectedClient?.profile || {};
+    return Object.fromEntries(["fullName", "dateOfBirth", "contactEmail", "phone", "addressLine1", "addressLine2", "city", "state", "zipCode", "chiefComplaint"].map((key) => [key, saved[key] ?? profile[key] ?? (key === "contactEmail" ? profile.email : "") ?? ""]));
+  };
+  const [patientIntakeDraft, setPatientIntakeDraft] = useState(makePatientDraft);
+  useEffect(() => {
+    setPatientIntakeDraft(makePatientDraft());
+    setSignatureDocId("");
+    setDocumentNotice("");
+  }, [selectedClientId]);
+  const savePatientOnboarding = async () => {
+    if (currentUser.role !== "client" || !selectedClientId || documentBusy) return;
+    if (!patientIntakeDraft.fullName.trim() || !patientIntakeDraft.chiefComplaint.trim()) {
+      setDocumentNotice("Please enter your name and reason for seeking services."); return;
+    }
+    setDocumentBusy(true);
+    setDocumentNotice("");
+    const value = { ...(selectedClient.patientOnboarding || {}), ...patientIntakeDraft, onboardingStatus: "Submitted for provider review", patientSubmittedAt: new Date().toISOString() };
+    try {
+      await productionApi("/api/ehr/records", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: selectedClientId, recordType: "ehr-module-snapshot", status: "draft", payload: { moduleKey: "patientOnboarding", value, providerReviewRequired: true } }) });
+      updateSpecificUserData(selectedClientId, "patientOnboarding", value, false);
+      setDocumentNotice("Your intake was saved for provider review.");
+    } catch (error) {
+      setDocumentNotice(error instanceof Error ? error.message : "Intake was not saved. Please try again.");
+    } finally { setDocumentBusy(false); }
   };
   const [advocacyTemplateType, setAdvocacyTemplateType] = useState("Human Resources / Leave");
   const [advocacyDetails, setAdvocacyDetails] = useState({ recipient: "", purpose: "", limitations: "", recommendations: "", collaboration: "" });
@@ -5102,10 +5106,10 @@ ${organization}`;
     ["Advocacy Letter Template | Care Coordination / Collaboration", "Available", "Advocacy Letter", "Reusable care coordination/collaboration letter template."],
     ["Advocacy Letter Template | General Outside Resource Support", "Available", "Advocacy Letter", "Reusable general outside-resource support letter template."],
   ];
-  const addTemplateDocuments = () => {
-    if (!selectedClientId) return;
+  const addTemplateDocuments = async () => {
+    if (!selectedClientId || documentBusy) return;
     const existingTitles = new Set(documents.map((d) => d.title));
-    const nextDocs = baseTemplates
+    const nextDocs = (libraryMode ? baseTemplates : baseTemplates.filter(([title]) => consentTitles.has(title)))
       .filter(([title]) => !existingTitles.has(title))
       .map(([title, status, category, body], index) => ({
         id: `doc-${Date.now()}-${index}`,
@@ -5119,8 +5123,15 @@ ${organization}`;
         generatedLetterText: body || "",
         createdAt: new Date().toLocaleString(),
       }));
-    updateSpecificUserData(selectedClientId, "documents", [...documents, ...nextDocs]);
-    appendAuditLog({ action: "Added document templates", details: "Clinical document templates added to chart.", clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document" });
+    if (!nextDocs.length) { setDocumentNotice("These forms are already in the chart."); return; }
+    setDocumentBusy(true);
+    try {
+      const value = [...documents, ...nextDocs];
+      await productionApi("/api/ehr/records", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: selectedClientId, recordType: "ehr-module-snapshot", status: "draft", payload: { moduleKey: "documents", value, providerReviewRequired: true } }) });
+      updateSpecificUserData(selectedClientId, "documents", value, false);
+      setDocumentNotice(libraryMode ? "Templates added to the chart." : "Practice consent forms are available in the patient's portal.");
+    } catch (error) { setDocumentNotice(error instanceof Error ? error.message : "Forms were not saved. Please try again."); }
+    finally { setDocumentBusy(false); }
   };
   const signDocument = async () => {
     if (!selectedClientId || !signatureDocId) return;
@@ -5325,45 +5336,45 @@ ${organization}`;
   };
   return (
     <div>
-      <SectionHeader title="Document Library" description="Encrypted AWS document storage, authenticated electronic signatures, immutable audit logging, and document access tracking." />
+      <SectionHeader title={libraryMode ? "Chart Document Library" : "Patient Intake & Consents"} description={libraryMode ? "Clinical documents, letters, and other chart records." : "Patient-completed intake and practice consent forms. This packet is separate from the clinical assessment and does not create a billing entry."} />
+      <Button variant="outline" className="mb-4" onClick={() => { setLibraryMode(!libraryMode); setSignatureDocId(""); }}>{libraryMode ? "Return to Intake & Consents" : "Other chart documents"}</Button>
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
-      {currentUser.role === "client" && (
+      {currentUser.role === "client" && !libraryMode && (
         <Card className="mb-4 rounded-2xl shadow-sm">
           <CardHeader>
-            <CardTitle>New Patient Intake and Insurance</CardTitle>
+            <CardTitle>Patient Intake</CardTitle>
             <CardDescription>Complete your information, then review and electronically sign the practice forms below.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
-              <Input label="Patient name" value={selectedClient?.profile?.fullName || currentUser.fullName || ""} readOnly />
-              <Input label="Email address" type="email" value={selectedClient?.profile?.email || currentUser.email || ""} readOnly />
-              <Input label="Date of birth" type="date" value={selectedClient?.profile?.dateOfBirth || selectedClient?.intake?.dateOfBirth || ""} readOnly />
-              <Input label="Phone number" value={patientIntakeDraft.phone} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, phone: event.target.value })} />
-              <Input label="Insurance company / payer" value={patientIntakeDraft.insurancePayer} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insurancePayer: event.target.value })} />
-              <Input label="Insurance member ID" value={patientIntakeDraft.insuranceMemberId} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceMemberId: event.target.value })} />
-              <Input label="Insurance group number" value={patientIntakeDraft.insuranceGroupNumber} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, insuranceGroupNumber: event.target.value })} />
+              {[ ["fullName", "Patient name"], ["dateOfBirth", "Date of birth"], ["contactEmail", "Contact email"], ["phone", "Phone number"], ["addressLine1", "Street address"], ["addressLine2", "Apartment / unit"], ["city", "City"], ["state", "State"], ["zipCode", "ZIP code"] ].map(([key, label]) => <Input key={key} label={label} type={key === "dateOfBirth" ? "date" : key === "contactEmail" ? "email" : "text"} disabled={documentBusy} value={patientIntakeDraft[key]} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, [key]: event.target.value })} />)}
             </div>
-            <Textarea label="Chief Complaint / Reason for Seeking Services" value={patientIntakeDraft.chiefComplaint} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, chiefComplaint: event.target.value, presentingProblem: event.target.value })} />
-            <Button className="rounded-2xl" onClick={savePatientOnboarding}>Submit Intake to My Secure Chart</Button>
+            <Textarea label="Chief Complaint / Reason for Seeking Services" disabled={documentBusy} value={patientIntakeDraft.chiefComplaint} onChange={(event) => setPatientIntakeDraft({ ...patientIntakeDraft, chiefComplaint: event.target.value })} />
+            <Button className="rounded-2xl" disabled={documentBusy} onClick={savePatientOnboarding}>{documentBusy ? "Saving…" : "Submit Intake to My Secure Chart"}</Button>
           </CardContent>
         </Card>
       )}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
           {currentUser.role === "provider" ? (
-            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <Select value={selectedClientId} onValueChange={(value) => { if (!documentBusy) setSelectedClientId(value); }}>
               <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
             </Select>
           ) : (
             <p className="font-medium text-slate-900">{selectedClient?.profile?.fullName || currentUser.fullName}</p>
           )}
-          {currentUser.role === "provider" && <Button className="rounded-2xl" onClick={addTemplateDocuments}>Load clinical templates</Button>}
+          {currentUser.role === "provider" && <Button className="rounded-2xl" disabled={documentBusy} onClick={addTemplateDocuments}>{libraryMode ? "Load clinical templates" : "Add practice consent forms"}</Button>}
         </CardContent>
       </Card>
+      {currentUser.role === "provider" && !libraryMode && <Card className="mb-4"><CardHeader><CardTitle>Patient Intake</CardTitle><CardDescription>{selectedClient?.patientOnboarding?.patientSubmittedAt ? `Submitted ${new Date(selectedClient.patientOnboarding.patientSubmittedAt).toLocaleString()}` : "Awaiting patient submission"}</CardDescription></CardHeader><CardContent className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">{[["fullName", "Patient name"], ["dateOfBirth", "Date of birth"], ["contactEmail", "Contact email"], ["phone", "Phone number"], ["addressLine1", "Street address"], ["addressLine2", "Apartment / unit"], ["city", "City"], ["state", "State"], ["zipCode", "ZIP code"], ["chiefComplaint", "Chief complaint / reason for seeking services"]].map(([key, label]) => <div key={key}><p className="font-medium">{label}</p><p className="whitespace-pre-wrap">{selectedClient?.patientOnboarding?.[key] || "Not submitted"}</p></div>)}</div>
+        <p>Patients complete this packet after signing into their secure portal. Use Client Management to add a patient or send their portal invitation.</p>
+        <Button variant="outline" onClick={() => setPage("clients")}>Open patient invitations</Button>
+      </CardContent></Card>}
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
-          <CardHeader><CardTitle>Chart documents</CardTitle><CardDescription>Client-specific document set</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{libraryMode ? "Chart documents" : "Practice consent forms"}</CardTitle><CardDescription>{libraryMode ? "Client-specific document set" : "Review and sign each applicable form"}</CardDescription></CardHeader>
           <CardContent className="space-y-3 max-h-[760px] overflow-auto">
             {visibleDocuments.length === 0 && <p className="text-sm text-slate-500">No client-authorized documents are available yet.</p>}
             {visibleDocuments.map((doc) => (
@@ -5412,7 +5423,7 @@ ${organization}`;
               <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
             </CardContent>
           </Card>
-          <Card id="document-upload" className="rounded-2xl shadow-sm scroll-mt-4">
+          {libraryMode && <Card id="document-upload" className="rounded-2xl shadow-sm scroll-mt-4">
             <CardHeader><CardTitle>Document upload</CardTitle><CardDescription>Encrypted private AWS chart-document storage</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-2xl border-2 border-slate-800 bg-amber-50 p-4 space-y-2">
@@ -5438,8 +5449,8 @@ ${organization}`;
               </div>
               <Button className="min-h-12 w-full rounded-2xl text-base" disabled={documentBusy} onClick={uploadDocument}>{documentBusy ? "Working securely…" : "Upload encrypted document"}</Button>
             </CardContent>
-          </Card>
-          {currentUser.role === "provider" && (
+          </Card>}
+          {currentUser.role === "provider" && libraryMode && (
             <Card id="advocacy-letter-builder" className="rounded-2xl shadow-sm scroll-mt-4">
               <CardHeader><CardTitle>Advocacy-letter builder</CardTitle><CardDescription>Create a chart-linked draft for provider review and signature</CardDescription></CardHeader>
               <CardContent className="space-y-3">
