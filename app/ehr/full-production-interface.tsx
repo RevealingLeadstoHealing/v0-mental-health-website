@@ -6,6 +6,8 @@ import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
+import SpecialtyAssessmentForm from "./specialty-assessment-form";
+import { specialtyAssessments } from "../../lib/ehr/specialty-assessments";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Shield,
@@ -4779,7 +4781,9 @@ function AuditLogPage() {
   );
 }
 function AssessmentsPage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { store, currentUser, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
+  const [specialtyKey, setSpecialtyKey] = useState("mse");
+  const [specialtyBusy, setSpecialtyBusy] = useState(false);
   const { workflowTarget, selectedChartClientId, setSelectedChartClientId } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const [selectedClientId, setSelectedClientId] = useState(workflowTarget?.clientId || (store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || ""));
@@ -4864,12 +4868,27 @@ function AssessmentsPage() {
       <SectionHeader title="Assessments" description="Interactive clinical forms with scoring, completion status, and provider review state." />
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardContent className="p-4">
-          <Select value={selectedClientId} onValueChange={(id) => { setSelectedClientId(id); setSelectedChartClientId(id); }}>
+          <Select disabled={specialtyBusy} value={selectedClientId} onValueChange={(id) => { setSelectedClientId(id); setSelectedChartClientId(id); }}>
             <SelectTrigger className="rounded-2xl max-w-md"><SelectValue placeholder="Select client" /></SelectTrigger>
             <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
           </Select>
         </CardContent>
       </Card>
+
+      <section className="mb-6 space-y-4">
+        <h2 className="text-xl font-semibold">Mental status and specialty assessments</h2>
+        <p className="text-sm text-slate-600">Screening questionnaires support initial screening and monitoring; they do not replace a structured clinical interview by a licensed professional.</p>
+        <label className="block space-y-1"><span className="text-sm font-medium">Choose specialty assessment</span>
+          <select className="w-full rounded-xl border p-3" disabled={specialtyBusy} value={specialtyKey} onChange={event => setSpecialtyKey(event.target.value)}>
+            {[...new Set(specialtyAssessments.map(item => item.group))].map(group => <optgroup key={group} label={group}>{specialtyAssessments.filter(item => item.group === group).map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <p className="text-sm text-slate-600">DAST-10 and the existing assessment tools remain below.</p>
+        {selectedClientId && <SpecialtyAssessmentForm key={`${selectedClientId}:${specialtyKey}`} assessmentKey={specialtyKey} saved={assessments[specialtyKey]} examiner={currentUser?.fullName || ""} onBusy={setSpecialtyBusy} onSave={async (key, payload, label) => {
+          saveAssessment(key, payload, label);
+          await flushClientModuleSaves(selectedClientId);
+        }} />}
+      </section>
 
       <Tabs key={workflowTarget?.tab || "phq9"} defaultValue={workflowTarget?.tab || "phq9"}>
         <TabsList className="grid grid-cols-2 lg:grid-cols-9 rounded-2xl w-full">
