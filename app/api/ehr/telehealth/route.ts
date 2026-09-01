@@ -8,6 +8,7 @@ import { appendAuditEvent } from '../../../../lib/ehr/dynamodb-store';
 import { getDynamoDocumentClient } from '../../../../lib/ehr/aws-runtime';
 import { rlthAwsFoundation } from '../../../../lib/rlth-aws-foundation';
 import { telehealthKey, canManageTelehealth, roomIsActive, safeRoomStatus } from '../../../../lib/ehr/telehealth-policy';
+import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../../../lib/ehr/telehealth-consent';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
@@ -74,11 +75,13 @@ export async function POST(request: Request) {
     const memberKey = { PK: key.PK, SK: `TELEHEALTH#ATTENDEE#${hash(actor.sub)}` };
     if (action === 'join') {
       if (body.telehealthConsent !== true) throw new ApiError(400, 'Confirm telehealth consent to join.');
+      if (actor.role === 'client' && body.confirmationVersion !== SESSION_CONFIRMATION_VERSION) throw new ApiError(409, 'Refresh the portal to read the current session confirmation.');
       const old = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
       if (old.Item?.meetingId === room.meeting.MeetingId && old.Item?.attendeeId) await chime.send(new DeleteAttendeeCommand({ MeetingId: room.meeting.MeetingId, AttendeeId: old.Item.attendeeId })).catch(() => {});
       const result = await chime.send(new CreateAttendeeCommand({ MeetingId: room.meeting.MeetingId, ExternalUserId: hash(actor.sub + randomUUID()) }));
       if (!result.Attendee?.AttendeeId) throw new Error('No attendee returned.');
       try {
+        if (actor.role === 'client') await appendAuditEvent(actor, { action: 'Client confirmed telehealth participation', category: 'Telehealth Consent', clientId, entityType: 'telehealth-session', entityId: room.sessionId, summary: `${SESSION_CONFIRMATION_VERSION}: ${SESSION_CONFIRMATION_TEXT} Recording permission: ${body.recordingConsent === true ? 'granted' : 'not granted'}.` });
         await db.send(new PutCommand({ TableName: table, Item: { ...memberKey, meetingId: room.meeting.MeetingId, attendeeId: result.Attendee.AttendeeId, expiresAt: room.expiresAt } }));
         if (actor.role === 'client') await update('SET clientRecordingConsent = :consent, recording = :false', { ':consent': body.recordingConsent === true, ':false': false });
         await audit('Joined in-EHR telehealth room');

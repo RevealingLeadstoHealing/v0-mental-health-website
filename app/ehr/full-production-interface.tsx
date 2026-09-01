@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 "use client";
 
 import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
@@ -7,6 +7,9 @@ import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-hi
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import NativeTelehealthRoom from "./native-telehealth-room";
+import FaxInbox from "./fax-inbox";
+import SignedDocuments from "./signed-documents";
+import TelehealthEntry from "./telehealth-entry";
 import SpecialtyAssessmentForm from "./specialty-assessment-form";
 import { specialtyAssessments } from "../../lib/ehr/specialty-assessments";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -1459,6 +1462,7 @@ function DashboardPage() {
         }
         right={null}
       />
+      {currentUser.role === "client" && <TelehealthEntry />}
       <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map(([Icon, label, value, helper]) => (
           <Card key={label} className="rounded-2xl shadow-sm">
@@ -2172,6 +2176,7 @@ function ClientTelehealthPage() {
         title="Telehealth"
         description="Secure access to your scheduled telehealth appointments. Clinical recording, transcription, diagnosis, billing, and provider documentation controls are available only to authenticated practice providers."
       />
+      <TelehealthEntry />
       <NativeTelehealthRoom key={currentClientId} clientId={currentClientId} provider={false} />
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
@@ -2202,7 +2207,7 @@ function ClientTelehealthPage() {
             </div>
           )}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            Your provider will supply the secure session connection through the practice’s approved telehealth workflow.
+            Return to this same portal page for every appointment. Your signed-in account opens your own waiting room; no new weekly link is needed.
           </div>
         </CardContent>
       </Card>
@@ -2700,6 +2705,7 @@ ${sessionForm.recordingVerbiage}`);
       />
       {copyNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{copyNotice}</div>}
       <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} />
+      {isProvider && <FaxInbox />}
       <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
@@ -5137,7 +5143,7 @@ function ProviderTrainingsPage() {
   );
 }
 function DocumentLibraryPage() {
-  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
   const { setPage, workflowTarget, selectedChartClientId } = usePage();
   const [libraryMode, setLibraryMode] = useState(Boolean(workflowTarget?.anchor || workflowTarget?.documentMode === "library"));
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
@@ -5308,7 +5314,12 @@ ${organization}`;
     );
     appendAuditLog({ action: "Authenticated electronic signature applied", details: `${effectiveSignatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
     setSignatureName(signer);
-    setDocumentNotice(`Authenticated ${effectiveSignatureRole.toLowerCase()} signature saved securely to the client chart.`);
+    try {
+      await flushClientModuleSaves(selectedClientId);
+      setDocumentNotice(`Authenticated ${effectiveSignatureRole.toLowerCase()} signature saved. Refresh Signed Documents to view your copy.`);
+    } catch (error) {
+      setDocumentNotice("Signature could not be saved. Please retry before leaving this page.");
+    }
   };
   const uploadDocument = async () => {
     if (!selectedClientId || !uploadTitle.trim() || !uploadFile) {
@@ -5469,6 +5480,7 @@ ${organization}`;
       <SectionHeader title={libraryMode ? "Chart Document Library" : "Patient Intake & Consents"} description={libraryMode ? "Clinical documents, letters, and other chart records." : "Patient-completed intake and practice consent forms. This packet is separate from the clinical assessment and does not create a billing entry."} />
       <Button variant="outline" className="mb-4" onClick={() => { setLibraryMode(!libraryMode); setSignatureDocId(""); }}>{libraryMode ? "Return to Intake & Consents" : "Other chart documents"}</Button>
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
+      {currentUser.role === "client" && <SignedDocuments clientId={selectedClientId} />}
       {currentUser.role === "client" && !libraryMode && (
         <Card className="mb-4 rounded-2xl shadow-sm">
           <CardHeader>

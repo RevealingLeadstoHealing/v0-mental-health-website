@@ -3,6 +3,7 @@ import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../
 import { appendAuditEvent, getClinicalRecord, listClinicalRecords, putClinicalRecord } from "../../../../lib/ehr/dynamodb-store";
 import { requireClientAccess } from "../../../../lib/ehr/authorization";
 import { mergeClientModuleValue, recordsVisibleToClient } from "../../../../lib/ehr/client-record-policy";
+import { preserveSignedDocuments } from "../../../../lib/ehr/signed-documents";
 
 export async function GET(request: Request) {
   try {
@@ -65,6 +66,11 @@ export async function POST(request: Request) {
       requireRole(actor, ["owner", "provider", "clinical_staff"]);
     }
 
+    if (moduleKey === 'documents') {
+      const previous = await getClinicalRecord(actor.practiceId, clientId, recordType, 'module_documents');
+      await preserveSignedDocuments(actor.practiceId, clientId, previous?.payload?.value);
+      if (actor.role === 'client') await preserveSignedDocuments(actor.practiceId, clientId, payload.value);
+    }
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,

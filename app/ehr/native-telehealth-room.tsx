@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
+import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../lib/ehr/telehealth-consent';
 import type { DefaultMeetingSession, DefaultDeviceController, VideoTileState } from 'amazon-chime-sdk-js';
 type Props = { clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onConnectionChange?: (connected: boolean) => void };
 export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange }: Props) {
@@ -10,6 +11,11 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [video, setVideo] = useState(true);
   const [muted, setMuted] = useState(false);
   const [consent, setConsent] = useState(false);
+  function readSessionReminder() {
+    if (!('speechSynthesis' in window)) { setNotice('Audio reminder is unavailable in this browser. Read the session confirmation below.'); return; }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(SESSION_CONFIRMATION_TEXT));
+  }
   const [clientRecordingConsent, setClientRecordingConsent] = useState(false);
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -49,7 +55,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null;
     void controller.current?.destroy(); controller.current = null; session.current = null;
     joined.current = false; onConnectionChange?.(false);
-    if (live.current) { setConnected(false); setTiles([]); setMuted(false); }
+    if (live.current) { setConnected(false); setTiles([]); setMuted(false); setConsent(false); setClientRecordingConsent(false); }
   }
   useEffect(() => {
     live.current = true;
@@ -82,7 +88,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     try {
       stopPreview();
       if (provider && !status?.active) await api('start', { telehealthConsent: providerConsent });
-      const credentials = await api('join', { telehealthConsent: provider ? providerConsent : consent, recordingConsent: clientRecordingConsent });
+      const credentials = await api('join', { telehealthConsent: provider ? providerConsent : consent, recordingConsent: clientRecordingConsent, confirmationVersion: SESSION_CONFIRMATION_VERSION });
       if (!live.current) { await api('leave').catch(() => {}); throw new Error('Call cancelled.'); }
       joined.current = true;
       const sdk = await import('amazon-chime-sdk-js');
@@ -162,7 +168,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       <video ref={preview} autoPlay muted playsInline className="max-h-56 rounded-xl bg-slate-900 w-full" aria-label="Local camera preview" />
       <div className="flex gap-2"><button type="button" className={button} disabled={busy} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
-      {!provider && <label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> I agree to participate in this telehealth session.</label>}
+      {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
       <button type="button" className={`${button} bg-blue-600 text-white`} disabled={busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
       {provider && !providerConsent && <p className="text-sm">Confirm telehealth consent in session setup to open the room.</p>}
     </>}

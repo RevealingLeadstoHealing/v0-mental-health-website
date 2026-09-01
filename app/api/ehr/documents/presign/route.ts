@@ -7,6 +7,7 @@ import { appendAuditEvent, getClinicalRecord } from "../../../../../lib/ehr/dyna
 import { isClientVisibleDocument } from "../../../../../lib/ehr/client-record-policy";
 import { getS3Client } from "../../../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../../../lib/rlth-aws-foundation";
+import { listSignedDocuments } from "../../../../../lib/ehr/signed-documents";
 
 function safeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
@@ -99,7 +100,8 @@ export async function GET(request: Request) {
       const documentSnapshot = await getClinicalRecord(actor.practiceId, clientId, "ehr-module-snapshot", "module_documents");
       const documents = Array.isArray(documentSnapshot?.payload?.value) ? documentSnapshot.payload.value : [];
       const authorizedDocument = documents.find((document: Record<string, unknown>) => document.storageKey === key && isClientVisibleDocument(document));
-      if (!authorizedDocument) throw new ApiError(403, "This document is not authorized for client access.");
+      const archived = !authorizedDocument && (await listSignedDocuments(actor.practiceId, clientId)).some(document => document.storageKey === key);
+      if (!authorizedDocument && !archived) throw new ApiError(403, "This document is not authorized for client access.");
     }
 
     const downloadUrl = await getSignedUrl(

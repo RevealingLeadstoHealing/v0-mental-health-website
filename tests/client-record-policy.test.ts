@@ -62,7 +62,7 @@ test("client document signatures preserve hidden provider documents", () => {
     { id: "note", title: "Provider Progress Note", status: "Signed", content: "restricted" },
   ];
   const merged = mergeClientModuleValue("documents", existing, [
-    { id: "consent", title: "Telehealth Consent", signature: { signer: "Spoofed" } },
+    { id: "consent", title: "Telehealth Consent", signature: { signer: "Spoofed", role: "Client" } },
   ], actor, "chart-1") as any[];
   assert.equal(merged.find((item) => item.id === "consent").signature.signer, actor.name);
   assert.equal(merged.find((item) => item.id === "note").content, "restricted");

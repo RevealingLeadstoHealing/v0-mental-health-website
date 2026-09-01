@@ -134,9 +134,11 @@ export function mergeClientModuleValue(
       if (!isClientVisibleDocument(item)) return item;
       const update = submittedMap.get(item.id);
       if (!update) return item;
-      const clientSignature = update.signature && typeof update.signature === "object"
-        ? { signer: actor.name, role: "Client", signedAt: new Date().toISOString() }
-        : item.signature;
+      const alreadySigned = [item.signature, ...(Array.isArray(item.signatures) ? item.signatures : [])].find(entry => entry && (entry.role === 'Client' || entry.authenticatedRole === 'client') && entry.signedAt);
+      const requestsClientSignature = update.signature && typeof update.signature === 'object' && (update.signature.role === 'Client' || update.signature.authenticatedRole === 'client');
+      const clientSignature = alreadySigned || (requestsClientSignature
+        ? { signer: actor.name, signerId: actor.sub, authenticatedRole: 'client', role: "Client", signedAt: new Date().toISOString() }
+        : item.signature);
       return { ...item, viewedAt: String(update.viewedAt || item.viewedAt || ""), signature: clientSignature, status: clientSignature ? "Signed" : item.status };
     });
     const prefix = `ehr-documents/${actor.practiceId}/client-${clientId.replace(/[^a-zA-Z0-9._-]/g, "_")}/`;
@@ -146,6 +148,7 @@ export function mergeClientModuleValue(
       type: ["Clinical Document", "Assessment", "Consent", "Signed Form"].includes(item.type) ? item.type : "Clinical Document",
       status: "Uploaded",
       signature: null,
+      signatures: [],
       uploadedByRole: "client",
       clientVisible: true,
     }));
