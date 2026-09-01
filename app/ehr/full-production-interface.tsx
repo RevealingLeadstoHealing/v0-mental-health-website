@@ -1,6 +1,7 @@
 ﻿// @ts-nocheck
 "use client";
 
+import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Shield,
@@ -163,6 +164,18 @@ function EhrScopedStyles() {
     .ehr-ui .ehr-workspace-content button.bg-slate-50,
     .ehr-ui .ehr-workspace-content button.bg-white,
     .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #2b2926; }
+    .ehr-ui .ehr-patient-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+    .ehr-ui .ehr-patient-list { display: grid; gap: 8px; max-height: 150px; overflow: auto; }
+    .ehr-ui .ehr-patient-list button { display: grid; gap: 4px; padding: 10px; text-align: left; background: white; color: #202020; border: 1px solid #ddd; border-radius: 8px; font: inherit; }
+    .ehr-ui .ehr-patient-list button[aria-pressed="true"] { background: #e5f2ff; border-color: #339cff; }
+    .ehr-ui .ehr-patient-list button span { font-size: 11px; overflow-wrap: anywhere; }
+    .ehr-ui .ehr-demographic-group { padding: 16px 0; border-top: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-demographic-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-top: 14px; }
+    .ehr-ui .ehr-demographic-value { min-width: 0; overflow-wrap: anywhere; }
+    .ehr-ui .ehr-demographic-value > span { display: block; color: #675f54; font-size: 12px; margin-bottom: 4px; }
+    .ehr-ui .ehr-demographic-value input[type="file"] { font: inherit; max-width: 100%; padding: 6px 0; }
+    @media (min-width: 1100px) { .ehr-ui .ehr-patient-dashboard-grid { grid-template-columns: 230px minmax(0, 1fr); } .ehr-ui .ehr-patient-list { max-height: 55dvh; } }
+    @media (max-width: 590px) { .ehr-ui .ehr-demographic-fields { grid-template-columns: minmax(0, 1fr); } }
     .ehr-ui .ehr-menu-toggle { display: none; }
     @media (max-width: 590px) {
       .ehr-ui .ehr-workspace-header { padding: 12px; flex-wrap: wrap; gap: 8px; }
@@ -570,6 +583,7 @@ function AuthProvider({ children }) {
         clients.forEach((client, index) => {
           const bucket = normalizeUserBucket({
             profile: {
+              ...Object.fromEntries(editableDemographicFields.filter(key => client[key] !== undefined).map(key => [key, client[key]])),
               fullName: client.fullName,
               email: client.email || "",
               role: "client",
@@ -747,7 +761,7 @@ function AuthProvider({ children }) {
     });
     enqueueModuleSave(clientId, key, updatedValue);
   };
-  const updateSpecificUserData = (userId, key, updater) => {
+  const updateSpecificUserData = (userId, key, updater, persist = true) => {
     const userBucket = storeRef.current.users[userId];
     if (!userBucket) return;
     const updatedValue = typeof updater === "function" ? updater(userBucket[key]) : updater;
@@ -756,7 +770,7 @@ function AuthProvider({ children }) {
       storeRef.current = next;
       return next;
     });
-    enqueueModuleSave(userId, key, updatedValue);
+    if (persist) enqueueModuleSave(userId, key, updatedValue);
   };
   const createClient = async (profile) => {
     const fullName = String(profile?.fullName || "").trim();
@@ -1245,14 +1259,9 @@ function ProviderPatientDashboard() {
   const beginPatientEdit = () => {
     if (!selectedPatient) return;
     const value = (key) => String(profile[key] || intake[key] || "");
-    setEditDraft({
-      fullName: value("fullName"), preferredName: value("preferredName"), dateOfBirth: value("dateOfBirth"),
-      sex: value("sex"), phone: value("phone"), addressLine1: value("addressLine1"),
-      addressLine2: value("addressLine2"), city: value("city"), state: value("state"),
-      zipCode: value("zipCode"), insurancePayer: value("insurancePayer"),
-      insurancePlanName: value("insurancePlanName"), insuranceNetworkStatus: value("insuranceNetworkStatus"),
-      insuranceMemberId: value("insuranceMemberId"), insuranceGroupNumber: value("insuranceGroupNumber"),
-    });
+    setEditDraft(Object.fromEntries(editableDemographicFields.map(key => [key,
+      key === "contactEmail" ? String(profile.contactEmail ?? profile.email ?? "") : String(profile[key] || intake[key] || "")
+    ])));
     setEditFiles({});
     setEditNotice("");
     setEditingPatient(true);
@@ -1266,19 +1275,32 @@ function ProviderPatientDashboard() {
     setEditBusy(true);
     setEditNotice("Saving patient record securely…");
     try {
+      for (const file of Object.values(editFiles).filter(Boolean)) {
+        if (file.size > 10 * 1024 * 1024) throw new Error("Each file must be 10 MB or smaller.");
+        if (!file.type.startsWith("image/") && file.type !== "application/pdf") throw new Error("Choose an image or PDF.");
+      }
+      const persistValue = async (key, value) => {
+        await productionApi("/api/ehr/records", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ clientId: selectedPatient.id, recordType: "ehr-module-snapshot", status: "draft", payload: { moduleKey: key, value, providerReviewRequired: true } }),
+        });
+        updateSpecificUserData(selectedPatient.id, key, value, false);
+      };
       const result = await productionApi("/api/ehr/clients", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: selectedPatient.id, ...editDraft }),
       });
       const updatedClient = result.client || {};
-      const updatedProfile = { ...profile, ...updatedClient };
+      const updatedProfile = { ...profile, ...editDraft, ...updatedClient };
       const updatedIntake = {
         ...intake,
         ...editDraft,
         fullName: updatedClient.fullName || editDraft.fullName,
         medicalRecordNumber: profile.medicalRecordNumber || intake.medicalRecordNumber || updatedClient.medicalRecordNumber || "",
       };
+      await persistValue("profile", updatedProfile);
+      await persistValue("intake", updatedIntake);
       const uploads = [
         { file: editFiles.insuranceFront, title: "Insurance Card - Front", documentType: "insurance-card-front", category: "Insurance" },
         { file: editFiles.insuranceBack, title: "Insurance Card - Back", documentType: "insurance-card-back", category: "Insurance" },
@@ -1315,11 +1337,7 @@ function ProviderPatientDashboard() {
           contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
           storageKey: authorization.key, uploadedByRole: "provider",
         });
-      }
-      updateSpecificUserData(selectedPatient.id, "profile", updatedProfile);
-      updateSpecificUserData(selectedPatient.id, "intake", updatedIntake);
-      if (uploadedDocuments.length) {
-        updateSpecificUserData(selectedPatient.id, "documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
+        await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
       }
       setEditNotice("Patient record saved securely.");
       setEditingPatient(false);
@@ -1329,16 +1347,77 @@ function ProviderPatientDashboard() {
       setEditBusy(false);
     }
   };
+  const choosePatient = (id) => {
+    if (editBusy) return;
+    if (editingPatient && !window.confirm("Discard unsaved changes before selecting another patient?")) return;
+    setSelectedChartClientId(id);
+    setEditingPatient(false);
+    setEditDraft({});
+    setEditFiles({});
+    setEditNotice("");
+  };
+  const valueFor = (key) => key === "contactEmail"
+    ? String(profile.contactEmail ?? profile.email ?? "")
+    : String(profile[key] || intake[key] || "");
+  const documentSlots = [
+    ["insuranceFront", "Insurance Card - Front"], ["insuranceBack", "Insurance Card - Back"],
+    ["photoIdFront", "Photo ID - Front"], ["photoIdBack", "Photo ID - Back"],
+  ];
   return (
     <div>
-      <SectionHeader title="Patient Dashboard" description="Find a patient by name, medical record number, or email to open their individual record." right={<Button className="rounded-2xl" onClick={() => setPage("clients")}>Client Management</Button>} />
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Patient records</CardTitle></CardHeader><CardContent className="space-y-3"><Input label="Search by name or medical record number" value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} />{matchingPatients.length === 0 && <p className="text-sm text-slate-500">No matching patients.</p>}{matchingPatients.map(({ id, profile: patientProfile }) => <button key={id} type="button" className={`w-full rounded-2xl border p-3 text-left ${selectedPatient?.id === id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`} onClick={() => setSelectedChartClientId(id)}><p className="font-medium">{patientProfile.fullName}</p><p className="mt-1 text-xs text-slate-500">{patientProfile.medicalRecordNumber || "Medical record number pending"}</p></button>)}</CardContent></Card>
-        {!selectedPatient ? <Card className="rounded-2xl shadow-sm"><CardContent className="p-6"><p className="text-slate-600">Select a patient or open Client Management to add a new patient.</p></CardContent></Card> : <Card className="rounded-2xl shadow-sm"><CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle>{profile.fullName || "Patient"}</CardTitle><CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Pending"}</CardDescription></div><Button variant="outline" className="rounded-2xl" onClick={beginPatientEdit}>Edit</Button></div></CardHeader><CardContent className="space-y-4 text-sm">{editNotice && <div className="rounded-2xl border bg-slate-50 p-3">{editNotice}</div>}{editingPatient && <div className="space-y-4 rounded-2xl border p-4"><p className="font-medium">Edit patient information</p><div className="grid gap-3 md:grid-cols-2"><Input label="Full name" value={editDraft.fullName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, fullName: event.target.value }))} /><Input label="Preferred name" value={editDraft.preferredName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, preferredName: event.target.value }))} /><Input label="Date of birth" type="date" value={editDraft.dateOfBirth || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, dateOfBirth: event.target.value }))} /><Input label="Sex" value={editDraft.sex || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, sex: event.target.value }))} /><Input label="Phone" value={editDraft.phone || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, phone: event.target.value }))} /><Input label="Street address" value={editDraft.addressLine1 || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, addressLine1: event.target.value }))} /><Input label="Apartment / unit" value={editDraft.addressLine2 || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, addressLine2: event.target.value }))} /><Input label="City" value={editDraft.city || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, city: event.target.value }))} /><Input label="State" value={editDraft.state || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, state: event.target.value }))} /><Input label="ZIP code" value={editDraft.zipCode || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, zipCode: event.target.value }))} /><Input label="Insurance carrier" value={editDraft.insurancePayer || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insurancePayer: event.target.value }))} /><Input label="Insurance plan" value={editDraft.insurancePlanName || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insurancePlanName: event.target.value }))} /><Input label="Network status" value={editDraft.insuranceNetworkStatus || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceNetworkStatus: event.target.value }))} /><Input label="Member ID" value={editDraft.insuranceMemberId || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceMemberId: event.target.value }))} /><Input label="Group number" value={editDraft.insuranceGroupNumber || ""} onChange={(event) => setEditDraft((previous) => ({ ...previous, insuranceGroupNumber: event.target.value }))} /></div><div className="grid gap-3 md:grid-cols-2">{[["insuranceFront","Insurance card - front"],["insuranceBack","Insurance card - back"],["photoIdFront","Photo ID - front"],["photoIdBack","Photo ID - back"]].map(([key,label]) => <label key={key} className="text-sm font-medium">{label}<input className="mt-1 block w-full text-sm" type="file" accept="image/*,application/pdf" onChange={(event) => setEditFiles((previous) => ({ ...previous, [key]: event.target.files?.[0] || null }))} /></label>)}</div><div className="flex gap-2"><Button className="rounded-2xl" disabled={editBusy} onClick={savePatientEdit}>{editBusy ? "Saving…" : "Save Changes"}</Button><Button variant="outline" className="rounded-2xl" disabled={editBusy} onClick={() => setEditingPatient(false)}>Cancel</Button></div></div>}<div className="rounded-2xl border p-4"><p className="font-medium">Demographics</p><p className="mt-2">Date of birth: {profile.dateOfBirth || intake.dateOfBirth || "Not entered"}</p><p className="mt-1">Sex: {profile.sex || intake.sex || "Not entered"}</p><p className="mt-1">Address: {address || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Contact information</p><p className="mt-2">Phone: {profile.phone || intake.phone || "Not entered"}</p><p className="mt-1">Email: {profile.email || "Not entered"}</p></div><div className="rounded-2xl border p-4"><p className="font-medium">Insurance information</p><p className="mt-2">Carrier: {intake.insurancePayer || "Not entered"}</p><p className="mt-1">Plan: {intake.insurancePlanName || profile.insurancePlanName || "Not entered"}</p><p className="mt-1">Network: {intake.insuranceNetworkStatus || profile.insuranceNetworkStatus || "Not verified"}</p><p className="mt-1">Member ID: {intake.insuranceMemberId || "Not entered"}</p><p className="mt-1">Group number: {intake.insuranceGroupNumber || "Not entered"}</p><p className="mt-1">Eligibility: {intake.insuranceVerificationStatus || "Not verified"}</p></div><div className="flex flex-wrap gap-2"><Button className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("chart"); }}>Open Client Chart</Button><Button variant="outline" className="rounded-2xl" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("schedule"); }}>Scheduling</Button></div></CardContent></Card>}
+      <SectionHeader title="Patient Dashboard" description="Patient demographics, contact information, insurance, and identification." right={<Button className="rounded-2xl" onClick={() => setPage("clients")}>Client Management</Button>} />
+      <div className="ehr-patient-dashboard-grid">
+        <Card className="ehr-patient-picker"><CardHeader><CardTitle>Patient records</CardTitle></CardHeader><CardContent className="space-y-3">
+          <Input label="Search patients" value={patientSearch} disabled={editBusy} onChange={event => setPatientSearch(event.target.value)} />
+          <div className="ehr-patient-list">
+            {matchingPatients.length === 0 && <p>No matching patients.</p>}
+            {matchingPatients.map(({ id, profile: item }) => <button key={id} type="button" disabled={editBusy} aria-pressed={selectedPatient?.id === id} onClick={() => choosePatient(id)}><strong>{item.fullName}</strong><span>{item.medicalRecordNumber || "Medical record number pending"}</span></button>)}
+          </div>
+        </CardContent></Card>
+        {!selectedPatient ? <Card><CardContent>Select a patient or open Client Management to add a new patient.</CardContent></Card> :
+          <Card><CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle>{profile.fullName || "Patient"}</CardTitle><CardDescription>Medical record number: {profile.medicalRecordNumber || intake.medicalRecordNumber || "Pending"}</CardDescription></div>
+            {!editingPatient && <Button variant="outline" onClick={beginPatientEdit}>Edit</Button>}
+          </div><p className="text-xs text-slate-600">Optional details may be left blank. Age is calculated from date of birth.</p></CardHeader>
+          <CardContent className="space-y-4">
+            {editNotice && <div role="status" className="rounded-2xl border p-3">{editNotice}</div>}
+            {editingPatient && <div className="flex gap-2"><Button disabled={editBusy} onClick={savePatientEdit}>{editBusy ? "Saving…" : "Save Changes"}</Button><Button variant="outline" disabled={editBusy} onClick={() => { setEditingPatient(false); setEditFiles({}); }}>Cancel</Button></div>}
+            {demographicGroups.map(group => <section className="ehr-demographic-group" aria-label={group.title} key={group.title}>
+              <h3>{group.title}</h3>
+              <div className="ehr-demographic-fields">
+                {group.fields.map(([key, label, type]) => <div key={key}>{editingPatient
+                  ? <Input label={label} type={type || "text"} value={editDraft[key] || ""} disabled={editBusy} onChange={event => setEditDraft(previous => {
+                    const next = { ...previous, [key]: event.target.value };
+                    if (key === "firstName" || key === "lastName") next.fullName = [next.firstName, next.lastName].filter(Boolean).join(" ");
+                    return next;
+                  })} />
+                  : <div className="ehr-demographic-value"><span>{label}</span><p>{valueFor(key) || "Not entered"}</p></div>}
+                </div>)}
+                {group.title === "Patient information" && <div className="ehr-demographic-value"><span>Age</span><p>{patientAge(editingPatient ? editDraft.dateOfBirth || "" : valueFor("dateOfBirth"))}</p></div>}
+              </div>
+            </section>)}
+            <section className="ehr-demographic-group" aria-label="Insurance cards and photo ID">
+              <h3>Insurance cards and photo ID</h3><p className="text-xs">Images or PDFs, up to 10 MB each.</p>
+              <div className="ehr-demographic-fields">{documentSlots.map(([key, label]) => {
+                const uploaded = (selectedPatient.documents || []).filter(doc => doc.title === label && doc.storageKey);
+                return <div className="ehr-demographic-value" key={key}><span>{label}</span>
+                  <p>{uploaded.length ? uploaded.map(doc => doc.uploadedFileName || "Uploaded").join(", ") : "Not uploaded"}</p>
+                  <label className="block text-sm">Upload {label}<input key={`${selectedPatient.id}-${editingPatient}-${key}`} className="block w-full" type="file" accept="image/*,application/pdf" disabled={editBusy} onChange={event => {
+                    const file = event.target.files?.[0]; if (!file) return;
+                    if (!editingPatient) beginPatientEdit();
+                    setEditFiles(previous => ({ ...previous, [key]: file }));
+                  }} /></label>
+                  {editFiles[key] && editingPatient && <p className="text-xs">Selected: {editFiles[key].name} — use Save Changes to upload.</p>}
+                </div>;
+              })}</div>
+            </section>
+            {editingPatient && <Button disabled={editBusy} onClick={savePatientEdit}>{editBusy ? "Saving…" : "Save Changes"}</Button>}
+            <div className="flex gap-2"><Button onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("chart"); }}>Open Client Chart</Button><Button variant="outline" onClick={() => { setSelectedChartClientId(selectedPatient.id); setPage("schedule"); }}>Scheduling</Button></div>
+          </CardContent></Card>}
       </div>
     </div>
   );
 }
+
 function DashboardPage() {
   const { currentUser, store } = useAuth();
   const currentClientId = currentUser.chartClientId || currentUser.id;

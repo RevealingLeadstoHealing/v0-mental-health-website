@@ -1,3 +1,4 @@
+import { editableDemographicFields, patientAge } from "../../../../lib/ehr/patient-demographics";
 import { createHash, createHmac, randomInt } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
@@ -112,12 +113,7 @@ export async function PATCH(request: Request) {
     if (!clientId) throw new ApiError(400, "Patient record is required.");
     const existing = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
     if (!existing) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
-    const editableFields = [
-      "fullName", "preferredName", "dateOfBirth", "sex", "phone",
-      "addressLine1", "addressLine2", "city", "state", "zipCode",
-      "insurancePayer", "insurancePlanName", "insuranceNetworkStatus",
-      "insuranceMemberId", "insuranceGroupNumber",
-    ];
+    const editableFields = editableDemographicFields;
     const names: Record<string, string> = {};
     const values: Record<string, unknown> = {};
     const assignments: string[] = [];
@@ -130,6 +126,10 @@ export async function PATCH(request: Request) {
       assignments.push(`#f${assignments.length} = :v${assignments.length}`);
       updates[field] = value;
     }
+    for (const field of ["contactEmail", "emergencyContactEmail"]) {
+      if (updates[field] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates[field])) throw new ApiError(400, "Enter a valid contact email address.");
+    }
+    if (updates.dateOfBirth && !/^\d+$/.test(patientAge(updates.dateOfBirth))) throw new ApiError(400, "Enter a valid date of birth that is not in the future.");
     if (!assignments.length) throw new ApiError(400, "No patient information was provided to update.");
     if (!String(updates.fullName ?? existing.fullName ?? "").trim()) throw new ApiError(400, "Patient full name is required.");
     names["#updatedAt"] = "updatedAt";
