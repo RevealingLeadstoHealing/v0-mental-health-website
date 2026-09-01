@@ -5,10 +5,10 @@ import test from "node:test";
 const source = readFileSync(new URL("../app/ehr/full-production-interface.tsx", import.meta.url), "utf8");
 
 const providerLabels = [
-  "Dashboard", "Affirmations", "Client Management", "Client Chart", "Intake", "Progress Notes",
-  "Billing", "Treatment Plans", "Homework", "Assessments", "Document Library", "Infrastructure",
+  "Patient Dashboard", "Affirmations", "Client Management", "Client Chart", "Biopsychosocial Assessment", "Follow-Up Notes",
+  "Billing", "Treatment Plans", "Homework", "Assessments", "Patient Intake & Consents", "Infrastructure",
   "Provider Trainings", "Record Requests", "Audit Log", "Telehealth", "Messages", "Scheduling",
-  "Psychoeducation",
+  "Psychoeducation", "Journaling",
 ];
 
 const clientLabels = [

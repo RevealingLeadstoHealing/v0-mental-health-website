@@ -2,8 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../lib/ehr/telehealth-consent';
 import type { DefaultMeetingSession, DefaultDeviceController, VideoTileState } from 'amazon-chime-sdk-js';
-type Props = { clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onConnectionChange?: (connected: boolean) => void };
-export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange }: Props) {
+type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void };
+export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, externalRecording = false, timerLabel = "00:00:00" }: Props) {
   const [status, setStatus] = useState<any>(null);
   const [notice, setNotice] = useState('Checking in-EHR calling…');
   const [connected, setConnected] = useState(false);
@@ -151,9 +151,9 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const chunks: Blob[] = []; let bytes = 0;
       recorder.current = capture;
       capture.ondataavailable = event => { if (event.data.size) { chunks.push(event.data); bytes += event.data.size; if (bytes > 40 * 1024 * 1024) stopRecording(); } };
-      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); void api('recording', { active: false }).catch(() => {}); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
+      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(() => {}); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
-      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); setNotice('Recording both sides of this session for the AI scribe.');
+      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setNotice('Recording both sides of this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
     } catch (e: any) { if (mix) void mix.close(); void api('recording', { active: false }).catch(() => {}); setNotice(e.message); }
     finally { setBusy(false); }
@@ -163,13 +163,19 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     <h2 className="text-xl font-semibold">In-EHR audio and video room</h2>
     <p role="status" className="text-sm">{notice}</p>
     <audio ref={audio} autoPlay />
+    {provider && connected && <div className="space-y-2">
+      <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
+      <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>
+      <button type="button" className={button} disabled={busy || uploading || (!recording && (!recordingConsent || !status?.clientRecordingConsent || Boolean(retryAudio)))} onClick={recording ? stopRecording : startRecording}>{recording ? 'Stop recording and process audio' : 'Record session audio for AI scribe'}</button>
+    </div>}
+
     {status?.recording && <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800">Session audio recording is active.</p>}
     {!connected && <>
-      <video ref={preview} autoPlay muted playsInline className="max-h-56 rounded-xl bg-slate-900 w-full" aria-label="Local camera preview" />
+      <video style={{ maxHeight: 180, objectFit: "contain" }} ref={preview} autoPlay muted playsInline className="max-h-56 rounded-xl bg-slate-900 w-full" aria-label="Local camera preview" />
       <div className="flex gap-2"><button type="button" className={button} disabled={busy} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
-      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
+      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
       {provider && !providerConsent && <p className="text-sm">Confirm telehealth consent in session setup to open the room.</p>}
     </>}
     <div className="grid md:grid-cols-2 gap-3">{tiles.map(tile => <div key={tile.tileId}><video autoPlay playsInline muted={tile.localTile} className="w-full rounded-xl bg-slate-900" aria-label={tile.localTile ? 'Your camera' : 'Other participant camera'} ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">{tile.localTile ? 'You' : 'Other participant'}</p></div>)}</div>
@@ -180,10 +186,6 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       {provider && <button type="button" className={button} disabled={busy} onClick={() => leave(true)}>End session for everyone</button>}
     </div>}
     {!provider && <label className="block text-sm"><input type="checkbox" checked={clientRecordingConsent} onChange={async event => { const value = event.target.checked; setClientRecordingConsent(value); if (!value) session.current?.audioVideo.realtimeSendDataMessage('rlth-consent', 'withdrawn', 5000); if (joined.current) { try { await api('consent', { recordingConsent: value }); } catch (e: any) { setNotice(e.message); setClientRecordingConsent(!value); } } }} /> I consent to audio recording and AI-assisted documentation. I can withdraw this consent.</label>}
-    {provider && connected && <div className="space-y-2">
-      <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>
-      <button type="button" className={button} disabled={busy || uploading || (!recording && (!recordingConsent || !status?.clientRecordingConsent || Boolean(retryAudio)))} onClick={recording ? stopRecording : startRecording}>{recording ? 'Stop recording and process audio' : 'Record session audio for AI scribe'}</button>
-    </div>}
     {uploading && <p role="status">Uploading session audio… Keep this page open.</p>}
     {retryAudio && !uploading && <button type="button" className={button} onClick={() => upload(retryAudio)}>Retry recording upload</button>}
     {provider && <p className="text-sm text-slate-600">Business-number calling and fax: not connected. These need a carrier account and assigned numbers before use.</p>}

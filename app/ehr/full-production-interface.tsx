@@ -6,6 +6,8 @@ import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
+import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
+import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import NativeTelehealthRoom from "./native-telehealth-room";
 import FaxInbox from "./fax-inbox";
 import SignedDocuments from "./signed-documents";
@@ -1133,21 +1135,25 @@ function MainApp() {
     ["notes", "Follow-Up Notes", FileText],
     ["assessments", "Assessments", ClipboardList],
     ["telehealth", "Telehealth", Video],
-    ["billing", "Billing", ClipboardList],
     ["messages", "Messages", MessageSquare],
-    ["homework", "Homework", BookOpen],
-    ["psychoeducation", "Psychoeducation", Brain],
-    ["affirmations", "Affirmations", Sparkles],
-    ["trainings", "Provider Trainings", GraduationCap],
-    ["record-requests", "Record Requests", FileText],
+    ["billing", "Billing", ClipboardList],
     ["audit-log", "Audit Log", Lock],
     ["infrastructure", "Infrastructure", Shield],
+    ["affirmations", "Affirmations", Sparkles],
+    ["journal", "Journaling", PenSquare],
+    ["homework", "Homework", BookOpen],
+    ["psychoeducation", "Psychoeducation", Brain],
+    ["trainings", "Provider Trainings", GraduationCap],
+    ["record-requests", "Record Requests", FileText],
   ];
   const navItems = currentUser.role === "provider" ? providerItems : clientItems;
   const groups = currentUser.role === "provider" ? [
     ["Overview", providerItems.slice(0, 4)],
     ["Clinical documentation", providerItems.slice(4, 9)],
-    ["Existing features", providerItems.slice(9)],
+    ["Communication", providerItems.slice(9, 11)],
+    ["Billing & Review", providerItems.slice(11, 14)],
+    ["Wellness tools", providerItems.slice(14, 18)],
+    ["Practice resources", providerItems.slice(18)],
   ] : [["Overview", clientItems]];
   const [menuOpen, setMenuOpen] = useState(false);
   const workspaceRef = useRef(null);
@@ -1216,7 +1222,7 @@ function PageRouter() {
   const { page } = usePage();
   const { currentUser } = useAuth();
   if (page === "dashboard") return currentUser.role === "provider" ? <ProviderPatientDashboard /> : <DashboardPage />;
-  if (page === "journal") return <JournalPage />;
+  if (page === "journal") return currentUser.role === "provider" ? <SharedJournalingPage /> : <JournalPage />;
   if (page === "affirmations") return <AffirmationsPage />;
   if (page === "psychoeducation") return <PsychoeducationPage />;
   if (page === "homework-client" && currentUser.role === "client") return <ClientHomeworkPage />;
@@ -1535,6 +1541,24 @@ function DashboardPage() {
     </div>
   );
 }
+function SharedJournalingPage() {
+  const { store } = useAuth();
+  const { selectedChartClientId, setSelectedChartClientId } = usePage();
+  const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
+  const clientId = clients.some(([id]) => id === selectedChartClientId) ? selectedChartClientId : clients[0]?.[0] || "";
+  const sharedEntries = (store.users[clientId]?.journalEntries || []).filter(entry => entry.visibility === "shared");
+  return <div>
+    <SectionHeader title="Journaling" description="Journal entries the client has chosen to share with the provider." />
+    <Select value={clientId} onValueChange={setSelectedChartClientId}>
+      <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
+      <SelectContent>{clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}</SelectContent>
+    </Select>
+    <div className="space-y-3 mt-4">
+      {!sharedEntries.length && <p>No shared journal entries for this client.</p>}
+      {sharedEntries.map(entry => <Card key={entry.id}><CardHeader><CardTitle>{entry.title}</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap">{entry.content}</p></CardContent></Card>)}
+    </div>
+  </div>;
+}
 function JournalPage() {
   const { currentUser, store, updateCurrentUserData, appendAuditLog } = useAuth();
   const currentClientId = currentUser.chartClientId || currentUser.id;
@@ -1734,41 +1758,65 @@ function PsychoeducationPage() {
   );
 }
 function MessagingPage() {
-  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
+  const { selectedChartClientId, setPage, workflowTarget } = usePage();
   const isProvider = currentUser.role === "provider";
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const currentClientId = currentUser.chartClientId || currentUser.id;
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentClientId);
+  const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId]?.profile.role === "client" ? selectedChartClientId : clients[0]?.[0] || currentClientId);
   const activeClientId = isProvider ? selectedClientId : currentClientId;
   const bucket = store.users[activeClientId];
-  const [draft, setDraft] = useState("");
-  const send = () => {
-    if (!draft.trim() || !bucket) return;
+  const linkedAppointment = (bucket?.appointments || []).find(item => item.id === workflowTarget?.appointmentId);
+  const [draft, setDraft] = useState(() => workflowTarget?.prepareAppointmentMessage ? appointmentMessageDraft(linkedAppointment) : "");
+  const [sending, setSending] = useState(false);
+  const [messageNotice, setMessageNotice] = useState("");
+  const pendingMessage = useRef(null);
+  const preparedDraftLogged = useRef(false);
+  useEffect(() => {
+    if (!preparedDraftLogged.current && isProvider && workflowTarget?.prepareAppointmentMessage && linkedAppointment && draft.trim()) {
+      preparedDraftLogged.current = true;
+      appendAuditLog({ action: "Prepared non-billable appointment outreach draft", details: `Draft prepared for appointment ${linkedAppointment.id}; not sent.`, clientId: activeClientId, category: "Non-billable communication" });
+    }
+  }, []);
+  const send = async () => {
+    if (!draft.trim() || !bucket || sending) return;
+    setSending(true); setMessageNotice("");
+    const retry = pendingMessage.current;
     const message = {
-      id: `message-${Date.now()}`,
+      id: retry?.clientId === activeClientId && retry?.text === draft.trim() ? retry.id : `message-${Date.now()}`,
+      billingCategory: "Non-billable communication",
+      billable: false,
+      appointmentId: linkedAppointment?.id || "",
       from: currentUser.role,
       senderId: currentUser.id,
       senderName: currentUser.fullName,
       text: draft.trim(),
       timestamp: new Date().toISOString(),
     };
+    pendingMessage.current = { ...message, clientId: activeClientId };
     const updateMessages = (prev) => [
       message,
-      ...(prev || []),
+      ...(prev || []).filter(item => item.id !== message.id),
     ];
+    try {
     if (isProvider) {
       updateSpecificUserData(activeClientId, "messages", updateMessages);
     } else {
       updateCurrentUserData("messages", updateMessages);
     }
+    await flushClientModuleSaves(activeClientId);
     appendAuditLog({
-      action: "Sent secure portal message",
-      details: `Message sent from authenticated ${currentUser.role} account and saved to the encrypted client chart.`,
+      action: "Saved non-billable secure portal message",
+      details: `Message ${message.id} saved to the client portal from authenticated ${currentUser.role}. Appointment: ${linkedAppointment?.id || "Not linked"}. Non-billable; no charge or claim created. Recipient reading is not confirmed.`,
       clientId: activeClientId,
       clientName: bucket.profile.fullName || currentUser.fullName,
-      category: "Messaging",
+      category: "Non-billable communication",
     });
-    setDraft("");
+    setDraft(""); pendingMessage.current = null;
+    setMessageNotice("Message saved to the client portal as non-billable communication. This does not confirm it has been read.");
+    } catch (error) {
+      setMessageNotice(`Message save could not be confirmed. Your draft is retained for retry. ${error instanceof Error ? error.message : ""}`);
+    } finally { setSending(false); }
   };
   return (
     <div>
@@ -1780,13 +1828,14 @@ function MessagingPage() {
         <Card className="rounded-2xl shadow-sm mb-4">
           <CardContent className="p-4 space-y-2">
             <p className="font-bold text-slate-950">Select authorized client conversation</p>
-            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <Select disabled={sending} value={selectedClientId} onValueChange={id => { setSelectedClientId(id); setDraft(""); }}>
               <SelectTrigger className="min-h-12 rounded-xl border-2 border-slate-800 bg-white"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>{clients.map(([id, clientBucket]) => <SelectItem key={id} value={id}>{clientBucket.profile.fullName}</SelectItem>)}</SelectContent>
             </Select>
           </CardContent>
         </Card>
       )}
+      {isProvider && linkedAppointment && <p className="mb-4">{linkedAppointment.date} {linkedAppointment.time} · {linkedAppointment.status}</p>}
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
@@ -1812,8 +1861,10 @@ function MessagingPage() {
             <CardDescription>Message will be stored in the selected encrypted client chart</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[260px] rounded-2xl" placeholder="Type message..." />
-            <Button className="rounded-2xl" onClick={send}><MessageSquare className="mr-2 h-4 w-4" />Send</Button>
+            <Textarea disabled={sending} value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[260px] rounded-2xl" placeholder="Type message..." />
+            <p className="text-sm">Non-billable communication · Recorded in the client chart and audit log.</p>
+            {messageNotice && <p role="status" className="text-sm">{messageNotice}</p>}
+            <Button disabled={sending || !draft.trim()} className="rounded-2xl" onClick={send}><MessageSquare className="mr-2 h-4 w-4" />Send</Button>
           </CardContent>
         </Card>
       </div>
@@ -2215,15 +2266,23 @@ function ClientTelehealthPage() {
   );
 }
 function TelehealthPage() {
-  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
   const isProvider = currentUser.role === "provider";
-  const { selectedChartClientId, setSelectedChartClientId } = usePage();
+  const { selectedChartClientId, setSelectedChartClientId, setPage } = usePage();
   const [nativeCallActive, setNativeCallActive] = useState(false);
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || currentClientId);
   const activeClientId = isProvider ? selectedClientId : currentClientId;
   const activeClient = store.users[activeClientId];
+  const [appointmentId, setAppointmentId] = useState("");
+  const [statusDraft, setStatusDraft] = useState("Scheduled");
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const appointments = activeClient?.appointments || [];
+  const selectedAppointment = appointments.find(item => item.id === appointmentId);
+  const appointmentBlocked = appointmentPreventsSession(selectedAppointment?.status);
   const telehealthLog = activeClient?.telehealth || [];
   const [sessionForm, setSessionForm] = useState({
     sessionType: "Video",
@@ -2244,6 +2303,11 @@ function TelehealthPage() {
   const [copyNotice, setCopyNotice] = useState("");
   const [transcriptText, setTranscriptText] = useState("");
   const [generatedDocs, setGeneratedDocs] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [supportedSections, setSupportedSections] = useState({});
+  const [microphoneTest, setMicrophoneTest] = useState(true);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const recordingStartRef = useRef(0);
   const [scribeTemplate, setScribeTemplate] = useState("Progress Note - SOAP");
   const audioRetentionPolicy = "Temporary audio only. Delete overnight or no later than the next business day after documentation review. Final signed note, consent record, and audit log remain in the EHR.";
   const [scribeSeconds, setScribeSeconds] = useState(0);
@@ -2256,6 +2320,19 @@ function TelehealthPage() {
   const [isAudioBusy, setIsAudioBusy] = useState(false);
   const mediaRecorderRef = useRef(null);
   const mediaChunksRef = useRef([]);
+  useEffect(() => () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder) { recorder.onstop = null; if (recorder.state !== "inactive") recorder.stop(); recorder.stream.getTracks().forEach(track => track.stop()); }
+  }, []);
+  useEffect(() => {
+    if (!sessionForm.recordingConsent && mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null; setIsAudioRecording(false); setIsScribeTimerRunning(false);
+      setCopyNotice("Recording stopped and discarded because recording consent was withdrawn.");
+    }
+  }, [sessionForm.recordingConsent]);
   const [scribeMeta, setScribeMeta] = useState({
     chiefComplaint: "",
     onset: "",
@@ -2286,6 +2363,7 @@ function TelehealthPage() {
   const uploadAudioAndStartHealthScribe = async (audio) => {
     if (!activeClientId) throw new Error("Select a client chart first.");
     if (!sessionForm.recordingConsent) throw new Error("Document recording and AI-scribe consent first.");
+    setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setSupportedSections({});
     const contentType = (audio.type || "audio/webm").split(";")[0];
     const upload = await productionApi("/api/ehr/scribe/upload", {
       method: "POST",
@@ -2303,6 +2381,8 @@ function TelehealthPage() {
     setCopyNotice("AWS HealthScribe securely received the consented audio and started preliminary documentation.");
   };
   const startSecureAudioCapture = async () => {
+    if (isAudioBusy || isAudioRecording || appointmentBlocked) return;
+    setIsAudioBusy(true);
     try {
       if (!sessionForm.recordingConsent) throw new Error("Document recording and AI-scribe consent before recording.");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2312,6 +2392,7 @@ function TelehealthPage() {
       recorder.ondataavailable = (event) => { if (event.data.size) mediaChunksRef.current.push(event.data); };
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        setIsAudioRecording(false); setIsScribeTimerRunning(false);
         setIsAudioBusy(true);
         try { await uploadAudioAndStartHealthScribe(new Blob(mediaChunksRef.current, { type: preferred })); }
         catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to start transcription."); }
@@ -2319,12 +2400,17 @@ function TelehealthPage() {
       };
       mediaRecorderRef.current = recorder;
       recorder.start(1000);
+      recordingStartRef.current = Date.now();
+      setScribeSeconds(0); setIsScribeTimerRunning(true);
+      setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false);
       setIsAudioRecording(true);
       setCopyNotice("Secure audio capture started. Stop recording to encrypt, upload, and transcribe it.");
     } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Microphone access failed."); }
+    finally { setIsAudioBusy(false); }
   };
   const stopSecureAudioCapture = () => {
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+    setIsScribeTimerRunning(false);
     mediaRecorderRef.current = null;
     setIsAudioRecording(false);
   };
@@ -2342,12 +2428,10 @@ function TelehealthPage() {
       const result = await productionApi(`/api/ehr/scribe/jobs?clientId=${encodeURIComponent(activeClientId)}&jobName=${encodeURIComponent(awsScribeJob.jobName)}&mediaKey=${encodeURIComponent(awsScribeJob.mediaKey)}`);
       setAwsScribeJob((current) => ({ ...current, status: result.status }));
       if (result.status === "COMPLETED") {
-        const transcriptJson = JSON.stringify(result.transcript, null, 2);
-        const clinicalDocumentJson = JSON.stringify(result.clinicalDocument, null, 2);
-        const mappedDraft = buildGeneratedClinicalDocumentation(transcriptJson);
-        setTranscriptText(transcriptJson);
-        setGeneratedDocs({ ...mappedDraft, structuredNote: { ...mappedDraft.structuredNote, title: mappedDraft.structuredNote?.title || "AWS HealthScribe clinical-note draft", noteType: scribeTemplate, content: clinicalDocumentJson } });
-        setCopyNotice("AWS HealthScribe completed. Temporary audio was deleted. Review and edit the draft before merging it into the chart.");
+        setSupportedSections(microphoneTest ? {} : supportedClinicalSections(result.transcript, result.clinicalDocument));
+        setTranscriptText(readableTranscript(result.transcript));
+        setGeneratedDocs(null); setReviewConfirmed(false);
+        setCopyNotice("Transcription completed. Review the words below, then generate the selected note draft. Microphone tests cannot be merged into a chart.");
       } else if (result.status === "FAILED") setCopyNotice(result.failureReason || "AWS HealthScribe failed.");
       else setCopyNotice(`AWS HealthScribe status: ${result.status}.`);
     } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to check transcription."); }
@@ -2360,7 +2444,7 @@ function TelehealthPage() {
   }, [awsScribeJob.jobName, awsScribeJob.status]);
   useEffect(() => {
     if (!isScribeTimerRunning) return;
-    const id = window.setInterval(() => setScribeSeconds((prev) => prev + 1), 1000);
+    const id = window.setInterval(() => setScribeSeconds(Math.floor((Date.now() - recordingStartRef.current) / 1000)), 1000);
     return () => window.clearInterval(id);
   }, [isScribeTimerRunning]);
   const formattedScribeTimer = `${String(Math.floor(scribeSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((scribeSeconds % 3600) / 60)).padStart(2, "0")}:${String(scribeSeconds % 60).padStart(2, "0")}`;
@@ -2381,50 +2465,50 @@ function TelehealthPage() {
     setScribeMeta((prev) => ({ ...prev, [scribeDiagnosisTarget]: `${item.code} | ${item.label}` }));
   };
   const handleScribeTemplateChange = (value) => {
-    setScribeTemplate(value);
+    setScribeTemplate(value); setGeneratedDocs(null); setReviewConfirmed(false);
     setScribeMeta((prev) => {
-      if (value === "Biopsychosocial" || value === "Intake Session") {
-        return { ...prev, manualMinutes: prev.manualMinutes || "90", serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / intake / biopsychosocial assessment" };
+      if (value === "Biopsychosocial") {
+        return { ...prev, serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / biopsychosocial assessment" };
       }
       if (value === "Initial Progress Note") {
-        return { ...prev, manualMinutes: prev.manualMinutes || "60", serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / intake / biopsychosocial assessment" };
+        return { ...prev, serviceCode: "90791 | CPT | Psychiatric diagnostic evaluation / biopsychosocial assessment" };
       }
       return { ...prev, serviceCode: prev.serviceCode || "90837 | CPT | Psychotherapy, 60 minutes" };
     });
   };
   const buildGeneratedClinicalDocumentation = (sourceTranscript = transcriptText) => {
-    const clientName = activeClient?.profile?.fullName || "Client";
-    const modality = `${sessionForm.sessionType} Telehealth`;
-    const riskFlags = extractRiskFlags(sourceTranscript);
-    const baseIntakeDraft = buildIntakeFromTranscript({ transcript: sourceTranscript, clientName });
-    const metadata = scribeMetadataBlock();
-    const intakeDraft = {
-      ...baseIntakeDraft,
-      presentingProblem: `Chief Complaint / Reason for Visit: ${scribeMeta.chiefComplaint || "Not entered"}\nOnset / Duration: ${scribeMeta.onset || "Not entered"}\n\n${baseIntakeDraft.presentingProblem}`,
-      biopsychosocialSummary: `${baseIntakeDraft.biopsychosocialSummary}\n\nClinical metadata:\n${metadata}`,
-    };
-    const structuredBase = buildStructuredClinicalNote({ transcript: sourceTranscript, clientName, modality, templateType: scribeTemplate });
-    const structuredNote = {
-      ...structuredBase,
-      intakeFields: structuredBase.intakeFields ? intakeDraft : structuredBase.intakeFields,
-      content: `${metadata}\n\n${structuredBase.content}`,
-      scribeMeta: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
-    };
-    return {
-      soapNote: `${metadata}\n\n${buildSoapNote({ transcript: sourceTranscript, clientName, modality })}`,
-      structuredNote,
-      intakeDraft,
-      riskFlags,
-      sessionSummary: buildSessionSummary({ transcript: sourceTranscript, clientName }),
-      insuranceReady: `${metadata}\n\n${buildInsuranceReadyDocumentation({ transcript: sourceTranscript, modality })}`,
-      scribeMeta: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
-    };
+    const clean = readableTranscript(sourceTranscript);
+    const structuredNote = groundedDraft(clean, scribeTemplate, supportedSections);
+    const intakeDraft = isIntakeTemplate(scribeTemplate) ? {
+      presentingProblem: scribeMeta.chiefComplaint || supportedSections.Subjective || "Not documented",
+      treatmentGoals: "Not documented — provider review required",
+      biopsychosocialSummary: structuredNote.content,
+    } : null;
+    return { draftId: `note-scribe-${Date.now()}`, structuredNote: { ...structuredNote, intakeFields: intakeDraft }, intakeDraft,
+      soapNote: structuredNote.content, riskFlags: extractRiskFlags(clean),
+      sessionSummary: clean, insuranceReady: "Provider must document medical necessity and interventions from the reviewed session.",
+      scribeMeta: { ...scribeMeta, sessionMinutes: scribeSessionMinutes } };
+  };
+
+  const saveAppointmentStatus = async () => {
+    setStatusBusy(true);
+    try {
+      const updated = updateAppointmentStatus(selectedAppointment, statusDraft, { minutes: scribeSessionMinutes, date: rescheduleDate, time: rescheduleTime, now: new Date().toISOString(), actor: currentUser.id });
+      updateSpecificUserData(activeClientId, "appointments", previous => (previous || []).map(item => item.id === appointmentId ? updated : item));
+      await flushClientModuleSaves(activeClientId);
+      appendAuditLog({ action: "Updated appointment status from Telehealth", details: `${appointmentId}: ${statusDraft}`, clientId: activeClientId, category: "Scheduling" });
+      setCopyNotice(`Appointment status saved: ${statusDraft}.`);
+    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Appointment status could not be saved."); }
+    finally { setStatusBusy(false); }
   };
   const saveTelehealthEntry = () => {
     if (!activeClientId) return;
     const entry = {
       id: `telehealth-${Date.now()}`,
       createdAt: new Date().toLocaleString(),
+      appointmentId: selectedAppointment?.id || "",
+      appointmentStatus: selectedAppointment?.status || "Not linked",
+      sessionMinutes: scribeSessionMinutes,
       sessionType: sessionForm.sessionType,
       dialNumber: sessionForm.dialNumber,
       platform: sessionForm.platform,
@@ -2467,12 +2551,15 @@ ${sessionForm.recordingVerbiage}`);
     }
   };
   const generateClinicalDocumentation = () => {
+    if (microphoneTest || isAudioRecording || isScribeTimerRunning) { setCopyNotice("Finish a clinical recording and review its transcript first. Microphone tests do not generate clinical notes."); return; }
     if (!transcriptText.trim()) {
       setGeneratedDocs(null);
       setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before generating a clinical draft.");
       return;
     }
-    const docs = buildGeneratedClinicalDocumentation();
+    let docs;
+    try { docs = buildGeneratedClinicalDocumentation(); }
+    catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to read the transcript."); return; }
     setGeneratedDocs(docs);
     appendAuditLog({
       action: "Generated AI telehealth documentation",
@@ -2492,35 +2579,42 @@ ${sessionForm.recordingVerbiage}`);
       setTimeout(() => setCopyNotice(""), 2500);
     }
   };
-  const saveStructuredDraftToChart = () => {
+  const saveStructuredDraftToChart = async () => {
+    if (savingDraft) return;
+    if (microphoneTest || !reviewConfirmed) { setCopyNotice("Review and confirm the clinical draft before saving."); return; }
     if (!generatedDocs?.structuredNote || !activeClientId || !transcriptText.trim()) {
       setCopyNotice("A completed transcript is required before a generated draft can be saved to the chart.");
       return;
     }
+    setSavingDraft(true);
+    try {
     const structured = generatedDocs.structuredNote;
     updateSpecificUserData(activeClientId, "notes", (prev) => [
       {
-        id: `note-scribe-${Date.now()}`,
+        id: generatedDocs.draftId,
         title: structured.title,
         content: `Provider Review Required: AI-generated draft must be reviewed, edited, and signed by the provider before final use.\nAudio Retention Policy: ${audioRetentionPolicy}\n\n${structured.content}`,
         modality: sessionForm.sessionType === "Video" ? "Telehealth" : "Audio Telehealth",
+        appointmentId: selectedAppointment?.id || "",
+        appointmentStatus: selectedAppointment?.status || "Not linked",
         noteType: structured.noteType,
+        structuredFields: structured.fields,
         status: "Provider review required",
         audioRetentionPolicy,
         createdAt: new Date().toLocaleString(),
       },
-      ...((prev || [])),
+      ...((prev || []).filter(item => ![generatedDocs.draftId, `${generatedDocs.draftId}-plan`, `${generatedDocs.draftId}-risk`].includes(item.id))),
     ]);
     if (structured.intakeFields) {
       const currentIntake = activeClient?.intake || {};
       updateSpecificUserData(activeClientId, "intake", {
         ...currentIntake,
-        presentingProblem: structured.intakeFields.presentingProblem,
-        treatmentGoals: currentIntake.treatmentGoals || structured.intakeFields.treatmentGoals,
-        biopsychosocialSummary: structured.intakeFields.biopsychosocialSummary,
+        ...intakeFieldPatch(scribeTemplate, generatedDocs.structuredNote.fields),
+        biopsychosocialSummary: structured.content,
         scribeUpdatedAt: new Date().toLocaleString(),
       });
     }
+    await flushClientModuleSaves(activeClientId);
     appendAuditLog({
       action: "Saved AI scribe draft to client chart",
       details: `${structured.noteType} draft saved to chart for provider review. ${audioRetentionPolicy}`,
@@ -2529,9 +2623,13 @@ ${sessionForm.recordingVerbiage}`);
       category: "EHR Scribe",
     });
     setCopyNotice("Generated draft saved into the client chart for provider review/signature. Temporary audio remains governed by overnight/next-business-day deletion policy.");
-    setTimeout(() => setCopyNotice(""), 4000);
+    setReviewConfirmed(false);
+    } catch (error) { setCopyNotice(`Chart save could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
+    finally { setSavingDraft(false); }
   };
-  const mergeScribeToEhr = () => {
+  const mergeScribeToEhr = async () => {
+    if (savingDraft) return;
+    if (microphoneTest || !reviewConfirmed || !generatedDocs) { setCopyNotice("Generate and review the selected clinical note before merging."); return; }
     if (!activeClientId) return;
     if (!transcriptText.trim()) {
       setCopyNotice("A completed AWS HealthScribe transcript or a pasted Spruce transcript is required before merging into the EHR.");
@@ -2548,61 +2646,61 @@ ${sessionForm.recordingVerbiage}`);
       setTimeout(() => setCopyNotice(""), 4000);
       return;
     }
-    const docs = buildGeneratedClinicalDocumentation();
+    setSavingDraft(true);
+    try {
+    const docs = generatedDocs;
     const structured = docs.structuredNote;
     setGeneratedDocs(docs);
     updateSpecificUserData(activeClientId, "notes", (prev) => [
       {
-        id: `note-scribe-merge-${Date.now()}`,
+        id: generatedDocs.draftId,
         title: structured.title,
         content: `Provider Review Required: AI-generated draft must be reviewed, edited, and signed by the provider before final use.\nAudio Retention Policy: ${audioRetentionPolicy}\n\n${structured.content}`,
         modality: sessionForm.sessionType === "Video" ? "Telehealth" : "Audio Telehealth",
+        appointmentId: selectedAppointment?.id || "",
+        appointmentStatus: selectedAppointment?.status || "Not linked",
         noteType: structured.noteType,
+        structuredFields: structured.fields,
         status: "Merged to EHR - provider review required",
         sessionMinutes: scribeSessionMinutes,
         codeDraft: docs.scribeMeta,
-        signature: {
-          provider: scribeMeta.providerSignature || "",
-          providerNpi: providerNpiForName(scribeMeta.providerSignature || ""),
-          providerLicense: providerIdentifiersForName(scribeMeta.providerSignature || "").licenseNumber,
-          client: scribeMeta.clientSignature || "",
-          signedAt: new Date().toLocaleString(),
-        },
+        signature: null,
         audioRetentionPolicy,
         createdAt: new Date().toLocaleString(),
       },
-      ...((prev || [])),
+      ...((prev || []).filter(item => ![generatedDocs.draftId, `${generatedDocs.draftId}-plan`, `${generatedDocs.draftId}-risk`].includes(item.id))),
     ]);
+    if (isIntakeTemplate(scribeTemplate) && docs.intakeDraft) {
     const currentIntake = activeClient?.intake || {};
     updateSpecificUserData(activeClientId, "intake", {
       ...currentIntake,
       chiefComplaint: scribeMeta.chiefComplaint,
       onset: scribeMeta.onset,
-      presentingProblem: docs.intakeDraft.presentingProblem,
-      treatmentGoals: currentIntake.treatmentGoals || docs.intakeDraft.treatmentGoals,
-      biopsychosocialSummary: docs.intakeDraft.biopsychosocialSummary,
+      ...intakeFieldPatch(scribeTemplate, generatedDocs.structuredNote.fields),
+      biopsychosocialSummary: structured.content,
       diagnoses: [scribeMeta.primaryDiagnosis, scribeMeta.secondaryDiagnosis, scribeMeta.tertiaryDiagnosis].filter(Boolean),
       billingCodes: [scribeMeta.serviceCode, scribeMeta.interpreterCode].filter(Boolean),
       sessionMinutes: scribeSessionMinutes,
       scribeUpdatedAt: new Date().toLocaleString(),
     });
+    }
     if (scribeTemplate === "Treatment Plan Update") {
       updateSpecificUserData(activeClientId, "treatmentPlans", (prev) => [
         {
-          id: `plan-scribe-${Date.now()}`,
+          id: `${generatedDocs.draftId}-plan`,
           problem: scribeMeta.chiefComplaint || "AI transcriber treatment plan update",
           longTermGoal: "Review and refine with provider.",
           shortTermGoal: "Review and refine with provider.",
           intervention: docs.structuredNote.content,
           createdAt: new Date().toLocaleString(),
         },
-        ...((prev || [])),
+        ...((prev || []).filter(item => ![generatedDocs.draftId, `${generatedDocs.draftId}-plan`, `${generatedDocs.draftId}-risk`].includes(item.id))),
       ]);
     }
     if (docs.riskFlags.summary.length > 0) {
       updateSpecificUserData(activeClientId, "documents", (prev) => [
         {
-          id: `risk-scribe-${Date.now()}`,
+          id: `${generatedDocs.draftId}-risk`,
           title: "AI Transcriber Risk Flag Review",
           type: "Clinical Document",
           status: "Draft",
@@ -2613,20 +2711,24 @@ ${sessionForm.recordingVerbiage}`);
           category: "Risk Review",
           generatedLetterText: docs.riskFlags.summary.join("\n"),
         },
-        ...((prev || [])),
+        ...((prev || []).filter(item => ![generatedDocs.draftId, `${generatedDocs.draftId}-plan`, `${generatedDocs.draftId}-risk`].includes(item.id))),
       ]);
     }
+    await flushClientModuleSaves(activeClientId);
     appendAuditLog({
       action: "Merged AI transcriber fields to EHR",
-      details: `${scribeTemplate} merged into Progress Notes, Intake/Biopsychosocial fields, diagnosis, billing, time, and signature metadata.`,
+      details: `${scribeTemplate} draft saved with the linked appointment, reviewed fields, and session time. Provider signature remains pending.`,
       clientId: activeClientId,
       clientName: activeClient?.profile?.fullName || "Client",
       category: "EHR Scribe",
     });
-    setCopyNotice("AI transcriber fields merged to EHR: note, intake/biopsychosocial fields, diagnosis, billing, time, and signatures are in the chart for provider review.");
-    setTimeout(() => setCopyNotice(""), 5000);
+    setCopyNotice("Reviewed draft merged into the selected documentation type in the client chart.");
+    setReviewConfirmed(false);
+    } catch (error) { setCopyNotice(`Chart merge could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
+    finally { setSavingDraft(false); }
   };
   const pushToProgressNotes = () => {
+    if (microphoneTest || !reviewConfirmed) return;
     if (!generatedDocs || !activeClientId) return;
     updateSpecificUserData(activeClientId, "notes", (prev) => [
       {
@@ -2650,13 +2752,12 @@ ${sessionForm.recordingVerbiage}`);
     setTimeout(() => setCopyNotice(""), 2500);
   };
   const pushToIntake = () => {
-    if (!generatedDocs || !activeClientId) return;
+    if (!generatedDocs || !activeClientId || !isIntakeTemplate(scribeTemplate) || microphoneTest || !reviewConfirmed) return;
     const currentIntake = activeClient?.intake || {};
     updateSpecificUserData(activeClientId, "intake", {
       ...currentIntake,
-      presentingProblem: generatedDocs.intakeDraft.presentingProblem,
-      treatmentGoals: currentIntake.treatmentGoals || generatedDocs.intakeDraft.treatmentGoals,
-      biopsychosocialSummary: generatedDocs.intakeDraft.biopsychosocialSummary,
+      ...intakeFieldPatch(scribeTemplate, generatedDocs.structuredNote.fields),
+      biopsychosocialSummary: generatedDocs.structuredNote.content,
     });
     appendAuditLog({
       action: "Saved telehealth AI documentation to intake",
@@ -2665,10 +2766,11 @@ ${sessionForm.recordingVerbiage}`);
       clientName: activeClient?.profile?.fullName || "Client",
       category: "Telehealth AI",
     });
-    setCopyNotice("Transcript summary saved to Intake and Biopsychosocial fields.");
+    setCopyNotice("Reviewed fields saved to the Biopsychosocial assessment.");
     setTimeout(() => setCopyNotice(""), 2500);
   };
   const pushRiskFlagsToDocuments = () => {
+    if (microphoneTest || !reviewConfirmed) return;
     if (!generatedDocs || !activeClientId) return;
     updateSpecificUserData(activeClientId, "documents", (prev) => [
       {
@@ -2704,9 +2806,30 @@ ${sessionForm.recordingVerbiage}`);
         description="In-EHR audio/video sessions, consented recording, AI documentation, and client-specific session history."
       />
       {copyNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{copyNotice}</div>}
-      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} />
+      {isProvider && <div className="mb-4">            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+              <p className="font-medium text-slate-900">Microphone and recording</p>
+              <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>
+              <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Microphone test — no clinical note or chart merge</label>
+              <p className="text-xs text-slate-600">Confirm recording consent in session setup before starting. Audio is encrypted during upload, used to create a preliminary draft, and deleted after successful retrieval.</p>
+              <p className="text-xs font-medium text-slate-800">Recording starts the timer automatically. Stop recording to transcribe. Camera preview does not record audio.</p>
+              <div className="flex flex-wrap gap-2">
+                {isAudioRecording
+                  ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
+                  : <Button type="button" disabled={appointmentBlocked || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Record local microphone only</Button>}
+                <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
+                  Upload an existing audio file
+                  <input disabled={isAudioRecording || isAudioBusy || nativeCallActive || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
+                </label>
+                {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy || isScribeTimerRunning} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
+              </div>
+              {awsScribeJob.status && <p className="text-sm">HealthScribe status: <strong>{awsScribeJob.status}</strong></p>}
+            </div>
+            <p className="text-sm">Transcript: words appear after AWS processing. Live captions are not connected yet.</p>
+            <Textarea aria-label="Session transcript" value={transcriptText} onChange={(e) => { setSupportedSections({}); setTranscriptText(e.target.value); setGeneratedDocs(null); setReviewConfirmed(false); }} className="min-h-[180px] rounded-2xl" placeholder="Recorded words will appear here after processing. Review transcription accuracy before creating the note." />
+</div>}
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
       {isProvider && <FaxInbox />}
-      <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
+      <div className="grid gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>Telehealth session setup</CardTitle>
@@ -2714,7 +2837,7 @@ ${sessionForm.recordingVerbiage}`);
           </CardHeader>
           <CardContent className="space-y-3">
             {isProvider && (
-              <Select disabled={nativeCallActive} value={selectedClientId} onValueChange={id => { setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
+              <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent>
                   {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
@@ -2764,6 +2887,28 @@ ${sessionForm.recordingVerbiage}`);
             </div>
             <Textarea value={sessionForm.translationNotes} onChange={(e) => setSessionForm({ ...sessionForm, translationNotes: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Translation / interpreter notes, language access details, communication barriers, accommodations" />
             <Textarea value={sessionForm.technicalNotes} onChange={(e) => setSessionForm({ ...sessionForm, technicalNotes: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Technical notes, privacy verification, audio/video quality, interruptions" />
+            {isProvider && <div className="rounded-2xl border p-4 space-y-3">
+              <h3 className="font-semibold">Appointment status and session time</h3>
+              <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={appointmentId} onValueChange={id => { const item = appointments.find(appt => appt.id === id); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setSupportedSections({}); setScribeSeconds(0); setScribeMeta(current => ({ ...current, manualMinutes: "" })); setAppointmentId(id); setStatusDraft(item?.status || "Scheduled"); setRescheduleDate(item?.date || ""); setRescheduleTime(item?.time || ""); }}>
+                <SelectTrigger><SelectValue placeholder="Choose the appointment" /></SelectTrigger>
+                <SelectContent>{appointments.map(item => <SelectItem key={item.id} value={item.id}>{item.date} {item.time} — {item.purpose} ({item.status})</SelectItem>)}</SelectContent>
+              </Select>
+              {!appointments.length && <p className="text-sm">No appointment is scheduled for this client yet.</p>}
+              <Select disabled={savingDraft || !selectedAppointment || statusBusy || nativeCallActive || isAudioRecording} value={statusDraft} onValueChange={setStatusDraft}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{appointmentStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+              </Select>
+              {statusDraft === "Rescheduled" && <div className="grid md:grid-cols-2 gap-3">
+                <Input label="New appointment date" type="date" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} />
+                <Input label="New appointment time" type="time" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)} />
+              </div>}
+              <p className="text-sm">Recording timer: {formattedScribeTimer}</p>
+              <Input label="Actual session minutes (manual override)" type="number" min="1" max="1440" value={scribeMeta.manualMinutes} onChange={e => setScribeMeta({ ...scribeMeta, manualMinutes: e.target.value })} placeholder="Use timer or enter actual minutes" />
+              <p className="text-sm">Session minutes: {scribeSessionMinutes || "Not entered"}</p>
+              <Button disabled={savingDraft || !selectedAppointment || statusBusy || nativeCallActive || isAudioRecording} onClick={saveAppointmentStatus}>{statusBusy ? "Saving status…" : "Confirm appointment status"}</Button>
+              <Button variant="outline" disabled={statusBusy || nativeCallActive || isAudioRecording} onClick={async () => { try { await flushClientModuleSaves(activeClientId); setSelectedChartClientId(activeClientId); setPage("messages", { clientId: activeClientId, appointmentId: selectedAppointment?.id, prepareAppointmentMessage: true }); } catch { setCopyNotice("The chart changes have not saved yet. Retry before opening Messages."); } }}>Open Messages for this client</Button>
+              {appointmentBlocked && <p className="text-sm">This appointment is marked {selectedAppointment.status}. Update its status before starting a new session.</p>}
+            </div>}
             <div className="flex flex-wrap gap-2">
               <Button className="rounded-2xl" onClick={saveTelehealthEntry}><Mic className="mr-2 h-4 w-4" />Save telehealth entry</Button>
               <Button variant="outline" className="rounded-2xl" onClick={copyConsentText}><Copy className="mr-2 h-4 w-4" />Copy consent text</Button>
@@ -2781,7 +2926,7 @@ ${sessionForm.recordingVerbiage}`);
               <p>Recording/AI scribe consent must be documented before audio is used for note generation.</p>
               <p>{audioRetentionPolicy}</p>
             </div>
-            <Select value={scribeTemplate} onValueChange={handleScribeTemplateChange}>
+            <Select disabled={savingDraft || isScribeTimerRunning || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={scribeTemplate} onValueChange={handleScribeTemplateChange}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Progress Note - SOAP">Progress Note - SOAP</SelectItem>
@@ -2789,7 +2934,6 @@ ${sessionForm.recordingVerbiage}`);
                 <SelectItem value="Follow-up Progress Note">Follow-up Progress Note</SelectItem>
                 <SelectItem value="Biopsychosocial">Biopsychosocial</SelectItem>
                 <SelectItem value="Psychosocial">Psychosocial</SelectItem>
-                <SelectItem value="Intake Session">Intake Session</SelectItem>
                 <SelectItem value="Treatment Plan Update">Treatment Plan Update</SelectItem>
               </SelectContent>
             </Select>
@@ -2803,10 +2947,7 @@ ${sessionForm.recordingVerbiage}`);
                 <div className="rounded-2xl border bg-white p-3 space-y-2">
                   <p className="text-sm font-medium">Transcriber timer</p>
                   <p className="text-2xl font-semibold">{formattedScribeTimer}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" className="rounded-2xl" onClick={() => setIsScribeTimerRunning((value) => !value)}>{isScribeTimerRunning ? "Pause" : "Start"}</Button>
-                    <Button type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => { setIsScribeTimerRunning(false); setScribeSeconds(0); }}>Reset</Button>
-                  </div>
+                  <p className="text-sm">Starts and stops with recording.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Session Minutes (manual or timer)</label>
@@ -2853,41 +2994,36 @@ ${sessionForm.recordingVerbiage}`);
                 <ProviderSignatureInput label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
                 <Input label="Client Electronic Signature" value={scribeMeta.clientSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
               </div>
-              <p className="text-xs text-slate-500">Merge writes matching fields into Progress Notes and Intake/Biopsychosocial. Treatment plan templates also create a plan draft.</p>
+              <p className="text-xs text-slate-500">Merge saves the selected note type. Only the biopsychosocial template updates assessment fields. Review the draft below before merging.</p>
             </div>
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-              <p className="font-medium text-slate-900">Encrypted AWS HealthScribe audio transcription</p>
-              <p className="text-xs text-slate-600">Recording consent must be checked above. Audio is encrypted during upload, used to create a preliminary draft, and deleted after successful retrieval.</p>
-              <p className="text-xs font-medium text-slate-800">For a live recording, click Start, then Stop and securely transcribe. Stopping automatically encrypts, uploads, and starts AWS HealthScribe.</p>
-              <div className="flex flex-wrap gap-2">
-                {isAudioRecording
-                  ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
-                  : <Button type="button" disabled={nativeCallActive || isAudioBusy || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Record local microphone only</Button>}
-                <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
-                  Upload an existing audio file
-                  <input hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
-                </label>
-                {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
-              </div>
-              {awsScribeJob.status && <p className="text-sm">HealthScribe status: <strong>{awsScribeJob.status}</strong></p>}
-            </div>
-            <Textarea value={transcriptText} onChange={(e) => setTranscriptText(e.target.value)} className="min-h-[180px] rounded-2xl" placeholder="Paste Spruce transcript/summary or EHR session transcript here. The EHR maps it into the selected note template fields." />
             <div className="flex flex-wrap gap-2">
-              <Button className="rounded-2xl" disabled={!transcriptText.trim()} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={!transcriptText.trim()} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={!generatedDocs || !transcriptText.trim()} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
+              <Button className="rounded-2xl" disabled={savingDraft || !transcriptText.trim() || microphoneTest || isScribeTimerRunning} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
             </div>
             {generatedDocs && (
               <div className="space-y-4 pt-2">
                 <Card className="rounded-2xl border shadow-none">
                   <CardHeader><CardTitle className="text-base">Structured EHR note draft</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{generatedDocs.structuredNote?.content || generatedDocs.soapNote}</div>
-                    <Button variant="outline" className="rounded-2xl" onClick={saveStructuredDraftToChart}>Save structured draft to chart</Button>
+                    <p className="text-sm font-semibold">{scribeTemplate} fields</p>
+                    {Object.entries(generatedDocs.structuredNote.fields || {}).map(([heading, value]) => (
+                      <Textarea key={heading} label={heading} aria-label={`${heading} note field`} value={value} onChange={e => {
+                        setGeneratedDocs(current => {
+                          const fields = { ...current.structuredNote.fields, [heading]: e.target.value };
+                          const content = `${scribeTemplate}\n\n${Object.entries(fields).map(([name, text]) => `${name}:\n${text}`).join("\n\n")}`;
+                          return { ...current, structuredNote: { ...current.structuredNote, fields, content } };
+                        }); setReviewConfirmed(false);
+                      }} />
+                    ))}
+                    <Textarea aria-label="Clinical note preview" readOnly className="min-h-[260px]" value={generatedDocs.structuredNote.content} />
+                    <label className="block text-sm"><input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} /> I reviewed the transcript and note and verified the documented findings.</label>
+                    <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !reviewConfirmed} onClick={saveStructuredDraftToChart}>Save structured draft to chart</Button>
                   </CardContent>
                 </Card>
+                {isIntakeTemplate(scribeTemplate) && generatedDocs.intakeDraft && (
                 <Card className="rounded-2xl border shadow-none">
-                  <CardHeader><CardTitle className="text-base">Intake / biopsychosocial field mapping</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">Biopsychosocial field mapping</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
                     <div className="rounded-2xl border bg-slate-50 p-4 text-sm whitespace-pre-wrap">{`Presenting Problem:
 ${generatedDocs.intakeDraft.presentingProblem}
@@ -2896,10 +3032,11 @@ Treatment Goals:
 ${generatedDocs.intakeDraft.treatmentGoals}
 
 Biopsychosocial Summary:
-${generatedDocs.intakeDraft.biopsychosocialSummary}`}</div>
-                    <Button variant="outline" className="rounded-2xl" onClick={pushToIntake}>Save to Intake / Biopsychosocial</Button>
+${generatedDocs.structuredNote.content}`}</div>
+                    <Button variant="outline" className="rounded-2xl" onClick={pushToIntake}>Save to Biopsychosocial</Button>
                   </CardContent>
                 </Card>
+                )}
                 <Card className="rounded-2xl border shadow-none">
                   <CardHeader><CardTitle className="text-base">Risk flag detection</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
@@ -4172,11 +4309,14 @@ function billingStatusClass(status) {
 
 function BillingPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { selectedChartClientId, workflowTarget, setPage } = usePage();
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId]?.profile.role === "client" ? selectedChartClientId : clients[0]?.[0] || "");
   const [activePayer, setActivePayer] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
+  const [billingAppointmentId, setBillingAppointmentId] = useState(workflowTarget?.appointmentId || "");
+  const linkedAppointment = (selectedClient?.appointments || []).find(item => item.id === billingAppointmentId);
   const intake = { ...(selectedClient?.intake || {}) };
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
@@ -4234,6 +4374,9 @@ function BillingPage() {
   };
   const saveBillingSnapshot = () => {
     if (!selectedClientId) return;
+    if (linkedAppointment && ["Cancelled", "Not seen"].includes(linkedAppointment.status)) {
+      setNotice("This appointment was not attended. Review the cancellation policy and payer rules separately; a completed-session insurance claim was not created."); return;
+    }
     const current = {
       ...(store.users[selectedClientId].intake || {}),
     };
@@ -4286,6 +4429,23 @@ function BillingPage() {
   return (
     <div>
       <SectionHeader title="Billing" description="Payer-organized claim workspace with a central ledger, review statuses, totals, and audit-ready routing." />
+      <div className="mb-4 rounded-2xl border p-4 space-y-3">
+        <h3 className="font-semibold">Appointment statuses from the client chart</h3>
+        <p className="text-sm">Status and time saved in Telehealth appear here for billing review.</p>
+        {(selectedClient?.appointments || []).map(item => <div key={item.id} className="flex flex-wrap items-center gap-3 border p-3">
+          <span>{item.date} {item.time} · {item.status} · {item.sessionMinutes || "—"} minutes</span>
+          <Button variant="outline" onClick={() => setBillingAppointmentId(item.id)}>Review this appointment</Button>
+        </div>)}
+        {!(selectedClient?.appointments || []).length && <p>No appointments recorded for this client.</p>}
+      </div>
+      {linkedAppointment && <div className="mb-4 rounded-2xl border p-4 space-y-2">
+        <h3 className="font-semibold">Appointment carried forward from Telehealth</h3>
+        <p>{selectedClient.profile.fullName} · {linkedAppointment.date} {linkedAppointment.time}</p>
+        <p>Status: {linkedAppointment.status} · Session minutes: {linkedAppointment.sessionMinutes || "Not recorded"}</p>
+        {["Cancelled", "Not seen"].includes(linkedAppointment.status) && <p>Cancellation-fee review: check the agreed notice period, cancellation timestamp, and applicable payer restrictions before adding a permitted charge. No fee has been created.</p>}
+        {linkedAppointment.cancelledAt && <p>Cancellation recorded: {linkedAppointment.cancelledAt}</p>}
+        <Button variant="outline" onClick={() => setPage("messages", { clientId: selectedClientId, appointmentId: linkedAppointment.id })}>Return to client outreach</Button>
+      </div>}
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{notice}</div>}
       <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <span className="font-semibold">Claim transmission is disabled.</span> Drafts remain inside the EHR until payer enrollment, submission rules, and end-to-end testing are confirmed.
