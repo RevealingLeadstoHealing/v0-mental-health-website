@@ -73,6 +73,32 @@ export async function getClinicalRecord(practiceId: string, clientId: string, re
   return response.Item || null;
 }
 
+// Older scribe jobs used random record IDs. Resolve those within the same chart,
+// including later pages, without relying on a normalized AWS job-name prefix.
+export async function getSavedScribeJob(practiceId: string, clientId: string, jobName: string) {
+  const direct = await getClinicalRecord(practiceId, clientId, 'healthscribe-job', jobName);
+  if (direct) return direct;
+  let cursor: Record<string, any> | undefined;
+  do {
+    const response = await getDynamoDocumentClient().send(new QueryCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+      FilterExpression: '#payload.#job = :job',
+      ExpressionAttributeNames: { '#payload': 'payload', '#job': 'jobName' },
+      ExpressionAttributeValues: {
+        ':pk': clientPartition(practiceId, clientId),
+        ':prefix': 'RECORD#healthscribe-job#',
+        ':job': jobName,
+      },
+      ConsistentRead: true,
+      ExclusiveStartKey: cursor,
+    }));
+    if (response.Items?.length) return response.Items[0];
+    cursor = response.LastEvaluatedKey;
+  } while (cursor);
+  return null;
+}
+
 export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordInput) {
   const dynamo = getDynamoDocumentClient();
   const createdAt = nowIso();

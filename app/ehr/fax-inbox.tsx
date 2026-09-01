@@ -1,9 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-/** Provider-only shell. Rehearsal state never leaves this component. */
+/** Provider-only inbox. Rehearsal state never leaves this component. */
 export default function FaxInbox() {
+  const [inbox, setInbox] = useState<any>(null);
+  const [inboxError, setInboxError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [cursor, setCursor] = useState("");
+  const [opening, setOpening] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setInbox(null); setInboxError("");
+    fetch(`/api/ehr/fax/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { credentials: "same-origin", cache: "no-store", signal: controller.signal })
+      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Could not load the fax inbox."); return body; })
+      .then(body => { if (!controller.signal.aborted) setInbox(body); })
+      .catch(error => { if (!controller.signal.aborted) setInboxError(error.message); });
+    return () => controller.abort();
+  }, [refresh, cursor]);
+  async function openFax(id: string) {
+    setOpening(id); setInboxError("");
+    const fileWindow = window.open("about:blank", "_blank");
+    if (fileWindow) fileWindow.opener = null;
+    try {
+      const response = await fetch(`/api/ehr/fax/inbox?id=${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not open the fax.");
+      if (!fileWindow) throw new Error("Allow this EHR to open a new tab, then try again.");
+      fileWindow.location.href = body.downloadUrl;
+    } catch (error: any) { fileWindow?.close(); setInboxError(error.message); }
+    finally { setOpening(""); }
+  }
   const [rehearsal, setRehearsal] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [destination, setDestination] = useState("");
@@ -23,17 +50,32 @@ export default function FaxInbox() {
     <section aria-labelledby="fax-inbox-heading" className="my-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="fax-inbox-heading" className="text-lg font-semibold">Business fax inbox</h2>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-sm text-amber-900">Fax service not connected</span>
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-sm text-amber-900">{inbox?.configured ? "Inbox storage connected · delivery not verified" : "Fax service not connected"}</span>
       </div>
-      <p className="mt-2 text-sm text-slate-600">Incoming documents will be reviewed here before being attached to a client chart. A fax number has not been configured.</p>
+      <p className="mt-2 text-sm text-slate-600">Review received documents here. Chart assignment and outgoing fax delivery are not activated yet.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={button} disabled>Send fax — not connected</button>
+        <button type="button" className={button} onClick={() => setRefresh(value => value + 1)}>Refresh inbox</button>
         <button type="button" className={button} aria-expanded={rehearsal} onClick={() => { reset(); setRehearsal(!rehearsal); }}>
           {rehearsal ? "Close rehearsal" : "Try a synthetic fax rehearsal"}
         </button>
       </div>
+      {inboxError ? <p role="alert" className="mt-3 text-sm text-red-800">{inboxError}</p> : null}
       {!rehearsal ? (
-        <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm">No connected fax feed. Incoming faxes cannot be received here yet.</p>
+        <div className="mt-4 space-y-3">
+          {!inbox && !inboxError ? <p role="status" className="text-sm">Loading fax inbox…</p> : null}
+          {inbox && !inbox.configured ? <p className="rounded-lg bg-slate-50 p-4 text-sm">No connected fax feed. Incoming faxes cannot be received here yet.</p> : null}
+          {inbox?.configured && !inbox.items?.length ? <p className="text-sm">No received faxes on this page.</p> : null}
+          {(inbox?.items || []).map((fax: any) => <div key={fax.id} className="rounded-lg border p-4">
+            <p className="font-medium">{fax.title}</p>
+            <p className="mt-1 text-sm">Received: {fax.receivedAt} · Awaiting chart assignment</p>
+            <button type="button" className={`${button} mt-2`} disabled={Boolean(opening)} onClick={() => openFax(fax.id)}>{opening === fax.id ? "Opening…" : "Open received PDF"}</button>
+          </div>)}
+          <div className="flex gap-2">
+            {cursor ? <button type="button" className={button} onClick={() => setCursor("")}>First page</button> : null}
+            {inbox?.nextCursor ? <button type="button" className={button} onClick={() => setCursor(inbox.nextCursor)}>Next page</button> : null}
+          </div>
+        </div>
       ) : (
         <div className="mt-4 space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <p className="font-semibold text-blue-950">Synthetic rehearsal — no real fax or chart changes</p>
