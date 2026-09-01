@@ -4,6 +4,20 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../app/ehr/full-production-interface.tsx", import.meta.url), "utf8");
 
+test("telehealth presents consent before media, transcript after media, and fax last", () => {
+  const consent = source.indexOf('aria-label="Client and consent before audio or video"');
+  const microphone = source.indexOf('Microphone and recording', consent);
+  const room = source.indexOf('<NativeTelehealthRoom', microphone);
+  const transcript = source.indexOf('aria-label="Transcript review"', room);
+  const history = source.indexOf('Previously saved telehealth chart history', transcript);
+  const fax = source.indexOf('<FaxInbox', history);
+  assert.ok(consent >= 0 && microphone > consent && room > microphone && transcript > room && history > transcript && fax > history);
+  assert.ok(source.indexOf('checked={sessionForm.consentObtained}', consent) < microphone);
+  assert.ok(source.indexOf('checked={sessionForm.recordingConsent}', consent) < microphone);
+  assert.ok(!source.includes('label="Callback number (documentation only)"'));
+  assert.ok(!source.includes('label="Optional backup session link"'));
+});
+
 const providerLabels = [
   "Patient Dashboard", "Affirmations", "Client Management", "Client Chart", "Biopsychosocial Assessment", "Follow-Up Notes",
   "Billing", "Treatment Plans", "Homework", "Assessments", "Patient Intake & Consents", "Infrastructure",

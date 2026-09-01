@@ -77,7 +77,9 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     return () => { cancelled = true; live.current = false; clearInterval(timer); window.removeEventListener('beforeunload', warn); if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); };
   }, [clientId]);
   useEffect(() => { if (provider && !recordingConsent) stopRecording(); }, [recordingConsent, provider]);
+  useEffect(() => { if (provider && !providerConsent) stopPreview(); }, [providerConsent, provider]);
   async function cameraPreview() {
+    if (provider && !providerConsent) { setNotice('Confirm telehealth consent above before previewing the camera.'); return; }
     setBusy(true);
     try { stopPreview(); const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); previewStream.current = stream; if (preview.current) preview.current.srcObject = stream; setNotice('Local camera preview only. No one else can see this preview.'); }
     catch (e: any) { setNotice(`Camera preview unavailable: ${e.message}`); }
@@ -172,11 +174,11 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     {status?.recording && <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800">Session audio recording is active.</p>}
     {!connected && <>
       <video style={{ maxHeight: 180, objectFit: "contain" }} ref={preview} autoPlay muted playsInline className="max-h-56 rounded-xl bg-slate-900 w-full" aria-label="Local camera preview" />
-      <div className="flex gap-2"><button type="button" className={button} disabled={busy} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
+      <div className="flex gap-2"><button type="button" className={button} disabled={busy || (provider && !providerConsent)} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
       <button type="button" className={`${button} bg-blue-600 text-white`} disabled={externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
-      {provider && !providerConsent && <p className="text-sm">Confirm telehealth consent in session setup to open the room.</p>}
+      {provider && !providerConsent && <p className="text-sm">Confirm telehealth consent above before previewing the camera or opening the room.</p>}
     </>}
     <div className="grid md:grid-cols-2 gap-3">{tiles.map(tile => <div key={tile.tileId}><video autoPlay playsInline muted={tile.localTile} className="w-full rounded-xl bg-slate-900" aria-label={tile.localTile ? 'Your camera' : 'Other participant camera'} ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">{tile.localTile ? 'You' : 'Other participant'}</p></div>)}</div>
     {connected && <div className="flex flex-wrap gap-2">
@@ -188,6 +190,5 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     {!provider && <label className="block text-sm"><input type="checkbox" checked={clientRecordingConsent} onChange={async event => { const value = event.target.checked; setClientRecordingConsent(value); if (!value) session.current?.audioVideo.realtimeSendDataMessage('rlth-consent', 'withdrawn', 5000); if (joined.current) { try { await api('consent', { recordingConsent: value }); } catch (e: any) { setNotice(e.message); setClientRecordingConsent(!value); } } }} /> I consent to audio recording and AI-assisted documentation. I can withdraw this consent.</label>}
     {uploading && <p role="status">Uploading session audio… Keep this page open.</p>}
     {retryAudio && !uploading && <button type="button" className={button} onClick={() => upload(retryAudio)}>Retry recording upload</button>}
-    {provider && <p className="text-sm text-slate-600">Business-number calling and fax: not connected. These need a carrier account and assigned numbers before use.</p>}
   </section>;
 }
