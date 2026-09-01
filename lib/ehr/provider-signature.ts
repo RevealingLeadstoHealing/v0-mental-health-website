@@ -5,6 +5,7 @@ type ProviderIdentifiers = {
   additionalCredentials: readonly string[];
   education: readonly string[];
   completedTraining: readonly string[];
+  trainingInProgress: readonly string[];
 };
 const providers: Record<string, Readonly<ProviderIdentifiers>> = {
   "kenseener carpenter": Object.freeze({
@@ -12,6 +13,7 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     casacNumber: "CASAC-26242", casacLevel: "Master Level",
     casacEffectiveDate: "2025-01-03", casacExpirationDate: "2028-01-02",
     additionalCredentials: Object.freeze(["CCTP (provider-reported)"]),
+    trainingInProgress: Object.freeze(["Military-related training (provider-reported)"]),
     education: Object.freeze([
       "Master of Arts, Psychology — City College — May 28, 2009",
       "Master of Social Work — Lehman College — May 28, 2015",
@@ -28,7 +30,7 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     ]),
   }),
 };
-const emptyIdentifiers = Object.freeze({ npi: "", caqhId: "", licenseNumber: "", casacNumber: "", casacLevel: "", casacEffectiveDate: "", casacExpirationDate: "", additionalCredentials: Object.freeze([]), education: Object.freeze([]), completedTraining: Object.freeze([]) });
+const emptyIdentifiers = Object.freeze({ npi: "", caqhId: "", licenseNumber: "", casacNumber: "", casacLevel: "", casacEffectiveDate: "", casacExpirationDate: "", additionalCredentials: Object.freeze([]), education: Object.freeze([]), completedTraining: Object.freeze([]), trainingInProgress: Object.freeze([]) });
 
 export function providerIdentifiersForName(name: string = "") {
   return providers[name.trim().toLowerCase().replace(/\s+/g, " ")] || emptyIdentifiers;
