@@ -10,6 +10,8 @@ import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalS
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import NativeTelehealthRoom from "./native-telehealth-room";
 import FaxInbox from "./fax-inbox";
+import FaxActivity from "./fax-activity";
+import { buildFaxActivity } from "../../lib/ehr/fax-activity";
 import SignedDocuments from "./signed-documents";
 import TelehealthEntry from "./telehealth-entry";
 import SpecialtyAssessmentForm from "./specialty-assessment-form";
@@ -3123,6 +3125,21 @@ ${generatedDocs.structuredNote.content}`}</div>
           ))}
         </CardContent>
       </Card>
+      {isProvider && <FaxActivity key={`${activeClientId}:${appointmentId}`} clientName={activeClient?.profile?.fullName || "No client selected"} appointmentId={appointmentId}
+        notes={(activeClient?.notes || []).filter(note => note.appointmentId === appointmentId)}
+        entries={(activeClient?.documents || []).filter(document => document.category === "Fax Activity" && document.appointmentId === appointmentId)}
+        locked={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy}
+        onSave={async input => {
+          if (!isProvider || !selectedAppointment) throw new Error("Select a client appointment first.");
+          if (input.noteId && !(activeClient?.notes || []).some(note => note.id === input.noteId && note.appointmentId === appointmentId)) throw new Error("The note must belong to the selected appointment.");
+          const document = buildFaxActivity(input, { clientId: activeClientId, appointmentId, actorId: currentUser.id, actorName: currentUser.fullName, recordedAt: new Date().toISOString() });
+          setSavingDraft(true);
+          try {
+            updateSpecificUserData(activeClientId, "documents", previous => (previous || []).some(item => item.id === document.id) ? previous : [document, ...(previous || [])]);
+            await flushClientModuleSaves(activeClientId);
+            await productionApi("/api/ehr/audit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "Recorded non-billable fax activity", category: "Fax Activity", clientId: activeClientId, entityType: "fax-activity", entityId: document.id, summary: `Provider-entered supporting documentation linked to appointment ${appointmentId}. Delivery not independently verified.` }) });
+          } finally { setSavingDraft(false); }
+        }} />}
       {isProvider && <FaxInbox />}
     </div>
   );
