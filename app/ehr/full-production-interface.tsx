@@ -3967,8 +3967,9 @@ ${draft.content}`,
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Note title" />
-            <Select value={draft.modality} onValueChange={(value) => setDraft({ ...draft, modality: value })}>
+            <Input label="Note title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Note title" />
+            <label className="block space-y-1"><span className="text-sm font-medium">Treatment approach / clinical focus</span>
+            <Select aria-label="Treatment approach / clinical focus" value={draft.modality} onValueChange={(value) => setDraft({ ...draft, modality: value })}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="CBT">CBT</SelectItem>
@@ -3977,9 +3978,22 @@ ${draft.content}`,
                 <SelectItem value="DBT">DBT</SelectItem>
                 <SelectItem value="Psychodynamic">Psychodynamic</SelectItem>
                 <SelectItem value="Grief">Grief</SelectItem>
+                <SelectItem value="Nutrition-Informed Mental Health">Nutrition-Informed Mental Health</SelectItem>
+                <SelectItem value="Holistic Mental Health">Holistic Mental Health</SelectItem>
+                <SelectItem value="Integrative Mental Health">Integrative Mental Health</SelectItem>
+                <SelectItem value="Geriatric Mental Health">Geriatric Mental Health</SelectItem>
+                <SelectItem value="Dementia Care">Dementia Care</SelectItem>
+                <SelectItem value="Autism Support">Autism Support</SelectItem>
+                <SelectItem value="Behavioral Health">Behavioral Health</SelectItem>
+                <SelectItem value="Dual Diagnosis / Co-occurring Disorders">Dual Diagnosis / Co-occurring Disorders</SelectItem>
+                <SelectItem value="Motivational Interviewing">Motivational Interviewing</SelectItem>
+                <SelectItem value="Polyvagal-Informed">Polyvagal-Informed</SelectItem>
+                <SelectItem value="Somatic Therapy">Somatic Therapy</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={draft.noteType} onValueChange={(value) => setDraft({ ...draft, noteType: value })}>
+            </label>
+            <label className="block space-y-1"><span className="text-sm font-medium">Note type</span>
+            <Select aria-label="Note type" value={draft.noteType} onValueChange={(value) => setDraft({ ...draft, noteType: value })}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Medical Record Note">Medical Record Note | HIPAA Medical Record</SelectItem>
@@ -3989,6 +4003,7 @@ ${draft.content}`,
                 <SelectItem value="Biopsychosocial Assessment">Biopsychosocial Assessment | Intake/BPS</SelectItem>
               </SelectContent>
             </Select>
+            </label>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <span className="font-medium text-slate-800">Access policy:</span>{" "}
               {draft.noteType === "Psychotherapy Note"
@@ -4082,7 +4097,7 @@ ${draft.content}`,
                 </Button>
               </CardContent>
             </Card>
-            <Textarea value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} className="min-h-[260px] rounded-2xl" placeholder="Write note..." />
+            <Textarea label="Note text" value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} className="min-h-[260px] rounded-2xl" placeholder="Write note..." />
             <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />Save note</Button>
           </CardContent>
         </Card>
@@ -5029,6 +5044,9 @@ function InfrastructurePage() {
           <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}</p>
           <p><span className="font-medium">CASAC effective date:</span> {identifiers.casacEffectiveDate || "Not configured"}</p>
           <p><span className="font-medium">CASAC expiration date:</span> {identifiers.casacExpirationDate || "Not configured"}</p>
+          {identifiers.additionalCredentials.length > 0 && <div className="md:col-span-3"><p className="font-medium">Additional professional credentials</p><ul className="list-disc pl-5">{identifiers.additionalCredentials.map(credential => <li key={credential}>{credential}</li>)}</ul></div>}
+          {identifiers.education.length > 0 && <div className="md:col-span-3"><p className="font-medium">Education</p><ul className="list-disc pl-5">{identifiers.education.map(degree => <li key={degree}>{degree}</li>)}</ul></div>}
+          {identifiers.completedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">Completed training</p><ul className="list-disc pl-5">{identifiers.completedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
         </CardContent>
       </Card>
       <div className="grid md:grid-cols-2 gap-4">
