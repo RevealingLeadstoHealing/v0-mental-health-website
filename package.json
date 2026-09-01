@@ -9,12 +9,14 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-chime-sdk-meetings": "^3.1121.0",
     "@aws-sdk/client-dynamodb": "^3.832.0",
     "@aws-sdk/client-lambda": "^3.1106.0",
     "@aws-sdk/client-s3": "^3.832.0",
     "@aws-sdk/client-transcribe": "^3.1106.0",
     "@aws-sdk/lib-dynamodb": "^3.832.0",
     "@aws-sdk/s3-request-presigner": "^3.832.0",
+    "amazon-chime-sdk-js": "^3.32.0",
     "autoprefixer": "^10.4.20",
     "jose": "^6.0.11",
     "lucide-react": "^0.525.0",

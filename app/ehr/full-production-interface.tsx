@@ -6,6 +6,7 @@ import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
+import NativeTelehealthRoom from "./native-telehealth-room";
 import SpecialtyAssessmentForm from "./specialty-assessment-form";
 import { specialtyAssessments } from "../../lib/ehr/specialty-assessments";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -2171,6 +2172,7 @@ function ClientTelehealthPage() {
         title="Telehealth"
         description="Secure access to your scheduled telehealth appointments. Clinical recording, transcription, diagnosis, billing, and provider documentation controls are available only to authenticated practice providers."
       />
+      <NativeTelehealthRoom key={currentClientId} clientId={currentClientId} provider={false} />
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle>Your telehealth appointments</CardTitle>
@@ -2210,9 +2212,11 @@ function ClientTelehealthPage() {
 function TelehealthPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog } = useAuth();
   const isProvider = currentUser.role === "provider";
+  const { selectedChartClientId, setSelectedChartClientId } = usePage();
+  const [nativeCallActive, setNativeCallActive] = useState(false);
   const clients = Object.entries(store.users).filter(([, bucket]) => bucket.profile.role === "client");
   const currentClientId = currentUser.chartClientId || currentUser.id;
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || currentClientId);
+  const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || currentClientId);
   const activeClientId = isProvider ? selectedClientId : currentClientId;
   const activeClient = store.users[activeClientId];
   const telehealthLog = activeClient?.telehealth || [];
@@ -2692,9 +2696,10 @@ ${sessionForm.recordingVerbiage}`);
     <div>
       <SectionHeader
         title="Telehealth"
-        description="Audio/visual session workflow with consent, Spruce-supported transcript intake, EHR scribe note generation, overnight audio deletion policy, and telehealth chart history."
+        description="In-EHR audio/video sessions, consented recording, AI documentation, and client-specific session history."
       />
       {copyNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{copyNotice}</div>}
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} />
       <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
@@ -2703,7 +2708,7 @@ ${sessionForm.recordingVerbiage}`);
           </CardHeader>
           <CardContent className="space-y-3">
             {isProvider && (
-              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+              <Select disabled={nativeCallActive} value={selectedClientId} onValueChange={id => { setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent>
                   {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
@@ -2719,9 +2724,9 @@ ${sessionForm.recordingVerbiage}`);
             </Select>
             <div className="grid md:grid-cols-2 gap-3">
               <Input value={sessionForm.platform} onChange={(e) => setSessionForm({ ...sessionForm, platform: e.target.value })} placeholder="Video platform / room" />
-              <Input value={sessionForm.dialNumber} onChange={(e) => setSessionForm({ ...sessionForm, dialNumber: e.target.value })} placeholder="Dialer / call-back number" />
+              <Input value={sessionForm.dialNumber} onChange={(e) => setSessionForm({ ...sessionForm, dialNumber: e.target.value })} label="Callback number (documentation only)" placeholder="Client callback number" />
             </div>
-            <Input label="Secure session link" type="url" value={sessionForm.sessionUrl} onChange={(e) => setSessionForm({ ...sessionForm, sessionUrl: e.target.value })} placeholder="https:// approved Spruce or telehealth session link" />
+            <Input label="Optional backup session link" type="url" value={sessionForm.sessionUrl} onChange={(e) => setSessionForm({ ...sessionForm, sessionUrl: e.target.value })} placeholder="https:// optional backup platform session link" />
             <p className="text-xs text-slate-500">When saved, this HTTPS link becomes available only in the linked client’s authenticated Telehealth page.</p>
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
               <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => setSessionForm({ ...sessionForm, consentObtained: e.target.checked })} />
@@ -2762,7 +2767,7 @@ ${sessionForm.recordingVerbiage}`);
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle>EHR clinical scribe</CardTitle>
-            <CardDescription>Use Spruce transcript/summary or EHR-recorded transcript to generate structured note fields directly inside the client chart.</CardDescription>
+            <CardDescription>Use consented EHR session audio or an imported transcript to prepare documentation for provider review.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600 space-y-1">
@@ -2851,7 +2856,7 @@ ${sessionForm.recordingVerbiage}`);
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
                   ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
-                  : <Button type="button" disabled={isAudioBusy || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start consented audio capture</Button>}
+                  : <Button type="button" disabled={nativeCallActive || isAudioBusy || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Record local microphone only</Button>}
                 <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
                   Upload an existing audio file
                   <input hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
@@ -2930,7 +2935,7 @@ ${generatedDocs.intakeDraft.biopsychosocialSummary}`}</div>
                 <Badge className="rounded-xl">{entry.platform}</Badge>
               </div>
               <p className="text-xs text-slate-500">Created: {entry.createdAt} | Entered by: {entry.enteredBy}</p>
-              <p className="text-sm"><span className="font-medium">Dialer:</span> {entry.dialNumber || "Not entered"}</p>
+              <p className="text-sm"><span className="font-medium">Callback number:</span> {entry.dialNumber || "Not entered"}</p>
               <p className="text-sm"><span className="font-medium">Secure session link:</span> {entry.sessionUrl || "Not entered"}</p>
               <p className="text-sm"><span className="font-medium">Consent obtained:</span> {entry.consentObtained ? "Yes" : "No"}</p>
               <p className="text-sm whitespace-pre-wrap"><span className="font-medium">Consent text:</span> {entry.consentVerbiage}</p>

@@ -17,7 +17,7 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "media-src 'self' blob:",
-      "connect-src 'self' https://*.amazonaws.com",
+      "connect-src 'self' https://*.amazonaws.com https://*.chime.aws wss://*.chime.aws wss://*.amazonaws.com",
       "upgrade-insecure-requests",
     ].join("; "),
   },

@@ -19,6 +19,6 @@ test("provider can share one HTTPS telehealth link with the linked client", () =
   const providerView = source.slice(source.indexOf("function TelehealthPage"), source.indexOf("function ClientManagementPage"));
   assert.match(clientView, /Open secure telehealth session/);
   assert.match(clientView, /\^https:\\\/\\\//);
-  assert.match(providerView, /label="Secure session link"/);
+  assert.match(providerView, /label="Optional backup session link"/);
   assert.match(providerView, /linked client’s authenticated Telehealth page/);
 });

@@ -15,6 +15,7 @@ test("all application routes receive production browser security headers", async
     "Permissions-Policy",
     "Content-Security-Policy",
   ]) assert.ok(headers.has(required), `${required} is required`);
+  assert.ok((headers.get("Content-Security-Policy") || "").includes("wss://*.chime.aws"));
   assert.match(headers.get("Content-Security-Policy") || "", /frame-ancestors 'none'/);
   assert.match(headers.get("Content-Security-Policy") || "", /connect-src 'self' https:\/\/\*\.amazonaws\.com/);
 });
