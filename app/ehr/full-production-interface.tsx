@@ -3488,7 +3488,7 @@ function IntakePage() {
               </div>
             </section>
             <section className="space-y-6">
-              <h4 className="text-xl font-bold text-slate-800">Clinical Assessment Summary</h4>
+              <h4 className="text-xl font-bold text-slate-800">Presenting Concerns & History</h4>
               <div className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-3">
@@ -3500,35 +3500,9 @@ function IntakePage() {
                     <Input value={intake.onset || ""} onChange={(e) => updateIntakeField("onset", e.target.value)} placeholder="Onset / duration" className="rounded-2xl" />
                   </div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Session Minutes</label>
-                    <Input value={intake.sessionMinutes || ""} onChange={(e) => updateIntakeField("sessionMinutes", e.target.value)} placeholder="Session minutes" className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
-                    <Input value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
-                    <Input value={intakeBillingSearch} onChange={(e) => setIntakeBillingSearch(e.target.value)} placeholder="Type billing code or keyword for assessment, e.g. 90791, bio, interpreter" className="rounded-2xl" />
-                    {intakeBillingMatches.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {intakeBillingMatches.map((item) => (
-                          <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyIntakeBillingCode(item)}>{item.code} | {item.label}</Button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Presenting Problem / Reason for Therapy</label>
                   <Textarea value={intake.presentingProblem || ""} onChange={(e) => updateIntakeField("presentingProblem", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Document the current symptoms, duration, and life impact..." />
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
-                  <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
-                </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Complete Biopsychosocial Summary</label>
-                  <Textarea value={intake.biopsychosocialSummary || ""} onChange={(e) => updateIntakeField("biopsychosocialSummary", e.target.value)} className="min-h-[190px] rounded-[1.25rem]" placeholder="Demographics, social/family history, abuse/trauma history, medical and mental health history, hospitalizations, substance use, risk, strengths, diagnostic rationale, and clinical formulation..." />
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <p className="text-sm font-bold text-slate-800">Detailed biopsychosocial fields</p>
@@ -3544,6 +3518,15 @@ function IntakePage() {
                     <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
                     <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
                   </div>
+                </div>
+              </div>
+            </section>
+            <section className="space-y-6">
+              <h4 className="text-xl font-bold text-slate-800">Summary, Diagnosis & Plan</h4>
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-slate-700">Complete Biopsychosocial Summary</label>
+                  <Textarea value={intake.biopsychosocialSummary || ""} onChange={(e) => updateIntakeField("biopsychosocialSummary", e.target.value)} className="min-h-[190px] rounded-[1.25rem]" placeholder="Demographics, social/family history, abuse/trauma history, medical and mental health history, hospitalizations, substance use, risk, strengths, diagnostic rationale, and clinical formulation..." />
                 </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Diagnostic Formulation</label>
@@ -3561,7 +3544,7 @@ function IntakePage() {
                         <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Input value={intakeDiagnosisSearch} onChange={(e) => setIntakeDiagnosisSearch(e.target.value)} placeholder="Type ICD code or diagnosis keyword for intake" className="rounded-2xl" />
+                    <Input value={intakeDiagnosisSearch} onChange={(e) => setIntakeDiagnosisSearch(e.target.value)} placeholder="Type ICD code or diagnosis keyword for assessment" className="rounded-2xl" />
                   </div>
                   {intakeDiagnosisMatches.length > 0 && (
                     <div className="flex flex-wrap gap-2">
@@ -3593,10 +3576,32 @@ x
                     ))}
                   </div>
                 </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700">Session Minutes</label>
+                    <Input value={intake.sessionMinutes || ""} onChange={(e) => updateIntakeField("sessionMinutes", e.target.value)} placeholder="Session minutes" className="rounded-2xl" />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
+                    <Input value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
+                    <Input value={intakeBillingSearch} onChange={(e) => setIntakeBillingSearch(e.target.value)} placeholder="Type billing code or keyword for assessment, e.g. 90791, bio, interpreter" className="rounded-2xl" />
+                    {intakeBillingMatches.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {intakeBillingMatches.map((item) => (
+                          <Button key={`${item.type}-${item.code}`} type="button" size="sm" variant="outline" className="rounded-2xl" onClick={() => applyIntakeBillingCode(item)}>{item.code} | {item.label}</Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
+                  <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
+                </div>
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <p className="text-sm font-bold text-slate-800">Intake electronic signatures</p>
+              <p className="text-sm font-bold text-slate-800">Assessment electronic signatures</p>
               <div className="grid md:grid-cols-2 gap-3">
                 <Input label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
                 <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
