@@ -1,0 +1,216 @@
+# Single-file deployment automation. No pasted CLI commands or AWS keys.
+# ONE-TIME PREREQUISITE (not created by this workflow):
+# AWS must trust GitHub OIDC for this repository and environment `ehr-production`.
+# Store that role ARN as repository variable EHR_AWS_DEPLOY_ROLE_ARN.
+# Restrict the role's trust subject to:
+# repo:RevealingLeadstoHealing/v0-mental-health-website:environment:ehr-production
+# and audience sts.amazonaws.com. Protect that environment with required review
+# and allow deployments only from aws-ehr-production.
+# Required deployment-role permissions, scoped to the existing app/compute role:
+# sts:GetCallerIdentity; amplify:GetApp/GetBranch/ListJobs/GetJob/UpdateBranch/StartJob;
+# iam:GetRole/GetRolePolicy/PutRolePolicy/SimulatePrincipalPolicy.
+# Compute-role discovery never substitutes the Amplify deployment service role.
+# Install on the repository's default branch to expose the Run workflow button.
+# This enables existing Chime room code only. It does NOT activate fax, phone,
+# interpreter, live captions, or HealthScribe, or certify HIPAA/end-to-end readiness.
+name: Activate EHR telehealth
+
+on:
+  push:
+    branches: [aws-ehr-production]
+    paths: ['.github/workflows/activate-ehr-telehealth.yml']
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Check only, or apply the reviewed calling configuration
+        required: true
+        type: choice
+        options: [check, activate]
+        default: check
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: rlth-ehr-telehealth-activation
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    # Refuse execution from a fork or another repository.
+    if: github.repository == 'RevealingLeadstoHealing/v0-mental-health-website' && github.ref == 'refs/heads/aws-ehr-production'
+    environment: ehr-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      DEPLOY_ROLE_ARN: ${{ vars.EHR_AWS_DEPLOY_ROLE_ARN }}
+      OPERATION: ${{ inputs.operation || 'check' }}
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_PAGER: ''
+      AWS_CLI_AUTO_PROMPT: 'off'
+    steps:
+      - name: Check, configure, deploy and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v aws >/dev/null || { echo 'AWS CLI is missing; no changes made.'; exit 1; }
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, time, urllib.request
+          from pathlib import Path
+
+          ACCOUNT = '597936860711'
+          APP = 'd1mwc7x488m8xn'
+          BRANCH = 'aws-ehr-production'
+          REPOSITORY = 'https://github.com/RevealingLeadstoHealing/v0-mental-health-website'
+          POLICY_NAME = 'rlth-native-telehealth'
+          REGION = 'us-east-1'
+          CHANGES = {'EHR_NATIVE_TELEHEALTH_ENABLED': 'true', 'EHR_TELEHEALTH_REGION': REGION}
+          ACTIVE = {'CREATED', 'PENDING', 'PROVISIONING', 'RUNNING', 'CANCELLING'}
+          SUMMARY = Path(os.environ['GITHUB_STEP_SUMMARY'])
+
+          def report(message):
+              print(message, flush=True)
+              with SUMMARY.open('a') as f:
+                  f.write(message + '\n\n')
+
+          class AwsFailure(RuntimeError):
+              def __init__(self, service, operation, stderr):
+                  # Do not print command input, environment values or credentials.
+                  code = re.search(r'\(([A-Za-z0-9]+)\)', stderr)
+                  self.code = code.group(1) if code else 'AWSCommandFailed'
+                  super().__init__(f'{service}:{operation} failed ({self.code}). No automatic permission workaround attempted.')
+
+          def aws(service, operation, **payload):
+              command = ['aws', service, operation, '--region', REGION,
+                         '--output', 'json', '--no-cli-pager']
+              # Input via stdin, never in shell expansion or process arguments.
+              if payload:
+                  command += ['--cli-input-json', 'file:///dev/stdin']
+              result = subprocess.run(command, input=json.dumps(payload) if payload else None,
+                                      text=True, capture_output=True, timeout=90)
+              if result.returncode:
+                  raise AwsFailure(service, operation, result.stderr)
+              return json.loads(result.stdout) if result.stdout.strip() else {}
+
+          def authenticate():
+              role = os.environ.get('DEPLOY_ROLE_ARN', '')
+              if not re.fullmatch(r'arn:aws:iam::' + ACCOUNT + r':role/[A-Za-z0-9_+=,.@/\-]+', role):
+                  raise RuntimeError('AWS authorization is not configured. Set EHR_AWS_DEPLOY_ROLE_ARN to the approved OIDC deployment role. No AWS changes made.')
+              endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
+              bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
+              if not endpoint or not bearer:
+                  raise RuntimeError('GitHub OIDC is unavailable. No AWS changes made.')
+              endpoint += ('&' if '?' in endpoint else '?') + 'audience=sts.amazonaws.com'
+              request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + bearer})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  token = json.load(response)['value']
+              print('::add-mask::' + token)
+              credentials = aws('sts', 'assume-role-with-web-identity', RoleArn=role,
+                  RoleSessionName='ehr-telehealth-' + os.environ.get('GITHUB_RUN_ID', 'run'),
+                  WebIdentityToken=token, DurationSeconds=3600)['Credentials']
+              for key, source in [('AWS_ACCESS_KEY_ID', 'AccessKeyId'),
+                                  ('AWS_SECRET_ACCESS_KEY', 'SecretAccessKey'),
+                                  ('AWS_SESSION_TOKEN', 'SessionToken')]:
+                  print('::add-mask::' + credentials[source])
+                  os.environ[key] = credentials[source]
+              if aws('sts', 'get-caller-identity')['Account'] != ACCOUNT:
+                  raise RuntimeError('Wrong AWS account. No changes made.')
+
+          def get_branch():
+              return aws('amplify', 'get-branch', appId=APP, branchName=BRANCH)['branch']
+
+          def get_policy(role_name):
+              try:
+                  return aws('iam', 'get-role-policy', RoleName=role_name, PolicyName=POLICY_NAME)['PolicyDocument']
+              except AwsFailure as error:
+                  if error.code == 'NoSuchEntity':
+                      return None
+                  raise
+
+          def wait_job(job_id):
+              deadline = time.monotonic() + 1800
+              previous = None
+              while time.monotonic() < deadline:
+                  state = aws('amplify', 'get-job', appId=APP, branchName=BRANCH, jobId=job_id)['job']['summary']['status']
+                  if state != previous:
+                      report('Amplify job ' + job_id + ': ' + state)
+                      previous = state
+                  if state == 'SUCCEED':
+                      return
+                  if state in {'FAILED', 'CANCELLED'}:
+                      raise RuntimeError('Amplify deployment did not succeed; inspect its build log.')
+                  time.sleep(20)
+              raise RuntimeError('Deployment verification timed out. The job may still be running; do not assume success.')
+
+          def main():
+              operation = os.environ.get('OPERATION', 'check')
+              if operation not in {'check', 'activate'}:
+                  raise RuntimeError('Unsupported operation.')
+              authenticate()
+              app = aws('amplify', 'get-app', appId=APP)['app']
+              branch = get_branch()
+              if app.get('repository', '').rstrip('/').removesuffix('.git').lower() != REPOSITORY.lower():
+                  raise RuntimeError('Repository mismatch. No changes made.')
+              role_arn = branch.get('computeRoleArn') or app.get('computeRoleArn')
+              if not role_arn or not role_arn.startswith('arn:aws:iam::' + ACCOUNT + ':role/'):
+                  raise RuntimeError('No verified SSR compute role is assigned. A deployment service role is not a substitute. No changes made.')
+              role_name = role_arn.rsplit('/', 1)[-1]
+              role = aws('iam', 'get-role', RoleName=role_name)['Role']
+              if role['Arn'] != role_arn:
+                  raise RuntimeError('Compute role identity mismatch.')
+              jobs = aws('amplify', 'list-jobs', appId=APP, branchName=BRANCH, maxResults=10).get('jobSummaries', [])
+              if any(job['status'] in ACTIVE for job in jobs):
+                  raise RuntimeError('An Amplify deployment is already active. No changes made; rerun when it finishes.')
+              original_env = branch.get('environmentVariables', {})
+              original_policy = get_policy(role_name)
+              policy = {'Version': '2012-10-17', 'Statement': [
+                  {'Sid': 'CreateEphemeralRooms', 'Effect': 'Allow', 'Action': 'chime:CreateMeeting', 'Resource': '*'},
+                  {'Sid': 'ManageAccountRooms', 'Effect': 'Allow', 'Action': ['chime:GetMeeting', 'chime:DeleteMeeting', 'chime:CreateAttendee', 'chime:DeleteAttendee'],
+                   'Resource': 'arn:aws:chime:*:' + ACCOUNT + ':meeting/*'}]}
+              # A same-name policy owned by someone else must never be overwritten.
+              if original_policy is not None and original_policy != policy:
+                  raise RuntimeError('An existing telehealth policy differs from the reviewed policy. Stop for review; no changes made.')
+              report('Verified the AWS account, production app, branch and assigned SSR compute role.')
+              report('Scope: one Chime meeting policy and two branch-only settings. Existing clinical-region, database, storage, authentication and unrelated settings are preserved.')
+              if operation == 'check':
+                  report('Preflight passed. Check mode made no AWS changes. Choose activate for the reviewed deployment.')
+                  return
+              desired_env = dict(original_env, **CHANGES)
+              # Re-read immediately before writing: never knowingly overwrite a concurrent edit.
+              if get_branch().get('environmentVariables', {}) != original_env:
+                  raise RuntimeError('Branch settings changed during preflight. No changes made.')
+              if get_policy(role_name) != original_policy:
+                  raise RuntimeError('Compute policy changed during preflight. No changes made.')
+              if original_policy is None:
+                  aws('iam', 'put-role-policy', RoleName=role_name, PolicyName=POLICY_NAME, PolicyDocument=json.dumps(policy))
+                  report('Attached the reviewed Chime room policy to the existing compute role.')
+              # Keep completed steps in place on later failure. No silent rollback, policy
+              # deletion or second deployment: safe reruns re-check current state.
+              resources = ['arn:aws:chime:us-east-1:' + ACCOUNT + ':meeting/00000000-0000-0000-0000-000000000000']
+              for actions, resource in [(['chime:CreateMeeting'], ['*']),
+                      (['chime:GetMeeting', 'chime:DeleteMeeting', 'chime:CreateAttendee', 'chime:DeleteAttendee'], resources)]:
+                  results = aws('iam', 'simulate-principal-policy', PolicySourceArn=role_arn,
+                                ActionNames=actions, ResourceArns=resource)['EvaluationResults']
+                  if len(results) != len(actions) or any(item['EvalDecision'] != 'allowed' for item in results):
+                      raise RuntimeError('Compute-role permission simulation did not allow every required action. Calling has not been enabled by this run; review IAM. Simulation cannot prove organization-policy or live service access.')
+              if desired_env != original_env:
+                  aws('amplify', 'update-branch', appId=APP, branchName=BRANCH, environmentVariables=desired_env)
+                  report('Updated only the production branch calling settings, preserving its other variables.')
+              if get_branch().get('environmentVariables', {}) != desired_env:
+                  raise RuntimeError('Saved branch settings differ from the expected configuration. Stop for review.')
+              job = aws('amplify', 'start-job', appId=APP, branchName=BRANCH, jobType='RELEASE')['jobSummary']
+              report('Started Amplify deployment job ' + job['jobId'] + '.')
+              wait_job(job['jobId'])
+              report('DEPLOYMENT SUCCEEDED. Calling configuration is enabled. This is NOT an end-to-end test: verify a synthetic provider/client call, reconnect, recording consent, audio processing and reviewed chart merge before clinical use. Interpreter and fax activation are not included.')
+
+          try:
+              main()
+          except Exception as error:
+              # No raw HTTP/AWS response bodies or variable values in the durable log.
+              message = str(error) if isinstance(error, RuntimeError) else type(error).__name__
+              report('STOPPED: ' + message)
+              report('Do not assume activation or deployment succeeded. Any completed steps are listed above; rerun only after resolving the reported blocker. No patient records were accessed.')
+              sys.exit(1)
+          PY
