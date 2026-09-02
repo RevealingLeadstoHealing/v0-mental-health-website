@@ -2878,7 +2878,7 @@ ${sessionForm.recordingVerbiage}`);
             </div>
 </div>}
       <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
-{isProvider && <section aria-label="Transcript review" className="mb-4">            <p className="text-sm">Transcript: words appear after AWS processing. Live captions are not connected yet.</p>
+{isProvider && <section aria-label="Transcript review" className="mb-4">            <p className="text-sm">Live captions appear in the room during consented recording. The completed transcript appears here after AWS processing, ready for clinical draft review and chart merge.</p>
             <Textarea aria-label="Session transcript" value={transcriptText} onChange={(e) => { setSupportedSections({}); setTranscriptText(e.target.value); setGeneratedDocs(null); setReviewConfirmed(false); }} className="min-h-[180px] rounded-2xl" placeholder="Recorded words will appear here after processing. Review transcription accuracy before creating the note." />
 </section>}
       <div className="grid gap-4">

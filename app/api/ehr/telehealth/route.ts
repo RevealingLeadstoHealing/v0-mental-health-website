@@ -1,15 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { ChimeSDKMeetingsClient, CreateMeetingCommand, GetMeetingCommand, DeleteMeetingCommand, CreateAttendeeCommand, DeleteAttendeeCommand } from '@aws-sdk/client-chime-sdk-meetings';
+import { ChimeSDKMeetingsClient, CreateMeetingCommand, GetMeetingCommand, DeleteMeetingCommand, CreateAttendeeCommand, DeleteAttendeeCommand, StartMeetingTranscriptionCommand, StopMeetingTranscriptionCommand } from '@aws-sdk/client-chime-sdk-meetings';
 import { requireEhrActor, requireRole, ApiError, apiErrorResponse } from '../../../../lib/ehr/auth';
 import { requireClientAccess } from '../../../../lib/ehr/authorization';
 import { appendAuditEvent } from '../../../../lib/ehr/dynamodb-store';
 import { getDynamoDocumentClient } from '../../../../lib/ehr/aws-runtime';
 import { rlthAwsFoundation } from '../../../../lib/rlth-aws-foundation';
-import { telehealthKey, canManageTelehealth, roomIsActive, safeRoomStatus } from '../../../../lib/ehr/telehealth-policy';
+import { telehealthKey, canManageTelehealth, canStartLiveCaptions, roomIsActive, safeRoomStatus } from '../../../../lib/ehr/telehealth-policy';
 import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../../../lib/ehr/telehealth-consent';
 import { isAllowedTelehealthOrigin } from '../../../../lib/ehr/telehealth-origin';
+import { stopLiveCaptionCapture } from '../../../../lib/ehr/live-caption-lifecycle';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
@@ -46,6 +47,16 @@ export async function POST(request: Request) {
     const manager = canManageTelehealth(actor.role);
     const audit = (action: string) => appendAuditEvent(actor, { action, category: 'Telehealth', clientId, entityType: 'telehealth-room', summary: action });
     const update = async (expression: string, values: Record<string, any>) => db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: expression, ConditionExpression: 'sessionId = :sid', ExpressionAttributeValues: { ...values, ':sid': room?.sessionId || '' } }));
+    const stopCaptions = async () => {
+      if (!room?.captions) return;
+      const closed = await stopLiveCaptionCapture({
+        stop: () => chime.send(new StopMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId })),
+        closeRoom: () => chime.send(new DeleteMeetingCommand({ MeetingId: room.meeting.MeetingId })),
+        markRoomClosed: () => update('SET expiresAt = :zero, recording = :false, captions = :false', { ':zero': 0, ':false': false }),
+        markStopped: () => update('SET captions = :false', { ':false': false }),
+      });
+      if (closed) throw new ApiError(503, 'The room was ended because live captions could not be stopped safely.');
+    };
     if (action === 'start') {
       if (!manager) throw new ApiError(403, 'Only a provider can open a room.');
       if (body.telehealthConsent !== true) throw new ApiError(400, 'Confirm telehealth consent before opening a room.');
@@ -76,6 +87,7 @@ export async function POST(request: Request) {
     if (action === 'join') {
       if (body.telehealthConsent !== true) throw new ApiError(400, 'Confirm telehealth consent to join.');
       if (actor.role === 'client' && body.confirmationVersion !== SESSION_CONFIRMATION_VERSION) throw new ApiError(409, 'Refresh the portal to read the current session confirmation.');
+      if (actor.role === 'client') await stopCaptions();
       const old = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
       if (old.Item?.meetingId === room.meeting.MeetingId && old.Item?.attendeeId) await chime.send(new DeleteAttendeeCommand({ MeetingId: room.meeting.MeetingId, AttendeeId: old.Item.attendeeId })).catch(() => {});
       const result = await chime.send(new CreateAttendeeCommand({ MeetingId: room.meeting.MeetingId, ExternalUserId: hash(actor.sub + randomUUID()) }));
@@ -95,19 +107,48 @@ export async function POST(request: Request) {
       await audit('Ended in-EHR telehealth room'); return json({ active: false });
     }
     if (action === 'leave') {
+      await stopCaptions();
       const member = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
       if (member.Item?.meetingId === room.meeting.MeetingId) await chime.send(new DeleteAttendeeCommand({ MeetingId: room.meeting.MeetingId, AttendeeId: member.Item.attendeeId }));
       await update(actor.role === 'client' ? 'SET clientRecordingConsent = :false, recording = :false' : 'SET recording = :false', { ':false': false });
       await audit('Left in-EHR telehealth room'); return json({ left: true });
     }
     if (action === 'consent' && actor.role === 'client') {
+      await stopCaptions();
       await update('SET clientRecordingConsent = :consent, recording = :false', { ':consent': body.recordingConsent === true, ':false': false });
       await audit(body.recordingConsent === true ? 'Client consented to session recording' : 'Client withdrew session recording consent'); return json({ updated: true });
     }
     if (action === 'recording' && manager) {
       if (body.active === true && (room.clientRecordingConsent !== true || body.recordingConsent !== true)) throw new ApiError(409, 'Client and provider recording consent are required.');
+      if (body.active !== true) await stopCaptions();
       await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET recording = :active', ConditionExpression: body.active === true ? 'sessionId = :sid AND clientRecordingConsent = :yes AND expiresAt > :now' : 'sessionId = :sid', ExpressionAttributeValues: { ':sid': room.sessionId, ':active': body.active === true, ...(body.active === true ? { ':yes': true, ':now': Math.floor(Date.now() / 1000) } : {}) } }));
-      await audit(body.active === true ? 'Started consented session recording' : 'Stopped session recording'); return json({ recording: body.active === true });
+      await audit(body.active === true ? 'Started consented session recording' : 'Stopped session recording');
+      return json({ recording: body.active === true });
+    }
+    if (action === 'captions' && manager) {
+      if (body.active !== true) { await stopCaptions(); return json({ captions: 'stopped' }); }
+      if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'Both recording consents and an active recording are required for live captions.');
+      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND clientRecordingConsent = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
+      try {
+        await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' } } }));
+        // Consent may have been withdrawn while AWS was starting transcription.
+        const { Item: latest } = await db.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }));
+        if (!roomIsActive(latest) || latest?.sessionId !== room.sessionId || !latest.recording || !latest.clientRecordingConsent || !latest.captions) {
+          await chime.send(new StopMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId }));
+          throw new ApiError(409, 'Recording or consent ended while captions were starting.');
+        }
+        await audit('Requested live session captions');
+        return json({ captions: 'requested' });
+      } catch (error) {
+        if (['AccessDeniedException', 'UnauthorizedClientException', 'ForbiddenException', 'BadRequestException', 'NotFoundException'].includes((error as any)?.name)) {
+          await update('SET captions = :false', { ':false': false });
+        } else {
+          // A timeout does not prove AWS never started. Stop or end the room.
+          room.captions = true;
+          await stopCaptions();
+        }
+        throw error instanceof ApiError ? error : new ApiError(503, 'Live captions could not start. AWS transcription permissions and its service role need verification. The audio recording can still be processed after stopping.');
+      }
     }
     throw new ApiError(400, 'Unsupported telehealth action.');
   } catch (error: any) {

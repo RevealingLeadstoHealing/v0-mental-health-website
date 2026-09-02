@@ -3,6 +3,9 @@ export function telehealthKey(practiceId: string, clientId: string) {
   return { PK: `PRACTICE#${practiceId}#CLIENT#${clientId}`, SK: 'TELEHEALTH#ACTIVE' };
 }
 export function canManageTelehealth(role: string) { return role === 'provider' || role === 'owner'; }
+export function canStartLiveCaptions(role: string, room: any, providerConsent: unknown) {
+  return canManageTelehealth(role) && roomIsActive(room) && room.recording === true && room.clientRecordingConsent === true && providerConsent === true;
+}
 export function roomIsActive(room: any, now = Date.now()) {
   return Boolean(room?.meeting?.MeetingId && room?.state === 'active' && room?.expiresAt > Math.floor(now / 1000));
 }

@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Live caption permissions for the existing EHR Chime rooms.
+Parameters:
+  AmplifyComputeRoleName:
+    Type: String
+    Description: Verified existing production SSR compute role name.
+  CreateTranscriptionServiceRole:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Set true only after verifying AWSServiceRoleForAmazonChimeTranscription does not already exist.
+Conditions:
+  NeedsServiceRole: !Equals [!Ref CreateTranscriptionServiceRole, 'true']
+Resources:
+  LiveCaptionRuntimePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: rlth-live-captions
+      Roles: [!Ref AmplifyComputeRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - chime:StartMeetingTranscription
+              - chime:StopMeetingTranscription
+            Resource: !Sub 'arn:${AWS::Partition}:chime:*:${AWS::AccountId}:meeting/*'
+  TranscriptionServiceRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Condition: NeedsServiceRole
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AWSServiceName: transcription.chime.amazonaws.com

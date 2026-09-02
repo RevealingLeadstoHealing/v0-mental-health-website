@@ -1,7 +1,11 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
+import { telehealthRequest } from '../../lib/ehr/telehealth-request';
 import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../lib/ehr/telehealth-consent';
 import type { DefaultMeetingSession, DefaultDeviceController, VideoTileState } from 'amazon-chime-sdk-js';
+import type { TranscriptEvent } from 'amazon-chime-sdk-js';
+import LiveCaptionPanel from './live-caption-panel';
+import { updateLiveCaptions, type CaptionLine } from '../../lib/ehr/live-captions';
 type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void };
 export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, externalRecording = false, timerLabel = "00:00:00" }: Props) {
   const [status, setStatus] = useState<any>(null);
@@ -21,6 +25,9 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [uploading, setUploading] = useState(false);
   const [retryAudio, setRetryAudio] = useState<Blob | null>(null);
   const [tiles, setTiles] = useState<VideoTileState[]>([]);
+  const [captions, setCaptions] = useState<CaptionLine[]>([]);
+  const [captionNotice, setCaptionNotice] = useState('Live English captions start with consented session recording.');
+  const unsubscribeCaptions = useRef<(() => void) | null>(null);
   const session = useRef<DefaultMeetingSession | null>(null);
   const controller = useRef<DefaultDeviceController | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -34,13 +41,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const joined = useRef(false);
   const recordingStartedAt = useRef(0);
   async function api(action?: string, extra: any = {}) {
-    const response = await fetch(action ? '/api/ehr/telehealth' : `/api/ehr/telehealth?clientId=${encodeURIComponent(clientId)}`, {
+    return telehealthRequest(action ? '/api/ehr/telehealth' : `/api/ehr/telehealth?clientId=${encodeURIComponent(clientId)}`, {
       method: action ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
       ...(action ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId, action, ...extra }) } : {}),
     });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'The call request failed.');
-    return body;
   }
   function stopPreview() { previewStream.current?.getTracks().forEach(track => track.stop()); previewStream.current = null; if (preview.current) preview.current.srcObject = null; }
   function stopRecording() {
@@ -49,13 +53,14 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   }
   function disconnectLocal() {
     stopRecording(); stopPreview();
+    unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null;
     const current = session.current; session.current = null;
     current?.audioVideo.stop();
     current?.audioVideo.unbindAudioElement();
     localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null;
     void controller.current?.destroy(); controller.current = null; session.current = null;
     joined.current = false; onConnectionChange?.(false);
-    if (live.current) { setConnected(false); setTiles([]); setMuted(false); setConsent(false); setClientRecordingConsent(false); }
+    if (live.current) { setConnected(false); setTiles([]); setCaptions([]); setCaptionNotice('Live English captions start with consented session recording.'); setMuted(false); setConsent(false); setClientRecordingConsent(false); }
   }
   useEffect(() => {
     live.current = true;
@@ -97,9 +102,22 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const logger = new sdk.NoOpLogger();
       const devices = new sdk.DefaultDeviceController(logger); controller.current = devices;
       const meeting = new sdk.DefaultMeetingSession(new sdk.MeetingSessionConfiguration(credentials.meeting, credentials.attendee), logger, devices); session.current = meeting;
+      const transcription = meeting.audioVideo.transcriptionController;
+      const receiveCaption = (event: TranscriptEvent) => {
+        if (!live.current || session.current !== meeting) return;
+        if ('results' in event) {
+          setCaptions(current => updateLiveCaptions(current, event.results, credentials.attendee.AttendeeId));
+          setCaptionNotice('Receiving live English captions. Words may update as you speak.');
+        } else {
+          const messages: Record<string, string> = { started: 'Live English captions are active.', resumed: 'Live English captions resumed.', interrupted: 'Live captions interrupted. Check the completed transcript after recording.', stopped: 'Live captions stopped. The completed recording will be processed for clinical review.', failed: 'AWS live captions failed. The completed recording can still be processed for clinical review.' };
+          setCaptionNotice(messages[event.type] || 'Live caption status changed.');
+        }
+      };
+      transcription?.subscribeToTranscriptEvent(receiveCaption);
+      unsubscribeCaptions.current = () => transcription?.unsubscribeFromTranscriptEvent(receiveCaption);
       meeting.audioVideo.addObserver({
         audioVideoDidStart: () => { if (live.current) { setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
-        audioVideoDidStop: () => { if (session.current !== meeting) return; stopRecording(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setNotice('Call disconnected. You can join again.'); } },
+        audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
         videoTileDidUpdate: tile => { if (!tile.tileId || !tile.boundAttendeeId || tile.isContent || !live.current) return; setTiles(current => [...current.filter(item => item.tileId !== tile.tileId), tile.clone()]); },
         videoTileWasRemoved: tileId => { if (live.current) setTiles(current => current.filter(item => item.tileId !== tileId)); },
       });
@@ -153,10 +171,18 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const chunks: Blob[] = []; let bytes = 0;
       recorder.current = capture;
       capture.ondataavailable = event => { if (event.data.size) { chunks.push(event.data); bytes += event.data.size; if (bytes > 40 * 1024 * 1024) stopRecording(); } };
-      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(() => {}); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
+      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(error => { if (live.current) setCaptionNotice(`Caption stop could not be confirmed: ${error.message}. Use Stop live captions or end the room.`); }); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
       capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setNotice('Recording both sides of this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
+      setCaptions([]); setCaptionNotice('Requesting AWS live English captions…');
+      try {
+        await api('captions', { active: true, recordingConsent });
+        // Recording could have stopped while the start request was in flight.
+        if (recorder.current !== capture || capture.state !== 'recording') await api('captions', { active: false });
+      } catch (error: any) {
+        if (live.current) setCaptionNotice(error.message || 'Live captions are unavailable. Review the completed transcript after recording.');
+      }
     } catch (e: any) { if (mix) void mix.close(); void api('recording', { active: false }).catch(() => {}); setNotice(e.message); }
     finally { setBusy(false); }
   }
@@ -165,6 +191,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     <h2 className="text-xl font-semibold">In-EHR audio and video room</h2>
     <p role="status" className="text-sm">{notice}</p>
     <audio ref={audio} autoPlay />
+    <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} onStop={async () => { await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} />
     {provider && connected && <div className="space-y-2">
       <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
       <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>
