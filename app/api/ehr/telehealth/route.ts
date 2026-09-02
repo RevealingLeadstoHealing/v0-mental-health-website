@@ -9,6 +9,7 @@ import { getDynamoDocumentClient } from '../../../../lib/ehr/aws-runtime';
 import { rlthAwsFoundation } from '../../../../lib/rlth-aws-foundation';
 import { telehealthKey, canManageTelehealth, roomIsActive, safeRoomStatus } from '../../../../lib/ehr/telehealth-policy';
 import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../../../lib/ehr/telehealth-consent';
+import { isAllowedTelehealthOrigin } from '../../../../lib/ehr/telehealth-origin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
@@ -35,8 +36,7 @@ export async function GET(request: Request) {
 }
 export async function POST(request: Request) {
   try {
-    const origin = request.headers.get('origin');
-    if (origin && origin !== new URL(request.url).origin) throw new ApiError(403, 'Cross-site call requests are not allowed.');
+    if (!isAllowedTelehealthOrigin(request, process.env.NODE_ENV === 'production')) throw new ApiError(403, 'Cross-site call requests are not allowed.');
     if (!request.headers.get('content-type')?.includes('application/json')) throw new ApiError(415, 'JSON request required.');
     const body = await request.json();
     const clientId = typeof body.clientId === 'string' ? body.clientId : '';
