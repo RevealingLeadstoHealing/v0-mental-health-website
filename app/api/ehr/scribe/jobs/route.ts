@@ -5,6 +5,7 @@ import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../
 import { requireClientAccess } from "../../../../../lib/ehr/authorization";
 import { appendAuditEvent, getSavedScribeJob, putClinicalRecord } from "../../../../../lib/ehr/dynamodb-store";
 import { resolveScribeJobBinding } from "../../../../../lib/ehr/scribe-job-binding";
+import { readableTranscript } from "../../../../../lib/ehr/scribe-presentation";
 import { getHealthScribeJob, healthScribeBucket, healthScribeS3, readS3Json, startHealthScribeJob } from "../../../../../lib/ehr/healthscribe";
 
 const templates = new Set(["GIRPP", "BIRP", "SIRP", "DAP", "BEHAVIORAL_SOAP"]);
@@ -53,6 +54,10 @@ export async function GET(request: Request) {
       readS3Json(job?.MedicalScribeOutput?.TranscriptFileUri),
       readS3Json(job?.MedicalScribeOutput?.ClinicalDocumentUri),
     ]);
+    try { readableTranscript(transcript); }
+    catch {
+      return NextResponse.json({ status: "NO_TRANSCRIPT", failureReason: "AWS finished processing but returned no readable speech. No clinical draft was generated. Check microphone input before another recording." }, { headers: { "Cache-Control": "no-store" } });
+    }
     await healthScribeS3.send(new DeleteObjectCommand({ Bucket: healthScribeBucket, Key: binding.mediaKey }));
     await appendAuditEvent(actor, { action: "Retrieved AWS HealthScribe draft and deleted temporary audio", category: "AI Scribe", clientId, entityType: "healthscribe-job", entityId: jobName, summary: "Preliminary documentation was retrieved for provider review; the temporary source audio was deleted." });
     return NextResponse.json({ status, transcript, clinicalDocument, providerReviewRequired: true, temporaryAudioDeleted: true });

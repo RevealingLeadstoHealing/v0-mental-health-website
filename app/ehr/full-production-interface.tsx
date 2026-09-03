@@ -9,6 +9,7 @@ import { demographicGroups, editableDemographicFields, patientAge } from "../../
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import NativeTelehealthRoom from "./native-telehealth-room";
+import { useMicrophoneCaptions } from "./use-microphone-captions";
 import FaxInbox from "./fax-inbox";
 import FaxActivity from "./fax-activity";
 import { buildFaxActivity } from "../../lib/ehr/fax-activity";
@@ -2320,14 +2321,21 @@ function TelehealthPage() {
   const [awsScribeJob, setAwsScribeJob] = useState({ jobName: "", mediaKey: "", status: "" });
   const [isAudioRecording, setIsAudioRecording] = useState(false);
   const [isAudioBusy, setIsAudioBusy] = useState(false);
+  const microphoneCaptions = useMicrophoneCaptions();
+  const [processingStartedAt, setProcessingStartedAt] = useState(0);
+  const [processingSeconds, setProcessingSeconds] = useState(0);
+  const [scribeError, setScribeError] = useState("");
+  const scribeCheckInFlight = useRef(false);
   const mediaRecorderRef = useRef(null);
   const mediaChunksRef = useRef([]);
   useEffect(() => () => {
+    void microphoneCaptions.stop();
     const recorder = mediaRecorderRef.current;
     if (recorder) { recorder.onstop = null; if (recorder.state !== "inactive") recorder.stop(); recorder.stream.getTracks().forEach(track => track.stop()); }
   }, []);
   useEffect(() => {
     if ((!sessionForm.recordingConsent || !sessionForm.consentObtained) && mediaRecorderRef.current?.state === "recording") {
+      void microphoneCaptions.stop();
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -2350,6 +2358,7 @@ function TelehealthPage() {
   const resetTestBusy = isAudioRecording || isAudioBusy || nativeCallActive || savingDraft || statusBusy || awsScribeJob.status === "IN_PROGRESS";
   const startNewMicrophoneTest = () => {
     if (resetTestBusy) return;
+    microphoneCaptions.reset(); setScribeError(""); setProcessingStartedAt(0);
     setMicrophoneTest(true);
     setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime("");
     setAwsScribeJob({ jobName: "", mediaKey: "", status: "" });
@@ -2401,6 +2410,7 @@ function TelehealthPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clientId: activeClientId, mediaKey: upload.key, noteTemplate: healthScribeTemplate, consentConfirmed: true }),
     });
+    setProcessingStartedAt(Date.now()); setProcessingSeconds(0); setScribeError("");
     setAwsScribeJob({ jobName: job.jobName, mediaKey: upload.key, status: job.status });
     setCopyNotice("AWS HealthScribe securely received the consented audio and started preliminary documentation.");
   };
@@ -2415,6 +2425,7 @@ function TelehealthPage() {
       mediaChunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size) mediaChunksRef.current.push(event.data); };
       recorder.onstop = async () => {
+        void microphoneCaptions.stop();
         stream.getTracks().forEach((track) => track.stop());
         setIsAudioRecording(false); setIsScribeTimerRunning(false);
         setIsAudioBusy(true);
@@ -2428,6 +2439,7 @@ function TelehealthPage() {
       setScribeSeconds(0); setIsScribeTimerRunning(true);
       setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false);
       setIsAudioRecording(true);
+      void microphoneCaptions.start(stream, activeClientId);
       setCopyNotice("Secure audio capture started. Stop recording to encrypt, upload, and transcribe it.");
     } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Microphone access failed."); }
     finally { setIsAudioBusy(false); }
@@ -2446,26 +2458,44 @@ function TelehealthPage() {
     finally { setIsAudioBusy(false); }
   };
   const checkHealthScribeJob = async () => {
-    if (!awsScribeJob.jobName) return;
+    if (!awsScribeJob.jobName || scribeCheckInFlight.current) return;
+    scribeCheckInFlight.current = true;
     setIsAudioBusy(true);
     try {
-      const result = await productionApi(`/api/ehr/scribe/jobs?clientId=${encodeURIComponent(activeClientId)}&jobName=${encodeURIComponent(awsScribeJob.jobName)}&mediaKey=${encodeURIComponent(awsScribeJob.mediaKey)}`);
-      setAwsScribeJob((current) => ({ ...current, status: result.status }));
+      const result = await productionApi(`/api/ehr/scribe/jobs?clientId=${encodeURIComponent(activeClientId)}&jobName=${encodeURIComponent(awsScribeJob.jobName)}`, { signal: AbortSignal.timeout(25000) });
       if (result.status === "COMPLETED") {
+        // Validate the words BEFORE claiming completion or ending the poll loop.
+        const words = readableTranscript(result.transcript);
+        setTranscriptText(words);
         setSupportedSections(microphoneTest ? {} : supportedClinicalSections(result.transcript, result.clinicalDocument));
-        setTranscriptText(readableTranscript(result.transcript));
         setGeneratedDocs(null); setReviewConfirmed(false);
-        setCopyNotice("Transcription completed. Review the words below, then generate the selected note draft. Microphone tests cannot be merged into a chart.");
-      } else if (result.status === "FAILED") setCopyNotice(result.failureReason || "AWS HealthScribe failed.");
-      else setCopyNotice(`AWS HealthScribe status: ${result.status}.`);
-    } catch (error) { setCopyNotice(error instanceof Error ? error.message : "Unable to check transcription."); }
-    finally { setIsAudioBusy(false); }
+        setAwsScribeJob(current => ({ ...current, status: "COMPLETED" }));
+        setScribeError("");
+        setCopyNotice("Transcript ready. Review the captured words before generating a clinical draft. Microphone tests cannot be merged into a chart.");
+      } else if (result.status === "FAILED" || result.status === "NO_TRANSCRIPT") {
+        setAwsScribeJob(current => ({ ...current, status: result.status }));
+        setScribeError(result.failureReason || "AWS processing failed. No transcript is available.");
+      } else {
+        setAwsScribeJob(current => ({ ...current, status: result.status }));
+        setScribeError("");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to retrieve transcription.";
+      setScribeError(`Transcript not retrieved: ${message} You can retry Check AWS transcription.`);
+      // Pause automatic retries after a request/parse failure; do not hide it with a success status.
+      setAwsScribeJob(current => ({ ...current, status: "RETRIEVAL_ERROR" }));
+    } finally { scribeCheckInFlight.current = false; setIsAudioBusy(false); }
   };
   useEffect(() => {
-    if (!awsScribeJob.jobName || ["COMPLETED", "FAILED"].includes(awsScribeJob.status)) return;
-    const id = window.setInterval(() => { void checkHealthScribeJob(); }, 10000);
+    if (!awsScribeJob.jobName || ["COMPLETED", "FAILED", "NO_TRANSCRIPT", "RETRIEVAL_ERROR"].includes(awsScribeJob.status)) return;
+    const id = window.setInterval(() => { void checkHealthScribeJob(); }, 5000);
     return () => window.clearInterval(id);
   }, [awsScribeJob.jobName, awsScribeJob.status]);
+  useEffect(() => {
+    if (!processingStartedAt || ["COMPLETED", "FAILED", "NO_TRANSCRIPT", "RETRIEVAL_ERROR"].includes(awsScribeJob.status)) return;
+    const id = window.setInterval(() => setProcessingSeconds(Math.floor((Date.now() - processingStartedAt) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [processingStartedAt, awsScribeJob.status]);
   useEffect(() => {
     if (!isScribeTimerRunning) return;
     const id = window.setInterval(() => setScribeSeconds(Math.floor((Date.now() - recordingStartRef.current) / 1000)), 1000);
@@ -2834,7 +2864,7 @@ ${sessionForm.recordingVerbiage}`);
 <h2 className="font-semibold">Client and consent — before audio or video</h2>
 <p className="text-sm">Confirm telehealth consent first. Recording and AI transcription require separate recording consent.</p>
               <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Microphone test — no clinical note or chart merge</label>
-              <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Start new test</Button>
+              <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>
               <p className="text-sm">Current client: {activeClient?.profile?.fullName || "None selected"}. {selectedAppointment ? `Appointment: ${selectedAppointment.date || ""} · ${selectedAppointment.status}` : "No appointment selected."}</p>
             {isProvider && (
               <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
@@ -2866,19 +2896,30 @@ ${sessionForm.recordingVerbiage}`);
               <p className="text-xs font-medium text-slate-800">Recording starts the timer automatically. Stop recording to transcribe. Camera preview does not record audio.</p>
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
-                  ? <Button type="button" onClick={stopSecureAudioCapture}>Stop and securely transcribe</Button>
-                  : <Button type="button" disabled={appointmentBlocked || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Record local microphone only</Button>}
+                  ? <Button type="button" onClick={stopSecureAudioCapture}>Stop recording and transcribe</Button>
+                  : <Button type="button" disabled={appointmentBlocked || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start recording — microphone</Button>}
                 <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
                   Upload an existing audio file
                   <input disabled={!sessionForm.consentObtained || !sessionForm.recordingConsent || isAudioRecording || isAudioBusy || nativeCallActive || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
                 </label>
                 {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy || isScribeTimerRunning} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
               </div>
-              {awsScribeJob.status && <p className="text-sm">HealthScribe status: <strong>{awsScribeJob.status}</strong></p>}
+              {(isAudioRecording || microphoneCaptions.captions.length > 0) && <section aria-label="Microphone live captions" className="rounded-xl border bg-white p-3">
+                <h3 className="font-semibold">Live microphone captions — English</h3>
+                <p role="status">{isAudioRecording ? microphoneCaptions.notice : "Recording stopped. Live captions below are preliminary; review the completed transcript."}</p>
+                <div role="log" aria-label="Microphone conversation" aria-live="polite" className="max-h-64 overflow-y-auto">
+                  {microphoneCaptions.captions.map(line => <p key={line.id}>{line.text}{line.partial ? " …" : ""}</p>)}
+                </div>
+              </section>}
+              {awsScribeJob.status && <p role="status" className="text-sm">{awsScribeJob.status === "IN_PROGRESS" ? `Transcribing recorded audio and preparing documentation… ${processingSeconds}s elapsed` : `HealthScribe status: ${awsScribeJob.status}`}</p>}
+              {awsScribeJob.status === "IN_PROGRESS" && processingSeconds >= 90 && <p role="status">AWS is taking longer than 90 seconds. We are still checking; this is not a completed transcript. Keep this page open.</p>}
+              {scribeError && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-900">{scribeError}</p>}
             </div>
 </div>}
       <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
 {isProvider && <section aria-label="Transcript review" className="mb-4">            <p className="text-sm">Live captions appear in the room during consented recording. The completed transcript appears here after AWS processing, ready for clinical draft review and chart merge.</p>
+            <h3 className="font-semibold">Recorded words — completed transcript</h3>
+            {!transcriptText && <p role="status">{awsScribeJob.status === "IN_PROGRESS" ? "Waiting for AWS to return the recorded words…" : scribeError || "No completed transcript yet. Live captions appear beside the recording controls."}</p>}
             <Textarea aria-label="Session transcript" value={transcriptText} onChange={(e) => { setSupportedSections({}); setTranscriptText(e.target.value); setGeneratedDocs(null); setReviewConfirmed(false); }} className="min-h-[180px] rounded-2xl" placeholder="Recorded words will appear here after processing. Review transcription accuracy before creating the note." />
 </section>}
       <div className="grid gap-4">

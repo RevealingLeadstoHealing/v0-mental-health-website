@@ -26,7 +26,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [retryAudio, setRetryAudio] = useState<Blob | null>(null);
   const [tiles, setTiles] = useState<VideoTileState[]>([]);
   const [captions, setCaptions] = useState<CaptionLine[]>([]);
-  const [captionNotice, setCaptionNotice] = useState('Live English captions start with consented session recording.');
+  const [captionNotice, setCaptionNotice] = useState('Room captions require joining this room and starting session recording. Local microphone captions appear beside the microphone controls.');
+  const lastCaptionAt = useRef(0);
   const unsubscribeCaptions = useRef<(() => void) | null>(null);
   const session = useRef<DefaultMeetingSession | null>(null);
   const controller = useRef<DefaultDeviceController | null>(null);
@@ -39,6 +40,14 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const live = useRef(true);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joined = useRef(false);
+  useEffect(() => {
+    if (!recording) return;
+    lastCaptionAt.current = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - lastCaptionAt.current > 15000) setCaptionNotice('No live caption words received for 15 seconds. If someone is speaking, live transcription needs attention; the recording timer does not confirm captions.');
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [recording]);
   const recordingStartedAt = useRef(0);
   async function api(action?: string, extra: any = {}) {
     return telehealthRequest(action ? '/api/ehr/telehealth' : `/api/ehr/telehealth?clientId=${encodeURIComponent(clientId)}`, {
@@ -106,6 +115,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const receiveCaption = (event: TranscriptEvent) => {
         if (!live.current || session.current !== meeting) return;
         if ('results' in event) {
+          lastCaptionAt.current = Date.now();
           setCaptions(current => updateLiveCaptions(current, event.results, credentials.attendee.AttendeeId));
           setCaptionNotice('Receiving live English captions. Words may update as you speak.');
         } else {

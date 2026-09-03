@@ -11,6 +11,18 @@ test('rejects malformed service data instead of displaying JSON in a chart', () 
   assert.throws(() => readableTranscript({ error: 'unavailable' }));
   assert.throws(() => readableTranscript('{broken'));
 });
+test('empty successful AWS payloads cannot be presented as completed transcripts', () => {
+  for (const value of ['', '  ', { Conversation: { TranscriptSegments: [] } }, { Conversation: { TranscriptSegments: [{ Content: ' ' }] } }, { results: { transcripts: [{ transcript: '' }] } }]) {
+    assert.throws(() => readableTranscript(value));
+  }
+});
+test('speech items remain readable when AWS has no sentence segments', () => {
+  assert.equal(readableTranscript({ Conversation: { TranscriptSegments: [], TranscriptItems: [
+    { Type: 'PRONUNCIATION', Alternatives: [{ Content: 'Testing' }] },
+    { Type: 'PRONUNCIATION', Alternatives: [{ Content: 'one' }] },
+    { Type: 'PUNCTUATION', Alternatives: [{ Content: '.' }] },
+  ] } }), 'Testing one.');
+});
 test('a microphone phrase cannot create a diagnosis or observed affect', () => {
   const note = groundedDraft('Hello hello. The timer is not working.', 'Follow-up Progress Note');
   assert.doesNotMatch(note.content, /schizophrenia|flat affect|thought disorder|disorganized/i);

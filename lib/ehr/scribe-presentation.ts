@@ -3,15 +3,25 @@ export function readableTranscript(value: unknown): string {
   if (typeof value === 'string') {
     const text = value.trim();
     if (/^[\[{]/.test(text)) { try { return readableTranscript(JSON.parse(text)); } catch { throw new Error('Transcript data could not be read. Retrieve the transcript again.'); } }
+    if (!text) throw new Error('No speech was returned in the transcript. Check microphone input before recording again.');
     return text;
   }
   const data = value as any;
   const conversation = data?.Conversation || data;
   if (Array.isArray(conversation?.TranscriptSegments)) {
-    return conversation.TranscriptSegments.map((segment: any) => typeof segment.Content === 'string' ? segment.Content.trim() : '').filter(Boolean).join('\n');
+    const words = conversation.TranscriptSegments.map((segment: any) => typeof segment.Content === 'string' ? segment.Content.trim() : '').filter(Boolean).join('\n');
+    if (words) return words;
+  }
+  if (Array.isArray(conversation?.TranscriptItems)) {
+    const words = conversation.TranscriptItems.reduce((text: string, item: any) => {
+      const word = item.Alternatives?.[0]?.Content;
+      if (typeof word !== 'string' || !word.trim()) return text;
+      return text + (text && item.Type !== 'PUNCTUATION' ? ' ' : '') + word;
+    }, '');
+    if (words.trim()) return words.trim();
   }
   const transcripts = data?.results?.transcripts;
-  if (Array.isArray(transcripts)) return transcripts.map((item: any) => item.transcript || '').join('\n').trim();
+  if (Array.isArray(transcripts)) return readableTranscript(transcripts.map((item: any) => item.transcript || '').join('\n').trim());
   throw new Error('No readable transcript was returned. No clinical draft was generated.');
 }
 export function isIntakeTemplate(template: string): boolean {
