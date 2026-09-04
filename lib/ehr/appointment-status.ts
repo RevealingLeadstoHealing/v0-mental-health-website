@@ -21,6 +21,11 @@ export function appointmentPreventsSession(status?: string) { return ['Cancelled
 export function appointmentMessageDraft(appointment: any): string {
   if (!appointment) return '';
   if (appointment.status === 'Cancelled' || appointment.status === 'Not seen') return "I'm checking in following your missed or cancelled appointment. Please let us know how you're doing and whether you would like to reschedule.";
-  if (['Rescheduled', 'Confirmed', 'Scheduled'].includes(appointment.status)) return `Your appointment is scheduled for ${appointment.date} at ${appointment.time}. Please confirm whether this time works for you.`;
+  if (['Rescheduled', 'Confirmed', 'Scheduled'].includes(appointment.status)) {
+    const portal = appointment.format === 'Telehealth'
+      ? ' Before the appointment, sign in to your secure patient portal and open Telehealth. You will not need a separate meeting link.'
+      : '';
+    return `Your appointment is scheduled for ${appointment.date} at ${appointment.time}. Please confirm whether this time works for you.${portal}`;
+  }
   return '';
 }

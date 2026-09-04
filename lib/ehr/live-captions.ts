@@ -1,6 +1,7 @@
-export type CaptionLine = { id: string; speaker: string; text: string; partial: boolean; start: number };
+export type CaptionLine = { id: string; speaker: string; attendeeId?: string; languageCode?: string; text: string; partial: boolean; start: number };
 type CaptionResult = {
   resultId: string; isPartial: boolean; startTimeMs: number;
+  languageCode?: string;
   alternatives: { transcript: string; items?: { attendee?: { attendeeId?: string } }[] }[];
 };
 
@@ -14,6 +15,7 @@ export function updateLiveCaptions(current: CaptionLine[], results: CaptionResul
     const attendee = alternative.items?.find(item => item.attendee?.attendeeId)?.attendee?.attendeeId;
     lines.set(result.resultId, {
       id: result.resultId, speaker: attendee ? (attendee === self ? 'You' : 'Other participant') : 'Speaker',
+      attendeeId: attendee, languageCode: result.languageCode,
       text: alternative.transcript, partial: result.isPartial, start: result.startTimeMs,
     });
   }

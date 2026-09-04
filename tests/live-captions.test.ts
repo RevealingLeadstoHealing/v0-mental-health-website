@@ -14,6 +14,12 @@ test('both speakers appear in chronological order without guessing clinical role
   const lines = updateLiveCaptions([], [result('2', 'How are you?', false, 'self', 20), result('1', 'Hello', false, 'other', 10)], 'self');
   assert.deepEqual(lines.map(line => line.speaker), ['Other participant', 'You']);
 });
+test('caption metadata preserves the original speaker and AWS language for translation', () => {
+  const lines = updateLiveCaptions([], [{ ...result('1', 'Hola', false, 'other'), languageCode: 'es-US' }], 'self');
+  assert.equal(lines[0].attendeeId, 'other');
+  assert.equal(lines[0].languageCode, 'es-US');
+  assert.equal(lines[0].text, 'Hola');
+});
 test('caption window is bounded and empty AWS alternatives are ignored', () => {
   const lines = updateLiveCaptions([], Array.from({length: 150}, (_, i) => result(String(i), 'words', false, 'self', i)), 'self');
   assert.equal(lines.length, 100);

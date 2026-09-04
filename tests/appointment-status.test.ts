@@ -25,5 +25,7 @@ test('reschedule requires new date/time and preserves previous slot', () => {
 test('optional appointment outreach drafts use the saved appointment', async () => {
   const { appointmentMessageDraft } = await import('../lib/ehr/appointment-status.ts');
   assert.match(appointmentMessageDraft({ ...appointment, status: 'Rescheduled' }), /2026-09-01 at 14:00/);
+  assert.match(appointmentMessageDraft({ ...appointment, status: 'Confirmed', format: 'Telehealth' }), /secure patient portal.*not need a separate meeting link/);
+  assert.doesNotMatch(appointmentMessageDraft({ ...appointment, status: 'Confirmed', format: 'In Person' }), /meeting link/);
   assert.match(appointmentMessageDraft({ ...appointment, status: 'Cancelled' }), /reschedule/);
 });

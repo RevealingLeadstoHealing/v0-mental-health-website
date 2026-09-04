@@ -26,6 +26,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [retryAudio, setRetryAudio] = useState<Blob | null>(null);
   const [tiles, setTiles] = useState<VideoTileState[]>([]);
   const [captions, setCaptions] = useState<CaptionLine[]>([]);
+  const [roomSessionId, setRoomSessionId] = useState('');
+  const [captionsRunning, setCaptionsRunning] = useState(false);
   const [captionNotice, setCaptionNotice] = useState('Room captions require joining this room and starting session recording. Local microphone captions appear beside the microphone controls.');
   const lastCaptionAt = useRef(0);
   const unsubscribeCaptions = useRef<(() => void) | null>(null);
@@ -107,6 +109,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const credentials = await api('join', { telehealthConsent: provider ? providerConsent : consent, recordingConsent: clientRecordingConsent, confirmationVersion: SESSION_CONFIRMATION_VERSION });
       if (!live.current) { await api('leave').catch(() => {}); throw new Error('Call cancelled.'); }
       joined.current = true;
+      setCaptionsRunning(false);
+      setRoomSessionId(credentials.sessionId || '');
       const sdk = await import('amazon-chime-sdk-js');
       const logger = new sdk.NoOpLogger();
       const devices = new sdk.DefaultDeviceController(logger); controller.current = devices;
@@ -119,6 +123,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
           setCaptions(current => updateLiveCaptions(current, event.results, credentials.attendee.AttendeeId));
           setCaptionNotice('Receiving live English captions. Words may update as you speak.');
         } else {
+          setCaptionsRunning(event.type === 'started' || event.type === 'resumed');
           const messages: Record<string, string> = { started: 'Live English captions are active.', resumed: 'Live English captions resumed.', interrupted: 'Live captions interrupted. Check the completed transcript after recording.', stopped: 'Live captions stopped. The completed recording will be processed for clinical review.', failed: 'AWS live captions failed. The completed recording can still be processed for clinical review.' };
           setCaptionNotice(messages[event.type] || 'Live caption status changed.');
         }
@@ -201,7 +206,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     <h2 className="text-xl font-semibold">In-EHR audio and video room</h2>
     <p role="status" className="text-sm">{notice}</p>
     <audio ref={audio} autoPlay />
-    <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} onStop={async () => { await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} />
+    <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} clientId={clientId} sessionId={roomSessionId} recordingActive={captionsRunning && (provider ? recording : status?.recording === true)} onStop={async () => { setCaptionsRunning(false); await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} />
     {provider && connected && <div className="space-y-2">
       <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
       <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>

@@ -20,8 +20,8 @@ test("telehealth presents consent before media, transcript after media, and fax 
 
 const providerLabels = [
   "Patient Dashboard", "Affirmations", "Client Management", "Client Chart", "Biopsychosocial Assessment", "Follow-Up Notes",
-  "Billing", "Treatment Plans", "Homework", "Assessments", "Patient Intake & Consents", "Infrastructure",
-  "Provider Trainings", "Record Requests", "Audit Log", "Telehealth", "Messages", "Scheduling",
+  "Billing", "Treatment Plans", "Homework", "Assessments", "Patient Intake & Consents", "Infrastructure", "Advocacy Letters", "Patient Record Requests",
+  "Provider Trainings", "Audit Log", "Telehealth", "Messages", "Scheduling",
   "Psychoeducation", "Journaling",
 ];
 
@@ -41,7 +41,7 @@ test("every role-specific production route resolves to a page", () => {
   for (const route of [
     "dashboard", "journal", "affirmations", "psychoeducation", "homework-client", "messages",
     "records-request", "record-requests", "audit-log", "telehealth", "schedule", "clients", "chart",
-    "intake", "notes", "billing", "plans", "homework", "assessments", "documents", "infrastructure",
+    "intake", "notes", "billing", "plans", "homework", "assessments", "documents", "infrastructure", "advocacy-letters",
     "trainings",
   ]) assert.match(router, new RegExp(`page === "${route}"`));
 });

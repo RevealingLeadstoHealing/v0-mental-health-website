@@ -41,7 +41,7 @@ function temporaryPatientPassword() {
   return characters.join("");
 }
 
-async function cognitoAdmin(action: "AdminCreateUser" | "AdminAddUserToGroup", payload: Record<string, unknown>) {
+async function cognitoAdmin(action: "AdminCreateUser" | "AdminAddUserToGroup" | "AdminGetUser", payload: Record<string, unknown>) {
   const region = getAwsRegion();
   if (!region) throw new ApiError(500, "AWS authentication region is not configured.");
   const credentials = await new DynamoDBClient({ region }).config.credentials();
@@ -75,6 +75,7 @@ async function cognitoAdmin(action: "AdminCreateUser" | "AdminAddUserToGroup", p
   const result = (await response.json().catch(() => ({}))) as CognitoAdminResult;
   if (!response.ok) {
     const detail = result.message || result.__type || "Patient invitation could not be created.";
+    if (result.__type?.includes("UserNotFound")) throw new ApiError(404, "The patient login account does not exist yet.");
     if (detail.includes("already exists") || result.__type?.includes("UsernameExists")) {
       throw new ApiError(409, "A patient account already exists for this email address.");
     }
@@ -167,13 +168,36 @@ export async function POST(request: Request) {
       const client = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
       if (!client) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
       if (!client.email) throw new ApiError(400, "Add a patient email address before sending an invitation.");
-      await cognitoAdmin("AdminCreateUser", {
-        UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
-        Username: client.email,
-        MessageAction: "RESEND",
-        DesiredDeliveryMediums: ["EMAIL"],
-      });
-      await appendAuditEvent(actor, { action: "Resent patient login invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: "A secure Cognito patient invitation was resent." });
+      let existingAccount = true;
+      try { await cognitoAdmin("AdminGetUser", { UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email }); }
+      catch (error) { if (error instanceof ApiError && error.status === 404) existingAccount = false; else throw error; }
+      let cognitoUserId = String(client.cognitoUserId || "");
+      if (existingAccount) {
+        await cognitoAdmin("AdminCreateUser", {
+          UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
+          MessageAction: "RESEND", DesiredDeliveryMediums: ["EMAIL"],
+        });
+      } else {
+        const account = await cognitoAdmin("AdminCreateUser", {
+          UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
+          TemporaryPassword: temporaryPatientPassword(), DesiredDeliveryMediums: ["EMAIL"],
+          UserAttributes: [
+            { Name: "email", Value: client.email }, { Name: "email_verified", Value: "true" },
+            { Name: "name", Value: client.fullName }, { Name: "custom:role", Value: "client" },
+            { Name: "custom:practiceId", Value: actor.practiceId },
+          ],
+        });
+        cognitoUserId = account.User?.Attributes?.find(attribute => attribute.Name === "sub")?.Value || account.User?.Username || "";
+        if (!cognitoUserId) throw new ApiError(502, "AWS created the patient account without a usable account identifier.");
+        await cognitoAdmin("AdminAddUserToGroup", { UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email, GroupName: "client" });
+        await getDynamoDocumentClient().send(new UpdateCommand({
+          TableName: rlthAwsFoundation.clinicalRecordsTableName,
+          Key: { PK: `PRACTICE#${actor.practiceId}#CLIENT#${clientId}`, SK: "PROFILE" },
+          UpdateExpression: "SET cognitoUserId = :cognitoUserId, updatedAt = :updatedAt",
+          ExpressionAttributeValues: { ":cognitoUserId": cognitoUserId, ":updatedAt": new Date().toISOString() },
+        }));
+      }
+      await appendAuditEvent(actor, { action: existingAccount ? "Resent patient login invitation" : "Created patient login and sent secure invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: existingAccount ? "A secure Cognito patient invitation was resent." : "The onboarding packet was saved before the secure Cognito invitation was sent." });
       return NextResponse.json({ invitationSent: true, clientId });
     }
     const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
@@ -184,7 +208,7 @@ export async function POST(request: Request) {
     }
 
     let cognitoUserId = "";
-    if (email) {
+    if (email && body.sendInvitation !== false) {
       const account = await cognitoAdmin("AdminCreateUser", {
         UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
         Username: email,

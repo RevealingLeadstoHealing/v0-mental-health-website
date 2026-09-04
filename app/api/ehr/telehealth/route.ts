@@ -11,11 +11,16 @@ import { telehealthKey, canManageTelehealth, canStartLiveCaptions, roomIsActive,
 import { SESSION_CONFIRMATION_TEXT, SESSION_CONFIRMATION_VERSION } from '../../../../lib/ehr/telehealth-consent';
 import { isAllowedTelehealthOrigin } from '../../../../lib/ehr/telehealth-origin';
 import { stopLiveCaptionCapture } from '../../../../lib/ehr/live-caption-lifecycle';
+import { TranslateClient, TranslateTextCommand, ListLanguagesCommand } from '@aws-sdk/client-translate';
+import { PollyClient, DescribeVoicesCommand, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
+import { translationInput, canTranslateCaption } from '../../../../lib/ehr/interpreter-policy';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
 const enabled = () => process.env.EHR_NATIVE_TELEHEALTH_ENABLED === 'true';
 const chime = new ChimeSDKMeetingsClient({ region });
+const translate = new TranslateClient({ region });
+const polly = new PollyClient({ region });
 const table = rlthAwsFoundation.clinicalRecordsTableName;
 const json = (body: any, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -84,6 +89,58 @@ export async function POST(request: Request) {
     }
     if (!roomIsActive(room)) throw new ApiError(409, 'The provider has not opened an active room.');
     const memberKey = { PK: key.PK, SK: `TELEHEALTH#ATTENDEE#${hash(actor.sub)}` };
+    if (action === 'interpreter-languages') {
+      const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
+      if (!member?.attendeeId || member.meetingId !== room.meeting.MeetingId) throw new ApiError(403, 'Join the room to configure translation.');
+      const languages: { code: string; name: string }[] = [];
+      let next: string | undefined;
+      do {
+        const page = await translate.send(new ListLanguagesCommand({ NextToken: next, DisplayLanguageCode: 'en' }));
+        for (const language of page.Languages || []) if (language.LanguageCode && language.LanguageName) languages.push({ code: language.LanguageCode, name: language.LanguageName });
+        next = page.NextToken;
+      } while (next);
+      return json({ languages });
+    }
+    if (action === 'translate-caption') {
+      const input = translationInput(body);
+      if (!input) throw new ApiError(400, 'A finalized caption, session ID and language pair are required.');
+      const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
+      if (!canTranslateCaption(room, member, input)) throw new ApiError(409, 'Translation requires joining the current consented recording session.');
+      const result = await translate.send(new TranslateTextCommand({ Text: input.text, SourceLanguageCode: input.sourceLanguage, TargetLanguageCode: input.targetLanguage }));
+      if (!result.TranslatedText) throw new ApiError(503, 'No translation returned. The original caption remains available.');
+      let audioBase64: string | undefined;
+      let voiceId: string | undefined;
+      let audioNotice: string | undefined;
+      if (body.spoken === true) {
+        try {
+          // Select only a voice offered by AWS in this region for the requested language.
+          let token: string | undefined;
+          let selected: import('@aws-sdk/client-polly').Voice | undefined;
+          do {
+            const voices = await polly.send(new DescribeVoicesCommand({ NextToken: token }));
+            selected = voices.Voices?.find(voice => voice.LanguageCode?.split('-')[0] === input.targetLanguage.split('-')[0] &&
+              (voice.SupportedEngines?.includes('standard') || voice.SupportedEngines?.includes('neural')));
+            token = voices.NextToken;
+          } while (!selected && token);
+          if (selected) {
+            const speech = await polly.send(new SynthesizeSpeechCommand({ Text: result.TranslatedText, TextType: 'text', OutputFormat: 'mp3', VoiceId: selected.Id, Engine: selected.SupportedEngines?.includes('standard') ? 'standard' : 'neural' }));
+            const bytes = await speech.AudioStream?.transformToByteArray();
+            if (bytes) { audioBase64 = Buffer.from(bytes).toString('base64'); voiceId = selected.Id; }
+            else audioNotice = 'Spoken translation unavailable; translated captions remain available.';
+          } else audioNotice = 'No matching spoken voice is available; use translated captions.';
+        } catch {
+          audioNotice = 'Spoken translation unavailable; translated captions remain available.';
+        }
+      }
+      // Consent and membership may have changed while AWS processed the caption.
+      const [latestRoom, latestMember] = await Promise.all([
+        db.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true })),
+        db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true })),
+      ]);
+      if (!canTranslateCaption(latestRoom.Item, latestMember.Item, input)) throw new ApiError(409, 'The session or consent ended while translation was processing.');
+      await appendAuditEvent(actor, { action: 'Translated live caption', category: 'Telehealth', clientId, entityType: 'telehealth-session', entityId: input.sessionId, summary: `Machine translation ${input.sourceLanguage} to ${input.targetLanguage}; spoken output ${audioBase64 ? 'generated' : 'not generated'}.` });
+      return json({ sessionId: input.sessionId, captionId: input.captionId, sourceLanguage: result.SourceLanguageCode, targetLanguage: result.TargetLanguageCode, translatedText: result.TranslatedText, audioBase64, audioContentType: audioBase64 ? 'audio/mpeg' : undefined, voiceId, audioNotice });
+    }
     if (action === 'join') {
       if (body.telehealthConsent !== true) throw new ApiError(400, 'Confirm telehealth consent to join.');
       if (actor.role === 'client' && body.confirmationVersion !== SESSION_CONFIRMATION_VERSION) throw new ApiError(409, 'Refresh the portal to read the current session confirmation.');
@@ -98,7 +155,7 @@ export async function POST(request: Request) {
         if (actor.role === 'client') await update('SET clientRecordingConsent = :consent, recording = :false', { ':consent': body.recordingConsent === true, ':false': false });
         await audit('Joined in-EHR telehealth room');
       } catch (e) { await chime.send(new DeleteAttendeeCommand({ MeetingId: room.meeting.MeetingId, AttendeeId: result.Attendee.AttendeeId })).catch(() => {}); throw e; }
-      return json({ meeting: room.meeting, attendee: result.Attendee });
+      return json({ meeting: room.meeting, attendee: result.Attendee, sessionId: room.sessionId });
     }
     if (action === 'end') {
       if (!manager || (room.createdBy !== actor.sub && actor.role !== 'owner')) throw new ApiError(403, 'Only the host can end this room.');

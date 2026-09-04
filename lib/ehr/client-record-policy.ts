@@ -19,6 +19,8 @@ export const CLIENT_READABLE_MODULE_KEYS = new Set([
   "recordRequests",
   "documents",
   "patientOnboarding",
+  "affirmations",
+  "psychoeducation",
 ]);
 
 export const CLIENT_WRITABLE_MODULE_KEYS = new Set([
@@ -29,6 +31,8 @@ export const CLIENT_WRITABLE_MODULE_KEYS = new Set([
   "recordRequests",
   "documents",
   "patientOnboarding",
+  "affirmations",
+  "psychoeducation",
 ]);
 
 function arrayValue(value: unknown): Array<Record<string, any>> {
@@ -37,6 +41,63 @@ function arrayValue(value: unknown): Array<Record<string, any>> {
 
 function byId(items: Array<Record<string, any>>) {
   return new Map(items.filter((item) => typeof item.id === "string").map((item) => [item.id, item]));
+}
+
+export function mergeProviderMessages(existingValue: unknown, submittedValue: unknown, actor: { sub: string; name: string }) {
+  const existing = arrayValue(existingValue);
+  const submitted = arrayValue(submittedValue);
+  const submittedMap = byId(submitted);
+  const existingIds = new Set(existing.map(item => item.id));
+  const retained = existing.map((item) => {
+    const update = submittedMap.get(item.id);
+    if (item.from !== "client" || !update?.providerReadRequested) return item;
+    return item.providerReadAt ? item : { ...item, providerReadAt: new Date().toISOString() };
+  });
+  const additions = submitted.filter(item => !existingIds.has(item.id)).map(item => ({
+    id: String(item.id || `message-${Date.now()}`).slice(0, 200),
+    billingCategory: "Non-billable communication",
+    billable: false,
+    appointmentId: String(item.appointmentId || "").slice(0, 200),
+    from: "provider",
+    senderId: actor.sub,
+    senderName: actor.name,
+    text: String(item.text || "").trim().slice(0, 10000),
+    timestamp: new Date().toISOString(),
+    clientReadAt: "",
+  })).filter(item => item.text);
+  return [...additions, ...retained];
+}
+
+export function mergeProviderAffirmations(existingValue: unknown, submittedValue: unknown, actor: { sub: string; name: string }) {
+  const existing = arrayValue(existingValue);
+  const existingIds = new Set(existing.map(item => item.id));
+  const additions = arrayValue(submittedValue).filter(item => !existingIds.has(item.id)).map(item => ({
+    id: String(item.id || `affirmation-${Date.now()}`).slice(0, 200),
+    text: String(item.text || "").trim().slice(0, 1000),
+    createdByRole: "provider",
+    createdById: actor.sub,
+    createdByName: actor.name,
+    createdAt: new Date().toISOString(),
+    visibility: "shared",
+  })).filter(item => item.text);
+  return [...additions, ...existing];
+}
+
+export function mergeProviderPsychoeducation(existingValue: unknown, submittedValue: unknown, actor: { sub: string; name: string }) {
+  const existing = arrayValue(existingValue);
+  const existingIds = new Set(existing.map(item => item.id));
+  const additions = arrayValue(submittedValue).filter(item => !existingIds.has(item.id)).map(item => ({
+    id: String(item.id || `education-${Date.now()}`).slice(0, 200),
+    resourceId: String(item.resourceId || "").slice(0, 200),
+    title: String(item.title || "Psychoeducation resource").slice(0, 300),
+    topic: String(item.topic || "General").slice(0, 100),
+    population: String(item.population || "All ages").slice(0, 100),
+    assignedAt: new Date().toISOString(),
+    assignedById: actor.sub,
+    assignedByName: actor.name,
+    patientViewedAt: "",
+  })).filter(item => item.resourceId);
+  return [...additions, ...existing];
 }
 
 export function mergeClientModuleValue(
@@ -52,6 +113,12 @@ export function mergeClientModuleValue(
   const existingMap = byId(existing);
 
   if (moduleKey === "messages") {
+    const submittedMap = byId(submitted);
+    const retained = existing.map((item) => {
+      const update = submittedMap.get(item.id);
+      if (item.from !== "provider" || !update?.clientReadRequested) return item;
+      return item.clientReadAt ? item : { ...item, clientReadAt: new Date().toISOString() };
+    });
     const additions = submitted.filter((item) => !existingMap.has(item.id)).map((item) => ({
       id: String(item.id || `message-${Date.now()}`),
       from: "client",
@@ -60,7 +127,29 @@ export function mergeClientModuleValue(
       text: String(item.text || "").trim().slice(0, 10000),
       timestamp: new Date().toISOString(),
     })).filter((item) => item.text);
+    return [...additions, ...retained];
+  }
+
+  if (moduleKey === "affirmations") {
+    const additions = submitted.filter(item => !existingMap.has(item.id)).map(item => ({
+      id: String(item.id || `affirmation-${Date.now()}`).slice(0, 200),
+      text: String(item.text || "").trim().slice(0, 1000),
+      createdByRole: "client",
+      createdById: actor.sub,
+      createdByName: actor.name,
+      createdAt: new Date().toISOString(),
+      visibility: "shared",
+    })).filter(item => item.text);
     return [...additions, ...existing];
+  }
+
+  if (moduleKey === "psychoeducation") {
+    const submittedMap = byId(submitted);
+    return existing.map(item => {
+      const update = submittedMap.get(item.id);
+      if (!update?.reviewRequested || item.patientViewedAt) return item;
+      return { ...item, patientViewedAt: new Date().toISOString() };
+    });
   }
 
   if (moduleKey === "homework") {
@@ -68,7 +157,15 @@ export function mergeClientModuleValue(
     return existing.map((item) => {
       const update = submittedMap.get(item.id);
       const status = ["Assigned", "In Progress", "Completed"].includes(update?.status) ? update.status : item.status;
-      return { ...item, status, completedAt: status === "Completed" ? String(update?.completedAt || new Date().toISOString()) : "" };
+      const wasCompleted = item.status === "Completed";
+      return {
+        ...item,
+        status,
+        patientResponse: String(update?.patientResponse ?? item.patientResponse ?? "").slice(0, 50000),
+        startedAt: status === "In Progress" || status === "Completed" ? String(item.startedAt || new Date().toISOString()) : "",
+        completedAt: status === "Completed" ? String(wasCompleted ? item.completedAt : new Date().toISOString()) : "",
+        submittedForReviewAt: status === "Completed" ? String(wasCompleted ? item.submittedForReviewAt : new Date().toISOString()) : "",
+      };
     });
   }
 
@@ -195,7 +292,23 @@ export function recordsVisibleToClient(records: unknown[]) {
     const record = rawRecord as Record<string, any>;
     if (record.recordType !== "ehr-module-snapshot") return [];
     const moduleKey = record.payload?.moduleKey;
-    if (typeof moduleKey !== "string" || !CLIENT_READABLE_MODULE_KEYS.has(moduleKey)) return [];
+    if (typeof moduleKey !== "string" || (!CLIENT_READABLE_MODULE_KEYS.has(moduleKey) && moduleKey !== "privateJournalEntries")) return [];
+    if (moduleKey === "homework") {
+      const assignments = Array.isArray(record.payload?.value) ? record.payload.value.map((item: Record<string, any>) => ({
+        id: item.id,
+        title: item.title,
+        content: item.content,
+        dueDate: item.dueDate,
+        status: item.status,
+        assignedAt: item.assignedAt,
+        startedAt: item.startedAt,
+        completedAt: item.completedAt,
+        patientResponse: item.patientResponse,
+        providerFeedback: item.providerFeedback,
+        providerReviewedAt: item.providerReviewedAt,
+      })) : [];
+      return [publicRecordProjection({ ...record, payload: { ...record.payload, value: assignments } })];
+    }
     if (moduleKey !== "documents") return [publicRecordProjection(record)];
 
     const documents = Array.isArray(record.payload?.value)
@@ -205,5 +318,23 @@ export function recordsVisibleToClient(records: unknown[]) {
       ...record,
       payload: { ...record.payload, value: documents },
     })];
+  });
+}
+
+export function recordsVisibleToPracticeUser(records: unknown[]) {
+  return records.flatMap((rawRecord) => {
+    if (!rawRecord || typeof rawRecord !== "object") return [];
+    const record = rawRecord as Record<string, any>;
+    const moduleKey = record.recordType === "ehr-module-snapshot" ? record.payload?.moduleKey : "";
+    if (moduleKey === "privateJournalEntries") return [];
+    if (moduleKey !== "journalEntries") return [record];
+
+    const sharedEntries = Array.isArray(record.payload?.value)
+      ? record.payload.value.filter((entry: Record<string, any>) => entry?.visibility === "shared")
+      : [];
+    return [{
+      ...record,
+      payload: { ...record.payload, value: sharedEntries },
+    }];
   });
 }
