@@ -3381,8 +3381,7 @@ function ClientManagementPage() {
       setSendingInvitationId("");
     }
   };
-  const savePatient = async (event) => {
-    event?.preventDefault();
+  const savePatient = async () => {
     if (savingPatient) return;
     setSavingPatient(true);
     setPatientError("");
@@ -3432,8 +3431,7 @@ function ClientManagementPage() {
             <CardDescription>Create a secure patient chart for scheduling, intake, clinical documentation, and billing.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form className="space-y-4" onSubmit={savePatient}>
-              <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               <Input label="Patient full name" value={patientForm.fullName} onChange={(event) => setPatientForm({ ...patientForm, fullName: event.target.value })} autoComplete="name" />
               <Input label="Preferred name" value={patientForm.preferredName} onChange={(event) => setPatientForm({ ...patientForm, preferredName: event.target.value })} />
               <Input label="Email address" type="email" value={patientForm.email} onChange={(event) => setPatientForm({ ...patientForm, email: event.target.value })} autoComplete="email" />
@@ -3474,21 +3472,20 @@ function ClientManagementPage() {
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
-              </div>
-              <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
-              {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
-              <div className="flex flex-wrap gap-3">
-                <Button type="submit" className="rounded-2xl" disabled={savingPatient || !patientForm.fullName.trim()}>
-                  <Save className="h-4 w-4" />
-                  {savingPatient ? "Saving securely…" : "Save Patient"}
-                </Button>
-                <Button variant="outline" className="rounded-2xl" disabled={savingPatient} onClick={() => setShowAddPatient(false)}>Cancel</Button>
-              </div>
-            </form>
+            </div>
+            <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
+            {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
+            <div className="flex flex-wrap gap-3">
+              <Button className="rounded-2xl" disabled={savingPatient || !patientForm.fullName.trim()} onClick={savePatient}>
+                <Save className="h-4 w-4" />
+                {savingPatient ? "Saving securely…" : "Save Patient"}
+              </Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingPatient} onClick={() => setShowAddPatient(false)}>Cancel</Button>
+            </div>
           </CardContent>
         </Card>
       )}
-      {!showAddPatient && <div aria-label="Existing patients" className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {clients.length === 0 && <p className="text-sm text-slate-500">No patients yet. Select Add Patient to create the first secure chart.</p>}
         {clients.map((client) => (
           <Card key={client.id} className="rounded-2xl shadow-sm">
@@ -3523,7 +3520,7 @@ function ClientManagementPage() {
             </CardContent>
           </Card>
         ))}
-      </div>}
+      </div>
     </div>
   );
 }
