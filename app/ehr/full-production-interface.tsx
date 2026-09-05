@@ -3350,7 +3350,7 @@ ${generatedDocs.structuredNote.content}`}</div>
   );
 }
 function ClientManagementPage() {
-  const { store, createClient } = useAuth();
+  const { store, createClient, updateSpecificUserData } = useAuth();
   const { setPage, setSelectedChartClientId } = usePage();
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
@@ -3374,8 +3374,10 @@ function ClientManagementPage() {
     setPatientNotice("");
     try {
       await productionApi("/api/ehr/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resendInvitation", clientId }) });
+      updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Sent", invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientNotice("Patient invitation sent successfully.");
     } catch (error) {
+      updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Failed", invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientError(error instanceof Error ? error.message : "The patient invitation could not be sent.");
     } finally {
       setSendingInvitationId("");
@@ -3388,6 +3390,8 @@ function ClientManagementPage() {
     setPatientNotice("");
     try {
       const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile, photoIdFrontFile, photoIdBackFile });
+      const invitationStatus = client.invitationSent ? "Sent" : patientForm.email.trim() ? "Failed" : "Not sent";
+      updateSpecificUserData(client.clientId, "profile", (previous) => ({ ...previous, invitationStatus, invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientNotice(client.invitationSent
         ? "Patient record saved and secure invitation sent."
         : patientForm.email.trim()
@@ -3504,6 +3508,7 @@ function ClientManagementPage() {
                 <p>Homework items: {client.bucket.homework.length}</p>
                 <p>Appointments: {client.bucket.appointments.length}</p>
                 <p>Diagnoses: {(client.bucket.intake?.diagnoses || []).join(", ") || "None entered"}</p>
+                <p>Invitation status: <span className="font-semibold text-slate-800">{["Sent", "Failed"].includes(client.invitationStatus) ? client.invitationStatus : "Not sent"}</span></p>
               </div>
               <Button
                 className="w-full mt-4 rounded-2xl"
