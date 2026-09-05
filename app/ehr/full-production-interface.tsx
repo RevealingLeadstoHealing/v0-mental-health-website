@@ -4527,6 +4527,14 @@ function BillingPage() {
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [notice, setNotice] = useState("");
+  const [serverClaims, setServerClaims] = useState([]);
+  useEffect(() => {
+    let active = true;
+    productionApi("/api/ehr/billing")
+      .then((data) => { if (active) setServerClaims(Array.isArray(data.claims) ? data.claims : []); })
+      .catch(() => { if (active) setServerClaims([]); });
+    return () => { active = false; };
+  }, []);
   const claims = useMemo(() => clients.flatMap(([clientId, bucket]) =>
     (bucket.billingClaims || []).map((claim) => ({
       ...claim,
@@ -4604,7 +4612,7 @@ function BillingPage() {
     });
     setNotice("Appointment date and documented session minutes were carried into billing for provider review.");
   };
-  const saveBillingSnapshot = () => {
+  const saveBillingSnapshot = async () => {
     if (!selectedClientId) return;
     if (linkedAppointment && ["Cancelled", "Not seen"].includes(linkedAppointment.status)) {
       setNotice("This appointment was not attended. Review the cancellation policy and payer rules separately; a completed-session insurance claim was not created."); return;
@@ -4652,6 +4660,47 @@ function BillingPage() {
       },
       ...((prev || [])),
     ]);
+    // Persist the claim server-side so it enters the two-stage compliance
+    // review workflow. Local state above keeps the UI responsive; the server
+    // record is the source of truth for review status and submission.
+    try {
+      const diagnoses = [
+        current.primaryDiagnosis && { code: String(current.primaryDiagnosis).split(" | ")[0], label: String(current.primaryDiagnosis), rank: "primary" },
+        current.secondaryDiagnosis && { code: String(current.secondaryDiagnosis).split(" | ")[0], label: String(current.secondaryDiagnosis), rank: "secondary" },
+        current.tertiaryDiagnosis && { code: String(current.tertiaryDiagnosis).split(" | ")[0], label: String(current.tertiaryDiagnosis), rank: "tertiary" },
+      ].filter(Boolean);
+      const serviceLines = (current.billingCodes || []).map((entry) => {
+        const parts = String(entry).split(" | ");
+        return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0 };
+      });
+      // Charge is carried on the first service line so line total matches the claim.
+      if (serviceLines.length > 1) serviceLines.slice(1).forEach((line) => { line.chargeAmount = 0; });
+      const serverClaim = await productionApi("/api/ehr/billing", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          clientName: selectedClient?.profile?.fullName || "Client",
+          medicalRecordNumber: selectedClient?.profile?.medicalRecordNumber || "",
+          appointmentId: linkedAppointment?.id || "",
+          dateOfService: current.dateOfService || "",
+          renderingProviderName: current.providerSignature || PRACTITIONER_NAME,
+          renderingProviderNpi: providerNpiForName(current.providerSignature || PRACTITIONER_NAME),
+          payerName,
+          payerId,
+          insurancePlanName: current.insurancePlanName || "",
+          sessionMinutes: Number(current.sessionMinutes) || 0,
+          diagnoses,
+          serviceLines,
+          chargeAmount: Number(current.chargeAmount) || 0,
+          providerSignature: current.providerSignature || PRACTITIONER_NAME,
+        }),
+      });
+      setServerClaims((prev) => [serverClaim.claim, ...prev]);
+      setNotice(`Claim draft saved and sent to two-stage compliance review. Claim ${serverClaim.claim.claimId.slice(-6)} is now in Clinical review.`);
+    } catch (error) {
+      setNotice(`Local draft saved, but the claim could not be recorded for compliance review: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
     appendAuditLog({
       action: "Created billing claim draft",
       details: `Billing snapshot routed to ${billingPayerLabel(payerId)} with claim transmission disabled.`,
@@ -4660,8 +4709,21 @@ function BillingPage() {
       category: "Billing",
     });
     setActivePayer(payerId);
-    setNotice(`Claim draft saved to ${billingPayerLabel(payerId)} and Document Library. No claim was transmitted.`);
-    setTimeout(() => setNotice(""), 5000);
+    setTimeout(() => setNotice(""), 8000);
+  };
+  const runClaimReview = async (serverClaim, stage, decision, reason = "") => {
+    try {
+      const result = await productionApi("/api/ehr/billing", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ claimId: serverClaim.claimId, dateOfService: serverClaim.dateOfService, stage, decision, reason }),
+      });
+      setServerClaims((prev) => prev.map((item) => item.claimId === result.claim.claimId ? result.claim : item));
+      setNotice(decision === "passed" ? `${stage === "clinical" ? "Clinical" : "Billing"} review passed. Claim status: ${result.claim.status.replace(/_/g, " ")}.` : `Claim rejected at ${stage} review.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The review could not be recorded.");
+    }
+    setTimeout(() => setNotice(""), 8000);
   };
   return (
     <div>
@@ -4772,6 +4834,77 @@ function BillingPage() {
                 <thead><tr className="border-b text-xs uppercase tracking-wide text-stone-500"><th className="p-3">Client</th><th className="p-3">Payer</th><th className="p-3">Date of service</th><th className="p-3">Status</th><th className="p-3 text-right">Billed</th><th className="p-3 text-right">Paid</th></tr></thead>
                 <tbody>{filteredClaims.map((claim) => <tr key={claim.id} className="border-b border-stone-100"><td className="p-3 font-medium">{claim.clientName}</td><td className="p-3">{billingPayerLabel(claim.payerId)}</td><td className="p-3">{claim.dateOfService || "Not entered"}</td><td className="p-3"><Badge className={billingStatusClass(claim.status)}>{claim.status || "Draft"}</Badge></td><td className="p-3 text-right">{billingMoney(claim.chargeAmount)}</td><td className="p-3 text-right">{billingMoney(claim.paidAmount)}</td></tr>)}</tbody>
               </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card className="mb-4 rounded-2xl border-2 border-slate-300 shadow-sm">
+        <CardHeader>
+          <CardTitle>Compliance review queue</CardTitle>
+          <CardDescription>
+            Every saved claim passes two independent reviews before it can reach a submission-ready state:
+            a clinical documentation review (owner or provider) and a billing/pre-submission review (owner or billing staff).
+            The server blocks a review from passing while required fields are missing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {serverClaims.length === 0 ? (
+            <p className="text-sm text-slate-600">No server-recorded claims yet. Save a claim draft below to start the review workflow.</p>
+          ) : (
+            <div className="space-y-3">
+              {serverClaims.map((claim) => {
+                const clinicalDone = claim.clinicalReview?.decision === "passed";
+                const billingDone = claim.billingReview?.decision === "passed";
+                const rejected = claim.status === "rejected";
+                const ready = claim.status === "ready_to_transmit";
+                return (
+                  <div key={claim.claimId} className="rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{claim.clientName} · {claim.dateOfService || "No date of service"}</p>
+                        <p className="text-xs text-slate-500">MRN {claim.medicalRecordNumber || "Not assigned"} · {claim.payerName || "No payer"} · {billingMoney(claim.chargeAmount)}</p>
+                      </div>
+                      <Badge className={ready ? "bg-emerald-100 text-emerald-800" : rejected ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}>
+                        {String(claim.status || "draft").replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border p-3">
+                        <p className="text-sm font-semibold">1. Clinical review {clinicalDone && <span className="text-emerald-700">✓</span>}</p>
+                        {clinicalDone ? (
+                          <p className="text-xs text-slate-600">Passed by {claim.clinicalReview.reviewerName} on {new Date(claim.clinicalReview.reviewedAt).toLocaleString()}</p>
+                        ) : (
+                          <div className="mt-2 flex gap-2">
+                            <Button size="sm" className="rounded-xl" onClick={() => runClaimReview(claim, "clinical", "passed")}>Pass clinical review</Button>
+                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => runClaimReview(claim, "clinical", "rejected", window.prompt("Reason for rejecting this claim at clinical review?") || "")}>Reject</Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-sm font-semibold">2. Billing review {billingDone && <span className="text-emerald-700">✓</span>}</p>
+                        {billingDone ? (
+                          <p className="text-xs text-slate-600">Passed by {claim.billingReview.reviewerName} on {new Date(claim.billingReview.reviewedAt).toLocaleString()}</p>
+                        ) : (
+                          <div className="mt-2 flex gap-2">
+                            <Button size="sm" className="rounded-xl" onClick={() => runClaimReview(claim, "billing", "passed")}>Pass billing review</Button>
+                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => runClaimReview(claim, "billing", "rejected", window.prompt("Reason for rejecting this claim at billing review?") || "")}>Reject</Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {ready && (
+                      <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        Both reviews passed. This claim is submission-ready. Electronic transmission activates once a contracted clearinghouse is connected.
+                      </p>
+                    )}
+                    {rejected && (
+                      <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                        Returned for correction: {claim.reviews?.slice(-1)[0]?.reason || "See review history."}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

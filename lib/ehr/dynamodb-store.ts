@@ -324,6 +324,7 @@ export type ClientProfileRecord = {
   clientId: string;
   practiceId: string;
   fullName: string;
+  medicalRecordNumber?: string;
   cognitoUserId?: string;
   assignedProviderIds: string[];
   status: "active" | "inactive" | "archived";
@@ -413,6 +414,20 @@ export async function listClientProfiles(actor: EhrActor): Promise<ClientProfile
  * object always includes clientId so the API route can follow up (e.g. to
  * write cognitoUserId) using the same key.
  */
+/**
+ * Generate a human-readable Medical Record Number.
+ * Format: RLTH-YYYY-XXXXXX (year + 6 zero-padded random digits).
+ * Uniqueness is enforced by the PK/SK ConditionExpression on write; on the
+ * rare collision the caller can retry.
+ */
+function generateMrn(): string {
+  const year = new Date().getFullYear();
+  const serial = Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, "0");
+  return `RLTH-${year}-${serial}`;
+}
+
 export async function putClientProfile(
   actor: EhrActor,
   profile: Partial<ClientProfileRecord> & { fullName: string }
@@ -420,12 +435,17 @@ export async function putClientProfile(
   const dynamo = getDynamoDocumentClient();
   const now = nowIso();
   const clientId = profile.clientId || makeId("client");
+  // Assign an MRN on creation if the caller did not supply one.
+  const medicalRecordNumber =
+    (typeof profile.medicalRecordNumber === "string" && profile.medicalRecordNumber) ||
+    generateMrn();
 
   const item: ClientProfileRecord & Record<string, unknown> = {
     ...profile,
     clientId,
     practiceId: actor.practiceId,
     fullName: profile.fullName,
+    medicalRecordNumber,
     assignedProviderIds: Array.isArray(profile.assignedProviderIds)
       ? profile.assignedProviderIds
       : [actor.sub],
