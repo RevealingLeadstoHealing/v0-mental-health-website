@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       const record = await getClinicalRecord(actor.practiceId, clientId, 'microphone-captions', String(body.sessionId || ''));
       if (!record || record.payload?.owner !== actor.sub) throw new ApiError(403, 'Caption session does not belong to this provider.');
       operation = 'Chime:DeleteMeeting';
-      try { await chime.send(new DeleteMeetingCommand({ MeetingId: record.payload.meetingId })); }
+      try { await chime.send(new DeleteMeetingCommand({ MeetingId: String(record.payload.meetingId || '') })); }
       catch (error: any) { if (error.name !== 'NotFoundException') throw error; }
       return NextResponse.json({ stopped: true }, { headers: { 'Cache-Control': 'no-store' } });
     }
