@@ -26,6 +26,57 @@ aws cloudformation deploy `
   --parameter-overrides PracticeSlug=rlth EnvironmentName=prod KmsKeyArn="FOUNDATION_KMS_KEY_ARN"
 ```
 
+## SES Email Setup (required before real provider accounts)
+
+Cognito sends password reset and invitation emails. Without a verified SES identity the
+User Pool falls back to Cognito's shared email sender, which is limited to **50 emails/day**
+and is not suitable for production use.
+
+Steps to configure SES:
+
+1. **Verify your sending domain** in the AWS SES console:
+   - Go to SES → Verified identities → Create identity → Domain
+   - Enter `revealing-leads-to-healing-wellness-services.org`
+   - Add the DKIM and SPF DNS records that SES provides to your DNS registrar
+   - Wait for verification status to show "Verified"
+
+2. **Request production access** (exit SES sandbox):
+   - Go to SES → Account dashboard → Request production access
+   - Provide your use case (transactional clinical system, provider/staff only, no marketing)
+   - AWS typically approves within 24 hours
+
+3. **Copy the identity ARN** from the verified identity details page:
+   - Format: `arn:aws:ses:us-east-2:<account-id>:identity/<domain>`
+
+4. **Re-deploy the foundation stack** with the SES parameters:
+   ```powershell
+   aws cloudformation deploy `
+     --stack-name rlth-ehr-prod-foundation `
+     --template-file infra/aws/rlth-ehr-foundation.yaml `
+     --capabilities CAPABILITY_NAMED_IAM `
+     --parameter-overrides `
+       PracticeSlug=rlth `
+       EnvironmentName=prod `
+       SesFromAddress="no-reply@revealing-leads-to-healing-wellness-services.org" `
+       SesIdentityArn="arn:aws:ses:us-east-2:<account-id>:identity/revealing-leads-to-healing-wellness-services.org"
+   ```
+
+5. **Re-deploy the Vercel IAM stack** with matching SES parameters so the runtime user gets send permission:
+   ```powershell
+   aws cloudformation deploy `
+     --stack-name rlth-ehr-prod-vercel-iam `
+     --template-file infra/aws/rlth-ehr-vercel-runtime-iam.yaml `
+     --capabilities CAPABILITY_NAMED_IAM `
+     --parameter-overrides `
+       ... `
+       SesFromAddress="no-reply@revealing-leads-to-healing-wellness-services.org" `
+       SesIdentityArn="arn:aws:ses:us-east-2:<account-id>:identity/revealing-leads-to-healing-wellness-services.org"
+   ```
+
+6. **Set environment variables** in Vercel:
+   - `EHR_SES_FROM_ADDRESS=no-reply@revealing-leads-to-healing-wellness-services.org`
+   - `EHR_SES_IDENTITY_ARN=arn:aws:ses:us-east-2:<account-id>:identity/...`
+
 ## Production Notes
 
 - CloudWatch runtime logs must never include PHI.

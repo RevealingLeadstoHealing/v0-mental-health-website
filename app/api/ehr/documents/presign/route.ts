@@ -2,12 +2,28 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../../lib/ehr/auth";
-import { appendAuditEvent } from "../../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, putDocumentMetadata } from "../../../../../lib/ehr/dynamodb-store";
 import { getS3Client } from "../../../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../../../lib/rlth-aws-foundation";
+import type { AccessLevel } from "../../../../../lib/ehr/domain-model";
 
 function safeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+}
+
+const ALLOWED_DOCUMENT_TYPES = [
+  "consent",
+  "assessment",
+  "insurance",
+  "clinical",
+  "billing",
+  "other",
+] as const;
+
+type AllowedDocumentType = (typeof ALLOWED_DOCUMENT_TYPES)[number];
+
+function isAllowedDocumentType(value: string): value is AllowedDocumentType {
+  return (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(value);
 }
 
 export async function POST(request: Request) {
@@ -17,9 +33,18 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const clientId = typeof body.clientId === "string" ? body.clientId : actor.sub;
-    const documentType = typeof body.documentType === "string" ? body.documentType : "document";
+    const rawDocumentType = typeof body.documentType === "string" ? body.documentType : "other";
+    const documentType: AllowedDocumentType = isAllowedDocumentType(rawDocumentType)
+      ? rawDocumentType
+      : "other";
     const fileName = typeof body.fileName === "string" ? body.fileName : "upload.bin";
-    const contentType = typeof body.contentType === "string" ? body.contentType : "application/octet-stream";
+    const contentType =
+      typeof body.contentType === "string" ? body.contentType : "application/octet-stream";
+    const title = typeof body.title === "string" ? body.title.slice(0, 200) : fileName;
+    const accessLevel: AccessLevel =
+      typeof body.accessLevel === "string"
+        ? (body.accessLevel as AccessLevel)
+        : "provider_only";
 
     if (actor.role === "client" && clientId !== actor.sub) {
       throw new ApiError(403, "Clients can only upload documents to their own chart.");
@@ -50,13 +75,26 @@ export async function POST(request: Request) {
 
     const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 300 });
 
+    // Write metadata to DynamoDB immediately so the document is tracked,
+    // listable, and access-controlled from the moment the upload link is issued.
+    await putDocumentMetadata(actor, {
+      documentId,
+      practiceId: actor.practiceId,
+      clientId,
+      uploadedBy: actor.sub,
+      title,
+      documentType,
+      storageKey: key,
+      accessLevel,
+    });
+
     await appendAuditEvent(actor, {
       action: "Created private document upload link",
       category: "Document",
       clientId,
       entityType: "document-upload",
       entityId: documentId,
-      summary: "A time-limited private S3 upload link was created.",
+      summary: "A time-limited private S3 upload link was created and document metadata was recorded.",
     });
 
     return NextResponse.json({

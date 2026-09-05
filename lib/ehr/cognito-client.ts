@@ -67,7 +67,9 @@ function cookieOptions(maxAge: number) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
-    path: "/api/ehr",
+    // Use "/" so the session cookies are sent for every route including
+    // /api/ehr/auth/session, /ehr/*, and any future paths.
+    path: "/",
     maxAge,
   };
 }
@@ -119,7 +121,7 @@ export function clearAuthCookies(response: NextResponse) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/api/ehr",
+      path: "/",
       maxAge: 0,
     });
   }
