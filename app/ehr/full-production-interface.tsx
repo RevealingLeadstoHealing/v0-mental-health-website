@@ -68,7 +68,7 @@ function isSyntheticTrainingClient(id, bucket) {
 }
 
 function clinicalClientEntries(store) {
-  return Object.entries(store.users).filter(([id, bucket]) => bucket.profile.role === "client" && !isSyntheticTrainingClient(id, bucket));
+  return Object.entries(store.users).filter(([id, bucket]) => bucket.profile.role === "client" && bucket.profile.status !== "archived" && !isSyntheticTrainingClient(id, bucket));
 }
 
 const motion = {
@@ -3351,6 +3351,24 @@ function ClientManagementPage() {
       setSendingInvitationId("");
     }
   };
+  const archivePatient = async (clientId, clientName) => {
+    if (!window.confirm(`Remove ${clientName || "this patient"} from your active client list? The record is archived (not destroyed) and can be restored by support if needed.`)) return;
+    setPatientError("");
+    setPatientNotice("");
+    try {
+      await productionApi("/api/ehr/clients", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "archive", clientId }),
+      });
+      // Remove it from the on-screen list immediately.
+      updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, status: "archived" }));
+      if (savedPatient?.clientId === clientId) setSavedPatient(null);
+      setPatientNotice(`${clientName || "Patient"} was removed from the active client list.`);
+    } catch (error) {
+      setPatientError(error instanceof Error ? error.message : "The patient could not be removed.");
+    }
+  };
   const savePatient = async () => {
     if (savingPatient) return;
     setSavingPatient(true);
@@ -3567,6 +3585,9 @@ function ClientManagementPage() {
                     : "Send patient invitation"}
               </Button>
               {!client.email && <p className="mt-1 text-xs text-red-600">Add an email address to this chart before an invitation can be sent.</p>}
+              <Button variant="outline" className="w-full mt-2 rounded-2xl border-red-300 text-red-700" onClick={() => archivePatient(client.id, client.fullName)}>
+                Remove from client list
+              </Button>
             </CardContent>
           </Card>
         ))}

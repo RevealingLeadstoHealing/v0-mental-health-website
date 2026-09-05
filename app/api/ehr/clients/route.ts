@@ -112,6 +112,29 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const clientId = typeof body.clientId === "string" ? body.clientId : "";
     if (!clientId) throw new ApiError(400, "Patient record is required.");
+
+    // Archive (soft-delete) action: hides the chart from the active list without
+    // destroying the record. listClientProfiles() already filters archived out.
+    if (body.action === "archive") {
+      await getDynamoDocumentClient().send(new UpdateCommand({
+        TableName: rlthAwsFoundation.clinicalRecordsTableName,
+        Key: { PK: `PRACTICE#${actor.practiceId}#CLIENT#${clientId}`, SK: "PROFILE" },
+        UpdateExpression: "SET #status = :archived, updatedAt = :now",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":archived": "archived", ":now": new Date().toISOString() },
+        ConditionExpression: "attribute_exists(PK) AND attribute_exists(SK)",
+      }));
+      await appendAuditEvent(actor, {
+        action: "Archived patient chart",
+        category: "Client Administration",
+        clientId,
+        entityType: "client-profile",
+        entityId: clientId,
+        summary: "Patient chart was archived and removed from the active client list.",
+      });
+      return NextResponse.json({ archived: true, clientId });
+    }
+
     const existing = (await listClientProfiles(actor)).find((item) => item.clientId === clientId);
     if (!existing) throw new ApiError(404, "Patient record was not found or is not assigned to you.");
     const editableFields = editableDemographicFields;
