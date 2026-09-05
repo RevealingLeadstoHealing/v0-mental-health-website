@@ -355,7 +355,15 @@ export async function getClientProfile(
 
 /**
  * List client profiles the actor is authorized to see.
- * - owner / auditor → all active profiles for the practice
+ *
+ * Profiles are stored one item per client at
+ *   PK = PRACTICE#{practiceId}#CLIENT#{clientId}, SK = "PROFILE"
+ * and indexed on GSI1 with
+ *   GSI1PK = PRACTICE#{practiceId}#CLIENTS
+ * so the whole practice roster can be read with a single GSI query.
+ *
+ * Role scoping:
+ * - owner / auditor → all non-archived profiles for the practice
  * - provider / clinical_staff / billing_staff → only profiles where actor.sub
  *   is in assignedProviderIds
  * - client → only their own profile (matched by cognitoUserId)
@@ -365,20 +373,19 @@ export async function listClientProfiles(actor: EhrActor): Promise<ClientProfile
   const response = await dynamo.send(
     new QueryCommand({
       TableName: rlthAwsFoundation.clinicalRecordsTableName,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :profilePrefix)",
-      FilterExpression: "#status <> :archived",
-      ExpressionAttributeNames: { "#status": "status" },
+      IndexName: "GSI1",
+      KeyConditionExpression: "GSI1PK = :gsi1pk",
       ExpressionAttributeValues: {
-        ":pk": `PRACTICE#${actor.practiceId}`,
-        ":profilePrefix": "CLIENT#",
-        ":archived": "archived",
+        ":gsi1pk": `PRACTICE#${actor.practiceId}#CLIENTS`,
       },
       ScanIndexForward: false,
       Limit: 500,
     })
   );
 
-  const all = (response.Items || []) as ClientProfileRecord[];
+  const all = ((response.Items || []) as ClientProfileRecord[]).filter(
+    (profile) => profile.status !== "archived"
+  );
 
   if (actor.role === "owner" || actor.role === "auditor") return all;
 
@@ -387,30 +394,46 @@ export async function listClientProfiles(actor: EhrActor): Promise<ClientProfile
   }
 
   // provider / clinical_staff / billing_staff — only assigned charts
-  return all.filter((profile) =>
-    Array.isArray(profile.assignedProviderIds) &&
-    profile.assignedProviderIds.includes(actor.sub)
+  return all.filter(
+    (profile) =>
+      Array.isArray(profile.assignedProviderIds) &&
+      profile.assignedProviderIds.includes(actor.sub)
   );
 }
 
 /**
- * Create or replace a client profile.
- * Uses PK = PRACTICE#{practiceId} / SK = CLIENT#{clientId} so the practice
- * can query all its clients with a single KeyConditionExpression.
+ * Create a client profile.
+ *
+ * Uses the same key schema the rest of the app reads/updates:
+ *   PK = PRACTICE#{practiceId}#CLIENT#{clientId}, SK = "PROFILE"
+ * plus GSI1PK = PRACTICE#{practiceId}#CLIENTS so listClientProfiles() can
+ * read the whole roster in one query.
+ *
+ * If the caller does not provide a clientId, one is generated. The returned
+ * object always includes clientId so the API route can follow up (e.g. to
+ * write cognitoUserId) using the same key.
  */
 export async function putClientProfile(
   actor: EhrActor,
-  profile: ClientProfileRecord
+  profile: Partial<ClientProfileRecord> & { fullName: string }
 ): Promise<ClientProfileRecord> {
   const dynamo = getDynamoDocumentClient();
   const now = nowIso();
-  const item = {
+  const clientId = profile.clientId || makeId("client");
+
+  const item: ClientProfileRecord & Record<string, unknown> = {
     ...profile,
-    PK: `PRACTICE#${actor.practiceId}`,
-    SK: `CLIENT#${profile.clientId}`,
+    clientId,
+    practiceId: actor.practiceId,
+    fullName: profile.fullName,
+    assignedProviderIds: Array.isArray(profile.assignedProviderIds)
+      ? profile.assignedProviderIds
+      : [actor.sub],
+    status: profile.status || "active",
+    PK: `PRACTICE#${actor.practiceId}#CLIENT#${clientId}`,
+    SK: "PROFILE",
     GSI1PK: `PRACTICE#${actor.practiceId}#CLIENTS`,
     GSI1SK: now,
-    practiceId: actor.practiceId,
     updatedAt: now,
     createdAt: profile.createdAt || now,
   };
@@ -419,8 +442,10 @@ export async function putClientProfile(
     new PutCommand({
       TableName: rlthAwsFoundation.clinicalRecordsTableName,
       Item: item,
+      // Prevent clobbering an existing chart with the same clientId.
+      ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
     })
   );
 
-  return item as ClientProfileRecord;
+  return item;
 }
