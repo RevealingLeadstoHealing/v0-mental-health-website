@@ -936,12 +936,23 @@ function AuthProvider({ children }) {
       storeRef.current = next;
       return next;
     });
-    await Promise.all([
+    // The patient record and MRN are already created on the server above.
+    // These two follow-up saves (consent docs + intake) must NOT be allowed to
+    // fail the whole patient creation — if one errors, the patient is still
+    // saved and must appear. Catch and report without throwing.
+    let followUpError = "";
+    const results = await Promise.allSettled([
       persistModuleSnapshot(client.clientId, "documents", onboardingDocuments),
       persistModuleSnapshot(client.clientId, "intake", onboardingIntake),
     ]);
-    setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS.");
-    return { ...client, invitationSent: false, invitationError: "" };
+    const failed = results.find((r) => r.status === "rejected");
+    if (failed && failed.status === "rejected") {
+      followUpError = failed.reason instanceof Error ? failed.reason.message : "Some intake details will finish saving shortly.";
+      setSaveStatus("Patient chart saved. Intake documents are still finishing — you can send the invitation now.");
+    } else {
+      setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS.");
+    }
+    return { ...client, invitationSent: false, invitationError: followUpError };
   };
   const value = useMemo(() => ({
     currentUser, store, login, signup, logout, createClient, updateCurrentUserData, updateSpecificUserData, flushClientModuleSaves,
@@ -3382,7 +3393,7 @@ function ClientManagementPage() {
         <span className="text-sm text-slate-500">{clients.length} patient{clients.length === 1 ? "" : "s"}</span>
       </div>
       {patientNotice && <p role="status" className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">{patientNotice}</p>}
-      {!showAddPatient && patientError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
+      {patientError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
       {showAddPatient && (
         <Card className="mb-5 rounded-2xl shadow-sm">
           <CardHeader>
