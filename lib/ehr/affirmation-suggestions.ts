@@ -1,4 +1,4 @@
-import { affirmationLibrary } from "./affirmation-library.ts";
+import { affirmationLibrary } from "./affirmation-library";
 
 const themeTerms = [
   { signals: ["anxiety", "panic", "worry", "ground", "stress"], terms: ["breath", "present moment", "calm", "temporary", "steady"] },

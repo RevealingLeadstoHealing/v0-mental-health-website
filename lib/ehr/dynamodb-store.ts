@@ -1,4 +1,4 @@
-import { QueryCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { QueryCommand, PutCommand, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
 import type { EhrActor } from "./auth";
@@ -269,4 +269,158 @@ export async function listDocumentMetadata(clientId: string, limit = 50) {
   );
 
   return response.Items || [];
+}
+
+// ---------------------------------------------------------------------------
+// Clinical Record — single-item fetch
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a single clinical record by practiceId, clientId, recordType, and recordId.
+ * Returns null when the item does not exist.
+ */
+export async function getClinicalRecord(
+  practiceId: string,
+  clientId: string,
+  recordType: string,
+  recordId: string
+): Promise<{ payload: Record<string, unknown>; [key: string]: unknown } | null> {
+  const dynamo = getDynamoDocumentClient();
+  const result = await dynamo.send(
+    new GetCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Key: {
+        PK: `CLIENT#${clientId}`,
+        SK: `RECORD#${recordType}#${recordId}`,
+      },
+    })
+  );
+  if (!result.Item) return null;
+  return result.Item as { payload: Record<string, unknown>; [key: string]: unknown };
+}
+
+// ---------------------------------------------------------------------------
+// AI Scribe Jobs
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up a saved HealthScribe job record by practiceId, clientId, and jobName.
+ * Used to verify chart ownership before polling AWS for job status.
+ * Returns null when no matching record exists.
+ */
+export async function getSavedScribeJob(
+  practiceId: string,
+  clientId: string,
+  jobName: string
+): Promise<{ payload: Record<string, unknown>; [key: string]: unknown } | null> {
+  return getClinicalRecord(practiceId, clientId, "healthscribe-job", jobName);
+}
+
+// ---------------------------------------------------------------------------
+// Client Profiles
+// ---------------------------------------------------------------------------
+
+export type ClientProfileRecord = {
+  clientId: string;
+  practiceId: string;
+  fullName: string;
+  cognitoUserId?: string;
+  assignedProviderIds: string[];
+  status: "active" | "inactive" | "archived";
+  [key: string]: unknown;
+};
+
+/**
+ * Fetch a single client profile by practiceId and clientId.
+ * Returns null when the profile does not exist.
+ * Used by requireClientAccess() and the clients API route.
+ */
+export async function getClientProfile(
+  practiceId: string,
+  clientId: string
+): Promise<ClientProfileRecord | null> {
+  const dynamo = getDynamoDocumentClient();
+  const result = await dynamo.send(
+    new GetCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Key: {
+        PK: `PRACTICE#${practiceId}#CLIENT#${clientId}`,
+        SK: "PROFILE",
+      },
+    })
+  );
+  if (!result.Item) return null;
+  return result.Item as ClientProfileRecord;
+}
+
+/**
+ * List client profiles the actor is authorized to see.
+ * - owner / auditor → all active profiles for the practice
+ * - provider / clinical_staff / billing_staff → only profiles where actor.sub
+ *   is in assignedProviderIds
+ * - client → only their own profile (matched by cognitoUserId)
+ */
+export async function listClientProfiles(actor: EhrActor): Promise<ClientProfileRecord[]> {
+  const dynamo = getDynamoDocumentClient();
+  const response = await dynamo.send(
+    new QueryCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :profilePrefix)",
+      FilterExpression: "#status <> :archived",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":pk": `PRACTICE#${actor.practiceId}`,
+        ":profilePrefix": "CLIENT#",
+        ":archived": "archived",
+      },
+      ScanIndexForward: false,
+      Limit: 500,
+    })
+  );
+
+  const all = (response.Items || []) as ClientProfileRecord[];
+
+  if (actor.role === "owner" || actor.role === "auditor") return all;
+
+  if (actor.role === "client") {
+    return all.filter((profile) => profile.cognitoUserId === actor.sub);
+  }
+
+  // provider / clinical_staff / billing_staff — only assigned charts
+  return all.filter((profile) =>
+    Array.isArray(profile.assignedProviderIds) &&
+    profile.assignedProviderIds.includes(actor.sub)
+  );
+}
+
+/**
+ * Create or replace a client profile.
+ * Uses PK = PRACTICE#{practiceId} / SK = CLIENT#{clientId} so the practice
+ * can query all its clients with a single KeyConditionExpression.
+ */
+export async function putClientProfile(
+  actor: EhrActor,
+  profile: ClientProfileRecord
+): Promise<ClientProfileRecord> {
+  const dynamo = getDynamoDocumentClient();
+  const now = nowIso();
+  const item = {
+    ...profile,
+    PK: `PRACTICE#${actor.practiceId}`,
+    SK: `CLIENT#${profile.clientId}`,
+    GSI1PK: `PRACTICE#${actor.practiceId}#CLIENTS`,
+    GSI1SK: now,
+    practiceId: actor.practiceId,
+    updatedAt: now,
+    createdAt: profile.createdAt || now,
+  };
+
+  await dynamo.send(
+    new PutCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Item: item,
+    })
+  );
+
+  return item as ClientProfileRecord;
 }

@@ -946,7 +946,7 @@ function AuthProvider({ children }) {
 function PageProvider({ children, initialPage = "dashboard" }) {
   const [page, setPageState] = useState(initialPage);
   const [workflowTarget, setWorkflowTarget] = useState(null);
-  const [selectedChartClientId, setSelectedChartClientId] = useState("client-1");
+  const [selectedChartClientId, setSelectedChartClientId] = useState("");
   const setPage = (requestedPage, target = null) => {
     setPageState(requestedPage);
     setWorkflowTarget(target);
@@ -977,26 +977,15 @@ function AppShell() {
   return currentUser ? <MainApp /> : <AuthPage />;
 }
 function AuthPage() {
-  const { login, signup } = useAuth();
-  const [mode, setMode] = useState("login");
+  const { login } = useAuth();
   const [error, setError] = useState("");
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [signupForm, setSignupForm] = useState({ fullName: "", email: "", password: "", role: "client" });
   const handleLogin = () => {
-    try {
-      setError("");
-      login(loginForm.email, loginForm.password);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-  const handleSignup = () => {
-    try {
-      setError("");
-      signup(signupForm);
-    } catch (e) {
-      setError(e.message);
-    }
+    // The production login flow lives at /login (Cognito with MFA).
+    // This embedded page redirects there so credentials are handled by the
+    // dedicated login page which manages Cognito challenges correctly.
+    setError("");
+    login();
   };
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -1037,16 +1026,17 @@ function AuthPage() {
         </Card>
         <Card className="rounded-3xl shadow-sm border-slate-200">
           <CardHeader>
-            <CardTitle>{mode === "login" ? "Sign in" : "Create account"}</CardTitle>
+            <CardTitle>Sign in</CardTitle>
             <CardDescription>
               Sign in through the production AWS Cognito authentication service.
+              New provider accounts are created by the practice owner. Client
+              accounts are created through the provider onboarding workflow.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Tabs value={mode} onValueChange={setMode}>
-              <TabsList className="grid grid-cols-2 rounded-2xl">
+            <Tabs value="login" onValueChange={() => {}}>
+              <TabsList className="grid grid-cols-1 rounded-2xl">
                 <TabsTrigger value="login">Login</TabsTrigger>
-                <TabsTrigger value="signup">Register</TabsTrigger>
               </TabsList>
               <TabsContent value="login" className="space-y-3 mt-4">
                 <Input
@@ -1062,34 +1052,6 @@ function AuthPage() {
                 />
                 <Button className="w-full rounded-2xl" onClick={handleLogin}>
                   <LogIn className="mr-2 h-4 w-4" />Sign in
-                </Button>
-              </TabsContent>
-              <TabsContent value="signup" className="space-y-3 mt-4">
-                <Input
-                  placeholder="Full name"
-                  value={signupForm.fullName}
-                  onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
-                />
-                <Input
-                  placeholder="Email"
-                  value={signupForm.email}
-                  onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                />
-                <Input
-                  type="password"
-                  placeholder="Password"
-                  value={signupForm.password}
-                  onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
-                />
-                <Select value={signupForm.role} onValueChange={(value) => setSignupForm({ ...signupForm, role: value })}>
-                  <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="client">Client</SelectItem>
-                    <SelectItem value="provider">Provider</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button className="w-full rounded-2xl" onClick={handleSignup}>
-                  <UserPlus className="mr-2 h-4 w-4" />Create account
                 </Button>
               </TabsContent>
             </Tabs>
