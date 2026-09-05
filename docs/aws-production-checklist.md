@@ -11,6 +11,16 @@ This checklist turns the current prototype into a practice-first production EHR.
 - [ ] Create least-privilege IAM roles.
 - [ ] Disable long-lived access keys where possible.
 
+## Email (AWS SES)
+
+- [ ] Verify sending domain (`revealing-leads-to-healing-wellness-services.org`) in SES → Verified Identities.
+- [ ] Add DKIM and SPF DNS records from SES to your DNS registrar and confirm "Verified" status.
+- [ ] Request SES production access (exit sandbox mode) for transactional clinical email.
+- [ ] Copy the verified identity ARN and re-deploy foundation stack with `SesFromAddress` and `SesIdentityArn` parameters.
+- [ ] Re-deploy Vercel IAM stack with matching SES parameters to grant `ses:SendEmail` to the runtime user.
+- [ ] Set `EHR_SES_FROM_ADDRESS` and `EHR_SES_IDENTITY_ARN` in Vercel environment variables.
+- [ ] Test password reset and provider invitation emails end-to-end before first real provider account.
+
 ## Authentication
 
 - [ ] Create Cognito user pool.

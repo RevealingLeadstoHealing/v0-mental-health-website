@@ -53,17 +53,20 @@ export async function POST(request: Request) {
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,
+      recordId: typeof body.recordId === "string" ? body.recordId : undefined,
       payload,
       status: typeof body.status === "string" ? body.status : "draft",
     });
 
     await appendAuditEvent(actor, {
-      action: "Created clinical record",
+      action: body.recordId ? "Updated clinical record" : "Created clinical record",
       category: "Clinical Documentation",
       clientId,
       entityType: recordType,
       entityId: record.recordId,
-      summary: "A clinical record was created through the production API.",
+      summary: body.recordId
+        ? "A clinical record was updated through the production API."
+        : "A clinical record was created through the production API.",
     });
 
     return NextResponse.json({ record }, { status: 201 });

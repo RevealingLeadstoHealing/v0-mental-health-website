@@ -15,6 +15,26 @@ Parameters:
       - staging
       - dev
     Description: Deployment environment.
+  SesFromAddress:
+    Type: String
+    Default: "no-reply@revealing-leads-to-healing-wellness-services.org"
+    Description: >
+      Verified SES sender address used by Cognito for password reset and
+      invitation emails. Must be verified in SES and in production-access
+      mode (not sandbox) before real users can receive email.
+  SesIdentityArn:
+    Type: String
+    Default: ""
+    Description: >
+      ARN of the verified SES domain or email identity. Leave empty to use
+      Cognito's default shared email sender (50 emails/day limit, suitable
+      for initial setup only). Set this to your verified domain identity ARN
+      before going live with real provider accounts.
+
+Conditions:
+  # True when a verified SES identity ARN has been supplied.
+  # When false, Cognito uses its own shared email sender (50 emails/day limit).
+  UseSesEmailSender: !Not [!Equals [!Ref SesIdentityArn, ""]]
 
 Resources:
   EhrKmsKey:
@@ -72,10 +92,24 @@ Resources:
         - SOFTWARE_TOKEN_MFA
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: "Your RLTH EHR account invitation"
+          EmailMessage: |
+            You have been invited to the Revealing Leads to Healing EHR system.
+            Your temporary username is {username} and temporary password is {####}.
+            Please log in and set a permanent password. Your account requires
+            multi-factor authentication (MFA) setup on first login.
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email
             Priority: 1
+      EmailConfiguration: !If
+        - UseSesEmailSender
+        - EmailSendingAccount: DEVELOPER
+          SourceArn: !Ref SesIdentityArn
+          From: !Sub "RLTH EHR <${SesFromAddress}>"
+          ReplyToEmailAddress: !Ref SesFromAddress
+        - EmailSendingAccount: COGNITO_DEFAULT
       Policies:
         PasswordPolicy:
           MinimumLength: 14
@@ -260,6 +294,8 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: AppendOnly
+          Value: "true"
+        - Key: ContainsPHI
           Value: "true"
 
   DocumentMetadataTable:
@@ -467,3 +503,11 @@ Outputs:
   CloudTrailName:
     Description: CloudTrail trail for AWS management events.
     Value: !Ref EhrCloudTrail
+  SesEmailSenderMode:
+    Description: >
+      COGNITO_DEFAULT means Cognito's shared sender is active (50 emails/day limit).
+      DEVELOPER means your verified SES identity is configured and in use.
+    Value: !If [UseSesEmailSender, "DEVELOPER", "COGNITO_DEFAULT"]
+  SesFromAddress:
+    Description: Configured SES sender address (only meaningful when SesIdentityArn was supplied).
+    Value: !If [UseSesEmailSender, !Ref SesFromAddress, "N/A - using Cognito default sender"]

@@ -359,6 +359,48 @@ Resources:
         Owner: AWS
         SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
 
+  # ---------------------------------------------------------------------------
+  # GuardDuty — threat detection for the AWS account
+  # ---------------------------------------------------------------------------
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Features:
+        - Name: S3_DATA_EVENTS
+          Status: ENABLED
+        - Name: EKS_AUDIT_LOGS
+          Status: DISABLED
+        - Name: MALWARE_PROTECTION
+          Status: ENABLED
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ---------------------------------------------------------------------------
+  # Security Hub — aggregated security findings dashboard
+  # ---------------------------------------------------------------------------
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Properties:
+      # Auto-enables the AWS Foundational Security Best Practices standard.
+      AutoEnableControls: true
+      Tags:
+        Application: RLTH-EHR
+        Environment: !Ref EnvironmentName
+
+  # ---------------------------------------------------------------------------
+  # Macie — S3 sensitive-data discovery (detects accidental PHI in wrong buckets)
+  # ---------------------------------------------------------------------------
+  MacieSession:
+    Type: AWS::Macie::Session
+    Properties:
+      Status: ENABLED
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+
 Outputs:
   ApiRuntimeLogGroupName:
     Description: CloudWatch log group for EHR API runtime logs. Do not log PHI.
@@ -387,3 +429,12 @@ Outputs:
   ConfigBucketName:
     Description: AWS Config delivery bucket.
     Value: !Ref ConfigBucket
+  GuardDutyDetectorId:
+    Description: GuardDuty detector ID for this account/region.
+    Value: !Ref GuardDutyDetector
+  SecurityHubArn:
+    Description: Security Hub hub ARN.
+    Value: !Ref SecurityHub
+  MacieStatus:
+    Description: Macie session status.
+    Value: "ENABLED"
