@@ -1,0 +1,292 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: RLTH EHR AWS HealthScribe resources and least-privilege Amplify SSR compute role. Deploy in us-east-1.
+
+Parameters:
+  PracticeSlug:
+    Type: String
+    Default: rlth
+  AllowedEhrOrigin:
+    Type: String
+    Default: https://ehr.revealing-leads-to-healing-wellness-services.org
+  AllowedAmplifyOrigin:
+    Type: String
+    Default: https://aws-ehr-production.d1mwc7x488m8xn.amplifyapp.com
+  ClinicalRegion:
+    Type: String
+    Default: us-east-2
+  ClinicalRecordsTableName:
+    Type: String
+    Default: rlth-prod-clinical-records
+  AuditEventsTableName:
+    Type: String
+    Default: rlth-prod-audit-events
+  DocumentMetadataTableName:
+    Type: String
+    Default: rlth-prod-document-metadata
+  ClinicalDocumentsBucketName:
+    Type: String
+    Default: rlth-prod-ehr-documents-597936860711
+  ClinicalKmsKeyArn:
+    Type: String
+    Default: arn:aws:kms:us-east-2:597936860711:key/9114a3e2-b165-4db2-a1db-7d3a217e647a
+
+Resources:
+  HealthScribeKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: RLTH EHR HealthScribe temporary audio and output encryption
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: ContainsPHI
+          Value: "true"
+
+  HealthScribeKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${PracticeSlug}/prod/healthscribe
+      TargetKeyId: !Ref HealthScribeKey
+
+  HealthScribeBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${PracticeSlug}-prod-healthscribe-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt HealthScribeKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref AllowedEhrOrigin
+              - !Ref AllowedAmplifyOrigin
+            AllowedMethods: [PUT]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 300
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteTemporaryAudio
+            Status: Enabled
+            Prefix: temporary-audio/
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: DeleteUnfinalizedScribeOutputs
+            Status: Enabled
+            Prefix: medical-scribe-job/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+      Tags:
+        - Key: Application
+          Value: RLTH-EHR
+        - Key: ContainsPHI
+          Value: "true"
+
+  HealthScribeBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref HealthScribeBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt HealthScribeBucket.Arn
+              - !Sub ${HealthScribeBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  HealthScribeDataRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${PracticeSlug}-prod-healthscribe-data-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transcribe.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: HealthScribeEncryptedDataAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !GetAtt HealthScribeBucket.Arn
+                  - !Sub ${HealthScribeBucket.Arn}/*
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
+                Resource: !GetAtt HealthScribeKey.Arn
+
+  HealthScribeOrchestratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${PracticeSlug}-prod-healthscribe-orchestrator
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: StartEncryptedHealthScribeJobs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [transcribe:StartMedicalScribeJob, transcribe:TagResource]
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt HealthScribeDataRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: transcribe.amazonaws.com
+
+  HealthScribeOrchestratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${PracticeSlug}-prod-healthscribe-orchestrator
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt HealthScribeOrchestratorRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          HEALTHSCRIBE_BUCKET: !Ref HealthScribeBucket
+          HEALTHSCRIBE_KMS_KEY_ARN: !GetAtt HealthScribeKey.Arn
+          HEALTHSCRIBE_DATA_ROLE_ARN: !GetAtt HealthScribeDataRole.Arn
+      Code:
+        ZipFile: |
+          const { StartMedicalScribeJobCommand, TranscribeClient } = require("@aws-sdk/client-transcribe");
+          const client = new TranscribeClient({ region: process.env.AWS_REGION });
+          const templates = new Set(["GIRPP", "BIRP", "SIRP", "DAP", "BEHAVIORAL_SOAP"]);
+          exports.handler = async (event) => {
+            const { jobName, mediaKey, noteTemplate, practiceId, clientId } = event || {};
+            if (!jobName || !mediaKey || !practiceId || !clientId || !templates.has(noteTemplate)) {
+              throw new Error("Invalid HealthScribe orchestration request.");
+            }
+            const expectedPrefix = `temporary-audio/${practiceId}/${clientId}/`;
+            if (!mediaKey.startsWith(expectedPrefix)) throw new Error("Audio key does not belong to this chart.");
+            await client.send(new StartMedicalScribeJobCommand({
+              MedicalScribeJobName: jobName,
+              Media: { MediaFileUri: `s3://${process.env.HEALTHSCRIBE_BUCKET}/${mediaKey}` },
+              OutputBucketName: process.env.HEALTHSCRIBE_BUCKET,
+              OutputEncryptionKMSKeyId: process.env.HEALTHSCRIBE_KMS_KEY_ARN,
+              DataAccessRoleArn: process.env.HEALTHSCRIBE_DATA_ROLE_ARN,
+              Settings: {
+                ShowSpeakerLabels: true,
+                MaxSpeakerLabels: 2,
+                ClinicalNoteGenerationSettings: { NoteTemplate: noteTemplate },
+              },
+            }));
+            return { jobName, status: "IN_PROGRESS" };
+          };
+
+  AmplifySsrComputeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${PracticeSlug}-prod-amplify-ssr-compute
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: RlthEhrProductionRuntime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ClinicalDynamoDb
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:UpdateItem]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${ClinicalRecordsTableName}
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${ClinicalRecordsTableName}/index/*
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${AuditEventsTableName}
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${AuditEventsTableName}/index/*
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${DocumentMetadataTableName}
+                  - !Sub arn:${AWS::Partition}:dynamodb:${ClinicalRegion}:${AWS::AccountId}:table/${DocumentMetadataTableName}/index/*
+              - Sid: ClinicalDocuments
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${ClinicalDocumentsBucketName}
+                  - !Sub arn:${AWS::Partition}:s3:::${ClinicalDocumentsBucketName}/*
+              - Sid: HealthScribeBucket
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:ListBucket]
+                Resource:
+                  - !GetAtt HealthScribeBucket.Arn
+                  - !Sub ${HealthScribeBucket.Arn}/*
+              - Sid: HealthScribeJobs
+                Effect: Allow
+                Action: [transcribe:GetMedicalScribeJob, transcribe:DeleteMedicalScribeJob]
+                Resource: "*"
+              - Sid: InvokeHealthScribeOrchestrator
+                Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt HealthScribeOrchestratorFunction.Arn
+              - Sid: EncryptionKeys
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
+                Resource:
+                  - !Ref ClinicalKmsKeyArn
+                  - !GetAtt HealthScribeKey.Arn
+
+Outputs:
+  HealthScribeBucketName:
+    Value: !Ref HealthScribeBucket
+  HealthScribeKmsKeyArn:
+    Value: !GetAtt HealthScribeKey.Arn
+  HealthScribeDataRoleArn:
+    Value: !GetAtt HealthScribeDataRole.Arn
+  HealthScribeOrchestratorArn:
+    Value: !GetAtt HealthScribeOrchestratorFunction.Arn
+  AmplifySsrComputeRoleArn:
+    Value: !GetAtt AmplifySsrComputeRole.Arn

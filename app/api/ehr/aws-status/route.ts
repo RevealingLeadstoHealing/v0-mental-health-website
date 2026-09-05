@@ -17,8 +17,8 @@ export async function GET() {
       documentsBucketName: rlthAwsFoundation.documentsBucketName,
     },
     nextRequiredStep: runtime.runtimeCredentialsConfigured
-      ? "Complete first login, set the permanent password, enroll authenticator MFA, and verify authenticated audit/record API calls from /login."
-      : "Add AWS server runtime credentials or OIDC role access in Vercel before PHI can be stored.",
-    note: "AWS foundation, Cognito-aware auth routes, secure cookie sessions, owner user setup, and protected EHR API routes are configured. Do not store PHI until first-user login, server authorization, audit writes, backup verification, signed compliance documentation, and operating policies are confirmed end-to-end.",
+      ? "Confirm the Ohio security-operations stack and production approval setting."
+      : "Attach the approved AWS runtime role to the Amplify Hosting compute branch.",
+    note: "AWS foundation, Cognito authentication, secure cookie sessions, protected EHR APIs, encrypted persistence, and audit routes are configured. Production approval remains controlled by EHR_PHI_ENTRY_ALLOWED.",
   });
 }

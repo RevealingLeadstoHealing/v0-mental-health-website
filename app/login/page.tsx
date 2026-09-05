@@ -30,15 +30,20 @@ async function postJson(path: string, body: Record<string, unknown>) {
 }
 
 export default function LoginPage() {
+  const [returnTo, setReturnTo] = useState("/ehr");
   const [user, setUser] = useState<LoginUser | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
+  const [recoveryMode, setRecoveryMode] = useState<"" | "request" | "confirm">("");
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [challenge, setChallenge] = useState<ChallengeState | null>(null);
   const [mfaSetupSession, setMfaSetupSession] = useState("");
   const [mfaSecret, setMfaSecret] = useState("");
   const [mfaQrCodeUrl, setMfaQrCodeUrl] = useState("");
+  const [replaceMfa, setReplaceMfa] = useState(false);
   const [apiResult, setApiResult] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +52,11 @@ export default function LoginPage() {
     if (!mfaSecret || !email) return "";
     return `otpauth://totp/RLTH%20EHR:${encodeURIComponent(email)}?secret=${encodeURIComponent(mfaSecret)}&issuer=RLTH%20EHR`;
   }, [email, mfaSecret]);
+
+  useEffect(() => {
+    const candidate = new URLSearchParams(window.location.search).get("returnTo") || "";
+    if (candidate === "/ehr" || candidate.startsWith("/ehr/")) setReturnTo(candidate);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -132,6 +142,35 @@ export default function LoginPage() {
     }
   }
 
+  async function requestPasswordReset() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/password/forgot", { email });
+      setRecoveryMode("confirm");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Password recovery could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmPasswordReset() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/password/confirm", { email, confirmationCode: recoveryCode, newPassword });
+      setRecoveryMode("");
+      setRecoveryCode("");
+      setNewPassword("");
+      setApiResult("Password updated. Sign in with the new password.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Password reset failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleNewPassword() {
     if (!challenge) return;
     setBusy(true);
@@ -188,6 +227,36 @@ export default function LoginPage() {
     }
   }
 
+  async function startAuthenticatedMfaReplacement() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await postJson("/api/ehr/auth/mfa/setup", {});
+      setMfaSecret(data.secretCode || "");
+      setReplaceMfa(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authenticator replacement could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishAuthenticatedMfaReplacement() {
+    setBusy(true);
+    setError("");
+    try {
+      await postJson("/api/ehr/auth/mfa/verify", { userCode: mfaCode });
+      setReplaceMfa(false);
+      setMfaSecret("");
+      setMfaCode("");
+      setApiResult("New RLTH EHR authenticator verified. MFA replacement is complete.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authenticator verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleSoftwareMfa() {
     if (!challenge) return;
     setBusy(true);
@@ -223,36 +292,6 @@ export default function LoginPage() {
     }
   }
 
-  async function createNonPhiTestRecord() {
-    setBusy(true);
-    setError("");
-    setApiResult("");
-    try {
-      const response = await fetch("/api/ehr/records", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: "system-check",
-          recordType: "system-check",
-          status: "test",
-          payload: {
-            purpose: "non-phi-production-connection-test",
-            createdFrom: "/login",
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Record API check failed.");
-      setApiResult(JSON.stringify({ status: "Record API connected", recordId: data.record?.recordId }, null, 2));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Record API check failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function logout() {
     setBusy(true);
     setError("");
@@ -277,6 +316,8 @@ export default function LoginPage() {
         .rlth-login label { display: block; margin-top: .9rem; color: #514a41; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
         .rlth-login input { width: 100%; min-height: 2.55rem; margin-top: .35rem; padding: .6rem .75rem; border: 1px solid #cfc4b2; border-radius: 8px; background: #fff; color: #2b2926; font: inherit; outline: none; }
         .rlth-login input:focus { border-color: #2b2926; box-shadow: 0 0 0 2px rgba(221, 211, 193, .75); }
+        .rlth-login-password-toggle { display: inline-flex !important; align-items: center; gap: .5rem; margin-top: .65rem !important; color: #514a41 !important; font-size: .9rem !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
+        .rlth-login-password-toggle input { width: 1rem; min-height: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: #2b2926; }
         .rlth-login-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.1rem; }
         .rlth-login button, .rlth-login-link { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; padding: .6rem 1rem; border: 1px solid #2b2926; border-radius: 8px; background: #2b2926; color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; cursor: pointer; }
         .rlth-login button.secondary, .rlth-login-link.secondary { background: #fff; color: #2b2926; }
@@ -295,17 +336,54 @@ export default function LoginPage() {
         <h1>Secure EHR Login</h1>
         <p>Production login uses AWS Cognito with MFA and secure HttpOnly session cookies.</p>
 
-        {!user && !challenge && (
+        {!user && !challenge && recoveryMode === "" && (
           <>
             <label>Email</label>
             <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
             <label>Password</label>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <label className="rlth-login-password-toggle">
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(event) => setShowPassword(event.target.checked)}
+              />
+              Show password
+            </label>
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={handleLogin}>Sign in</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("request")}>Forgot password</button>
               <Link className="rlth-login-link secondary" href="/">Website</Link>
             </div>
           </>
+        )}
+
+        {!user && !challenge && recoveryMode === "request" && (
+          <div className="rlth-login-panel">
+            <strong>Reset password</strong>
+            <p>Enter the verified email address for the EHR account.</p>
+            <label>Email</label>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || !email} onClick={requestPasswordReset}>Email recovery code</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("")}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {!user && !challenge && recoveryMode === "confirm" && (
+          <div className="rlth-login-panel">
+            <strong>Enter recovery code</strong>
+            <p>Enter the code sent by AWS Cognito and choose a new password.</p>
+            <label>Recovery code</label>
+            <input value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+            <label>New password</label>
+            <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || !recoveryCode || !newPassword} onClick={confirmPasswordReset}>Set new password</button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRecoveryMode("request")}>Request another code</button>
+            </div>
+          </div>
         )}
 
         {!user && challenge?.challengeName === "NEW_PASSWORD_REQUIRED" && (
@@ -368,9 +446,24 @@ export default function LoginPage() {
             <p>{user.fullName} | {user.email} | {user.role}</p>
             <div className="rlth-login-actions">
               <button type="button" disabled={busy} onClick={checkAuditApi}>Check audit API</button>
-              <button type="button" disabled={busy} onClick={createNonPhiTestRecord}>Create non-PHI test record</button>
-              <Link className="rlth-login-link secondary" href="/ehr">Open EHR</Link>
+              <button type="button" className="secondary" disabled={busy} onClick={startAuthenticatedMfaReplacement}>Replace authenticator</button>
+              <Link className="rlth-login-link secondary" href={returnTo}>Open EHR</Link>
               <button type="button" className="secondary" disabled={busy} onClick={logout}>Logout</button>
+            </div>
+          </div>
+        )}
+
+        {user && replaceMfa && mfaSecret && (
+          <div className="rlth-login-panel">
+            <strong>Replace RLTH EHR authenticator</strong>
+            <p>Scan this new QR code in the authenticator profile you want to keep, then enter its current 6-digit code.</p>
+            <div className="rlth-login-qr-wrap">
+              {mfaQrCodeUrl ? <img src={mfaQrCodeUrl} alt="New RLTH EHR authenticator QR code" /> : <span>Generating QR code...</span>}
+            </div>
+            <label>6-digit authenticator code</label>
+            <input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+            <div className="rlth-login-actions">
+              <button type="button" disabled={busy || mfaCode.length !== 6} onClick={finishAuthenticatedMfaReplacement}>Verify new authenticator</button>
             </div>
           </div>
         )}
@@ -378,7 +471,7 @@ export default function LoginPage() {
         {apiResult && <pre className="rlth-login-code">{apiResult}</pre>}
         {error && <div className="rlth-login-alert">{error}</div>}
         <div className="rlth-login-panel">
-          Do not enter PHI until authenticated API writes, audit logging, signed BAAs, backup verification, and operating policies are confirmed end-to-end.
+          Secure patient portal. Sign in to access your account.
         </div>
       </section>
     </main>

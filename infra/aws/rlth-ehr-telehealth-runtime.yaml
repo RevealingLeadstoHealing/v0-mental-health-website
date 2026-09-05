@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Additional permissions for in-EHR Amazon Chime SDK rooms; attach to the existing Amplify compute role.
+Parameters:
+  AmplifyComputeRoleName:
+    Type: String
+    Description: Existing Amplify SSR compute role name (not the deployment service role).
+Resources:
+  TelehealthRuntimePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: rlth-native-telehealth
+      Roles: [!Ref AmplifyComputeRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CreateEphemeralRooms
+            Effect: Allow
+            Action: chime:CreateMeeting
+            Resource: '*'
+          - Sid: ManageAccountRooms
+            Effect: Allow
+            Action:
+              - chime:GetMeeting
+              - chime:DeleteMeeting
+              - chime:CreateAttendee
+              - chime:DeleteAttendee
+            Resource: !Sub 'arn:${AWS::Partition}:chime:*:${AWS::AccountId}:meeting/*'
+Outputs:
+  Activation:
+    Value: Set EHR_NATIVE_TELEHEALTH_ENABLED=true and EHR_TELEHEALTH_REGION=us-east-1 in Amplify, then redeploy after synthetic testing readiness review.

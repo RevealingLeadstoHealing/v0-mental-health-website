@@ -12,7 +12,10 @@ export type CognitoAction =
   | "InitiateAuth"
   | "RespondToAuthChallenge"
   | "AssociateSoftwareToken"
-  | "VerifySoftwareToken";
+  | "VerifySoftwareToken"
+  | "SetUserMFAPreference"
+  | "ForgotPassword"
+  | "ConfirmForgotPassword";
 
 export type CognitoAuthResult = {
   AccessToken?: string;
@@ -26,6 +29,7 @@ export type CognitoResponse = {
   AuthenticationResult?: CognitoAuthResult;
   ChallengeName?: string;
   ChallengeParameters?: Record<string, string>;
+  CodeDeliveryDetails?: { DeliveryMedium?: string; Destination?: string; AttributeName?: string };
   Session?: string;
   SecretCode?: string;
   Status?: string;
@@ -129,6 +133,18 @@ export function clearAuthCookies(response: NextResponse) {
 }
 
 export function readEhrIdCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, ID_COOKIE);
+}
+
+export function readEhrAccessCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, ACCESS_COOKIE);
+}
+
+export function readEhrRefreshCookie(cookieHeader: string) {
+  return readCookie(cookieHeader, REFRESH_COOKIE);
+}
+
+function readCookie(cookieHeader: string, cookieName: string) {
   const cookies = cookieHeader
     .split(";")
     .map((part) => part.trim())
@@ -139,7 +155,7 @@ export function readEhrIdCookie(cookieHeader: string) {
     if (separator === -1) continue;
     const name = cookie.slice(0, separator);
     const value = cookie.slice(separator + 1);
-    if (name === ID_COOKIE) return decodeURIComponent(value);
+    if (name === cookieName) return decodeURIComponent(value);
   }
 
   return "";
