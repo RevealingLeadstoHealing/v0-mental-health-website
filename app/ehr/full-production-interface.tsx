@@ -3489,6 +3489,21 @@ function ClientManagementPage() {
                       ? "Resend Intake Package"
                       : "Send Intake Package"}
                 </Button>
+                {(() => {
+                  const status = store.users[savedPatient.clientId]?.profile?.invitationStatus;
+                  const when = store.users[savedPatient.clientId]?.profile?.invitationStatusUpdatedAt;
+                  const whenText = when ? ` on ${new Date(when).toLocaleString()}` : "";
+                  if (sendingInvitationId === savedPatient.clientId) {
+                    return <p className="mt-2 text-sm font-medium text-amber-700">Sending the intake package…</p>;
+                  }
+                  if (status === "Sent") {
+                    return <p className="mt-2 text-sm font-medium text-emerald-700">✓ Intake package sent{whenText}. The patient received their username, temporary password, and personal telehealth link.</p>;
+                  }
+                  if (status === "Failed") {
+                    return <p className="mt-2 text-sm font-medium text-red-700">✗ The intake package failed to send{whenText}. Check the patient email address and try again.</p>;
+                  }
+                  return <p className="mt-2 text-sm font-medium text-slate-600">Not sent yet. Click Send Intake Package to deliver the invitation.</p>;
+                })()}
                 <p className="mt-2 text-xs text-slate-600">Sends the secure patient-portal invitation with the MRN, portal login, personal telehealth link, intake, and consent access. Telehealth remains available inside that patient&rsquo;s authenticated portal.</p>
               </div>
             )}
@@ -3514,7 +3529,15 @@ function ClientManagementPage() {
                 <p>Homework items: {client.bucket.homework.length}</p>
                 <p>Appointments: {client.bucket.appointments.length}</p>
                 <p>Diagnoses: {(client.bucket.intake?.diagnoses || []).join(", ") || "None entered"}</p>
-                <p>Invitation status: <span className="font-semibold text-slate-800">{["Sent", "Failed"].includes(client.invitationStatus) ? client.invitationStatus : "Not sent"}</span></p>
+                <p>Invitation:{" "}
+                  {sendingInvitationId === client.id
+                    ? <span className="font-semibold text-amber-700">Sending…</span>
+                    : client.invitationStatus === "Sent"
+                      ? <span className="font-semibold text-emerald-700">✓ Sent{client.invitationStatusUpdatedAt ? ` (${new Date(client.invitationStatusUpdatedAt).toLocaleString()})` : ""}</span>
+                      : client.invitationStatus === "Failed"
+                        ? <span className="font-semibold text-red-700">✗ Failed to send — try again</span>
+                        : <span className="font-semibold text-slate-700">Not sent yet</span>}
+                </p>
               </div>
               <Button
                 className="w-full mt-4 rounded-2xl"
@@ -3526,8 +3549,13 @@ function ClientManagementPage() {
                 Open client chart
               </Button>
               <Button variant="outline" className="w-full mt-2 rounded-2xl" disabled={sendingInvitationId === client.id || !client.email} onClick={() => resendPatientInvitation(client.id)}>
-                {sendingInvitationId === client.id ? "Sending invitation…" : "Send / Resend Patient Invitation"}
+                {sendingInvitationId === client.id
+                  ? "Sending invitation…"
+                  : client.invitationStatus === "Sent"
+                    ? "Resend patient invitation"
+                    : "Send patient invitation"}
               </Button>
+              {!client.email && <p className="mt-1 text-xs text-red-600">Add an email address to this chart before an invitation can be sent.</p>}
             </CardContent>
           </Card>
         ))}
