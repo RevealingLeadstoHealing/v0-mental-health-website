@@ -8,7 +8,7 @@ export default function SignedDocuments({ clientId }: { clientId: string }) {
   useEffect(() => {
     const controller = new AbortController();
     setDocuments([]); setNotice('Loading signed copies…');
-    fetch(`/api/ehr/signed-documents?clientId=${encodeURIComponent(clientId)}`, { signal: controller.signal, cache: 'no-store' })
+    fetch(`/api/ehr/signed-documents?clientId=${encodeURIComponent(clientId)}`, { signal: controller.signal, cache: 'no-store', credentials: 'include' })
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Unable to load signed documents.'); return result; })
       .then(result => { setDocuments(result.documents); setNotice(result.documents.length ? '' : 'No signed copies are available yet.'); })
       .catch(error => { if (!controller.signal.aborted) setNotice(error.message); });
@@ -22,8 +22,12 @@ export default function SignedDocuments({ clientId }: { clientId: string }) {
   }
   async function openOriginal(copy: any) {
     try {
-      const response = await fetch(`/api/ehr/documents/presign?clientId=${encodeURIComponent(clientId)}&key=${encodeURIComponent(copy.storageKey)}`, { cache: 'no-store' });
-      const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Unable to open the original file.');
+      const response = await fetch(
+        `/api/ehr/documents/presign?clientId=${encodeURIComponent(clientId)}&key=${encodeURIComponent(copy.storageKey)}`,
+        { cache: 'no-store', credentials: 'include' }
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to open the original file.');
       window.open(result.downloadUrl, '_blank', 'noopener,noreferrer');
     } catch (error: any) { setNotice(error.message); }
   }

@@ -1,4 +1,4 @@
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../../lib/ehr/auth";
@@ -25,6 +25,10 @@ type AllowedDocumentType = (typeof ALLOWED_DOCUMENT_TYPES)[number];
 function isAllowedDocumentType(value: string): value is AllowedDocumentType {
   return (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(value);
 }
+
+// ---------------------------------------------------------------------------
+// POST — generate a presigned S3 upload URL
+// ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
   try {
@@ -94,15 +98,70 @@ export async function POST(request: Request) {
       clientId,
       entityType: "document-upload",
       entityId: documentId,
-      summary: "A time-limited private S3 upload link was created and document metadata was recorded.",
+      summary:
+        "A time-limited private S3 upload link was created and document metadata was recorded.",
     });
 
+    // uploadHeaders must be sent with every S3 PUT — Content-Type must match
+    // what was signed or S3 will reject the upload with a 403 SignatureDoesNotMatch.
     return NextResponse.json({
       documentId,
       key,
       uploadUrl,
       expiresInSeconds: 300,
+      uploadHeaders: {
+        "Content-Type": contentType,
+      },
     });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET — generate a presigned S3 download URL for an existing object
+// Called by signed-documents.tsx openOriginal() to open uploaded files
+// ---------------------------------------------------------------------------
+
+export async function GET(request: Request) {
+  try {
+    const actor = await requireEhrActor(request);
+    requireRole(actor, ["owner", "provider", "clinical_staff", "client"]);
+
+    const url = new URL(request.url);
+    const clientId = url.searchParams.get("clientId") || actor.sub;
+    const key = url.searchParams.get("key") || "";
+
+    if (!key) {
+      throw new ApiError(400, "key is required.");
+    }
+
+    // Enforce path-based ownership: the key must belong to this practice and client.
+    const expectedPrefix = `ehr-documents/${actor.practiceId}/client-${safeSegment(clientId)}/`;
+    if (!key.startsWith(expectedPrefix)) {
+      throw new ApiError(403, "Document key does not belong to this chart.");
+    }
+
+    if (actor.role === "client" && clientId !== actor.sub) {
+      throw new ApiError(403, "Clients can only access their own documents.");
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: rlthAwsFoundation.documentsBucketName,
+      Key: key,
+    });
+
+    const downloadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 300 });
+
+    await appendAuditEvent(actor, {
+      action: "Generated document download link",
+      category: "Document",
+      clientId,
+      entityType: "document-download",
+      summary: "A time-limited private S3 download link was generated.",
+    });
+
+    return NextResponse.json({ downloadUrl, expiresInSeconds: 300 });
   } catch (error) {
     return apiErrorResponse(error);
   }

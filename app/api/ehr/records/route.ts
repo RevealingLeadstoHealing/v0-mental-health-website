@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
-import { appendAuditEvent, listClinicalRecords, putClinicalRecord } from "../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, listClinicalRecords, putClinicalRecord, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
 
 export async function GET(request: Request) {
   try {
@@ -9,11 +9,14 @@ export async function GET(request: Request) {
     const clientId = url.searchParams.get("clientId") || actor.sub;
     const limit = Number(url.searchParams.get("limit") || "50");
 
-    if (actor.role === "client" && clientId !== actor.sub) {
-      throw new ApiError(403, "Clients can only access their own record list.");
-    }
-
-    if (actor.role !== "client") {
+    if (actor.role === "client") {
+      // Clients may only access their own chart. Compare against cognitoUserId
+      // on the profile (the DynamoDB clientId UUID ≠ the Cognito sub).
+      const profile = await getClientProfile(actor.practiceId, clientId);
+      if (!profile || profile.cognitoUserId !== actor.sub) {
+        throw new ApiError(403, "Clients can only access their own record list.");
+      }
+    } else {
       requireRole(actor, ["owner", "provider", "clinical_staff", "auditor"]);
     }
 
