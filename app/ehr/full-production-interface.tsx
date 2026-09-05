@@ -367,6 +367,15 @@ function EhrScopedStyles() {
 const APP_NAME = "Revealing Leads to Healing Wellness Services LLC";
 const VERSION = "EHR Proprietary System v2.0.25";
 const PRACTITIONER_NAME = "Kenseener Carpenter";
+// Each client's personal, recurring telehealth link. Access is gated by the
+// patient's authenticated portal login; the clientId identifies which private
+// room the signed-in patient is routed to. Reused for every session.
+function personalTelehealthLink(clientId) {
+  const origin = typeof window !== "undefined" && window.location?.origin
+    ? window.location.origin
+    : "https://ehr.revealing-leads-to-healing-wellness-services.org";
+  return `${origin}/ehr/telehealth?chart=${encodeURIComponent(clientId || "")}`;
+}
 const diagnosisCodeOptions = [
   { code: "F41.1", label: "Generalized Anxiety Disorder", keywords: "anxiety worry gad generalized anxious" },
   { code: "F41.0", label: "Panic Disorder", keywords: "panic attacks anxiety fear" },
@@ -3436,6 +3445,36 @@ function ClientManagementPage() {
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <p className="font-medium text-slate-800">{savedPatient.fullName} was saved.</p>
                 <p className="mt-1 text-sm text-slate-600">MRN: {savedPatient.medicalRecordNumber || "Not assigned"}</p>
+                <p className="mt-1 text-sm text-slate-600">Permanent username: {savedPatient.email || "Add an email to create the portal login"}</p>
+                <p className="mt-1 text-sm text-slate-600">Temporary password: Delivered securely by email to the patient (never shown here).</p>
+
+                <div className="mt-3 rounded-lg border border-blue-300 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-800">Your personal telehealth link</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    This is your private, recurring telehealth link. It is used for every session and is connected to
+                    your provider&rsquo;s room. Access is secured through your own patient portal login &mdash; sign in with
+                    the username and temporary password above, then open the link below to reach your private telehealth
+                    room. You can use it any time from your portal; no new link is sent for each visit.
+                  </p>
+                  <code className="mt-2 block break-all rounded bg-slate-100 px-2 py-1 text-xs text-slate-800">
+                    {personalTelehealthLink(savedPatient.clientId)}
+                  </code>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg border border-blue-300 px-3 py-1.5 text-xs"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(personalTelehealthLink(savedPatient.clientId));
+                        setPatientNotice("Personal telehealth link copied.");
+                      } catch {
+                        setPatientNotice("Copy the telehealth link shown above manually.");
+                      }
+                    }}
+                  >
+                    Copy telehealth link
+                  </button>
+                </div>
+
                 <Button
                   className="mt-3 rounded-2xl"
                   disabled={sendingInvitationId === savedPatient.clientId || !savedPatient.email}
@@ -3450,7 +3489,7 @@ function ClientManagementPage() {
                       ? "Resend Intake Package"
                       : "Send Intake Package"}
                 </Button>
-                <p className="mt-2 text-xs text-slate-600">Sends the secure patient-portal invitation with intake and consent access. Telehealth remains available inside that patient’s authenticated portal.</p>
+                <p className="mt-2 text-xs text-slate-600">Sends the secure patient-portal invitation with the MRN, portal login, personal telehealth link, intake, and consent access. Telehealth remains available inside that patient&rsquo;s authenticated portal.</p>
               </div>
             )}
           </CardContent>
