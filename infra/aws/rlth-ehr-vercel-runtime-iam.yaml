@@ -25,6 +25,19 @@ Parameters:
     Type: String
   DocumentsBucketName:
     Type: String
+  SesFromAddress:
+    Type: String
+    Default: "no-reply@revealing-leads-to-healing-wellness-services.org"
+    Description: Verified SES sender address the Vercel runtime is allowed to send from.
+  SesIdentityArn:
+    Type: String
+    Default: ""
+    Description: >
+      ARN of the verified SES domain or email identity. Leave empty to skip
+      the SES send policy (Cognito will handle email directly in that case).
+
+Conditions:
+  HasSesIdentity: !Not [!Equals [!Ref SesIdentityArn, ""]]
 
 Resources:
   VercelRuntimeUser:
@@ -102,10 +115,43 @@ Resources:
               - cognito-idp:ListUsers
             Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
 
+  # Conditionally attach SES send permissions when a verified identity is configured.
+  # This policy is only created when SesIdentityArn is non-empty.
+  VercelSesPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasSesIdentity
+    Properties:
+      PolicyName: !Sub "${PracticeSlug}-${EnvironmentName}-vercel-ehr-ses-policy"
+      Users:
+        - !Ref VercelRuntimeUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SesTransactionalEmailSend
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource:
+              - !Ref SesIdentityArn
+            Condition:
+              StringEquals:
+                # Restrict to the specific from-address configured for this EHR deployment.
+                ses:FromAddress: !Ref SesFromAddress
+          - Sid: SesGetSendQuota
+            Effect: Allow
+            Action:
+              - ses:GetSendQuota
+              - ses:GetSendStatistics
+            Resource: "*"
+
 Outputs:
   RuntimeUserName:
     Description: IAM user name for the Vercel EHR server runtime.
     Value: !Ref VercelRuntimeUser
   RuntimePolicyName:
-    Description: IAM policy attached to the Vercel EHR runtime user.
+    Description: IAM policy attached to the Vercel EHR runtime user (DynamoDB, S3, KMS, Cognito).
     Value: !Ref VercelRuntimePolicy
+  SesPolicyName:
+    Description: IAM policy for SES transactional email send (only present when SesIdentityArn is set).
+    Value: !If [HasSesIdentity, !Ref VercelSesPolicy, "N/A - SesIdentityArn not provided"]
