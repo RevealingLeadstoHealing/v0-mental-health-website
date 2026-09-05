@@ -931,25 +931,8 @@ function AuthProvider({ children }) {
       persistModuleSnapshot(client.clientId, "documents", onboardingDocuments),
       persistModuleSnapshot(client.clientId, "intake", onboardingIntake),
     ]);
-    let invitationSent = false;
-    let invitationError = "";
-    if (client.email) {
-      try {
-        await productionApi("/api/ehr/clients", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "resendInvitation", clientId: client.clientId }),
-        });
-        invitationSent = true;
-      } catch (error) {
-        invitationError = error instanceof Error ? error.message : "The patient invitation could not be sent.";
-      }
-    }
-    setSaveStatus(invitationSent
-      ? "Patient chart, onboarding packet, and secure email invitation are ready."
-      : invitationError
-        ? `Patient chart and onboarding packet saved. Invitation not sent: ${invitationError}`
-        : "Patient chart and onboarding packet saved. Add an email address to send a portal invitation.");
-    return { ...client, invitationSent, invitationError };
+    setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS.");
+    return { ...client, invitationSent: false, invitationError: "" };
   };
   const value = useMemo(() => ({
     currentUser, store, login, signup, logout, createClient, updateCurrentUserData, updateSpecificUserData, flushClientModuleSaves,
@@ -3357,6 +3340,7 @@ function ClientManagementPage() {
   const [patientError, setPatientError] = useState("");
   const [patientNotice, setPatientNotice] = useState("");
   const [sendingInvitationId, setSendingInvitationId] = useState("");
+  const [savedPatient, setSavedPatient] = useState(null);
   const [insuranceCardFrontFile, setInsuranceCardFrontFile] = useState<File | null>(null);
   const [insuranceCardBackFile, setInsuranceCardBackFile] = useState<File | null>(null);
   const [photoIdFrontFile, setPhotoIdFrontFile] = useState<File | null>(null);
@@ -3376,9 +3360,11 @@ function ClientManagementPage() {
       await productionApi("/api/ehr/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resendInvitation", clientId }) });
       updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Sent", invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientNotice("Patient invitation sent successfully.");
+      return true;
     } catch (error) {
       updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Failed", invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientError(error instanceof Error ? error.message : "The patient invitation could not be sent.");
+      return false;
     } finally {
       setSendingInvitationId("");
     }
@@ -3390,20 +3376,17 @@ function ClientManagementPage() {
     setPatientNotice("");
     try {
       const client = await createClient({ ...patientForm, insuranceCardFrontFile, insuranceCardBackFile, photoIdFrontFile, photoIdBackFile });
-      const invitationStatus = client.invitationSent ? "Sent" : patientForm.email.trim() ? "Failed" : "Not sent";
-      updateSpecificUserData(client.clientId, "profile", (previous) => ({ ...previous, invitationStatus, invitationStatusUpdatedAt: new Date().toISOString() }));
-      setPatientNotice(client.invitationSent
-        ? "Patient record saved and secure invitation sent."
-        : patientForm.email.trim()
-          ? `Patient record saved. Invitation not sent: ${client.invitationError || "use Send / Resend Patient Invitation from the existing-patient list."}`
-          : "Patient record saved. Add an email address to send an invitation.");
+      updateSpecificUserData(client.clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Not sent", invitationStatusUpdatedAt: new Date().toISOString() }));
+      setSavedPatient(client);
+      setPatientNotice(patientForm.email.trim()
+        ? "Patient record, intake packet, and consent forms saved. Send the intake package below when ready."
+        : "Patient record, intake packet, and consent forms saved. Add an email address before sending the intake package.");
       setSelectedChartClientId(client.clientId);
       setPatientForm({ fullName: "", preferredName: "", email: "", phone: "", dateOfBirth: "", sex: "", addressLine1: "", addressLine2: "", city: "", state: "", zipCode: "", insurancePayer: "", insuranceNetworkStatus: "", insurancePlanName: "", insuranceMemberId: "", insuranceGroupNumber: "" });
       setInsuranceCardFrontFile(null);
       setInsuranceCardBackFile(null);
       setPhotoIdFrontFile(null);
       setPhotoIdBackFile(null);
-      setShowAddPatient(false);
     } catch (error) {
       setPatientError(error instanceof Error ? error.message : "Unable to add the patient.");
     } finally {
@@ -3419,6 +3402,7 @@ function ClientManagementPage() {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <Button className="rounded-2xl" onClick={() => {
           setPatientError("");
+          setSavedPatient(null);
           setShowAddPatient((previous) => !previous);
         }}>
           <UserPlus className="h-4 w-4" />
@@ -3486,6 +3470,27 @@ function ClientManagementPage() {
               </Button>
               <Button variant="outline" className="rounded-2xl" disabled={savingPatient} onClick={() => setShowAddPatient(false)}>Cancel</Button>
             </div>
+            {savedPatient && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <p className="font-medium text-slate-800">{savedPatient.fullName} was saved.</p>
+                <p className="mt-1 text-sm text-slate-600">MRN: {savedPatient.medicalRecordNumber || "Not assigned"}</p>
+                <Button
+                  className="mt-3 rounded-2xl"
+                  disabled={sendingInvitationId === savedPatient.clientId || !savedPatient.email}
+                  onClick={async () => {
+                    const sent = await resendPatientInvitation(savedPatient.clientId);
+                    if (sent) setSavedPatient((patient) => patient ? { ...patient, invitationSent: true } : patient);
+                  }}
+                >
+                  {sendingInvitationId === savedPatient.clientId
+                    ? "Sending intake package…"
+                    : savedPatient.invitationSent
+                      ? "Resend Intake Package"
+                      : "Send Intake Package"}
+                </Button>
+                <p className="mt-2 text-xs text-slate-600">Sends the secure patient-portal invitation with intake and consent access. Telehealth remains available inside that patient’s authenticated portal.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
