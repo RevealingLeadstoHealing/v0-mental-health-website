@@ -699,7 +699,17 @@ function AuthProvider({ children }) {
       .then(() => persistModuleSnapshot(clientId, moduleKey, value))
       .then(() => {
         saveFailuresRef.current.delete(queueKey);
-        setSaveStatus(saveFailuresRef.current.size ? "Some chart changes have not saved. Please retry them." : "Saved securely to AWS.");
+        if (saveFailuresRef.current.size) {
+          // Leave a failure message standing so it isn't missed.
+          setSaveStatus("Some chart changes have not saved. Please retry them.");
+        } else {
+          // Success: show the confirmation briefly, then clear it so the
+          // banner doesn't linger permanently at the top of the page.
+          setSaveStatus("Saved securely to AWS.");
+          setTimeout(() => {
+            setSaveStatus((current) => (current === "Saved securely to AWS." ? "" : current));
+          }, 4000);
+        }
       })
       .catch((error) => {
         saveFailuresRef.current.set(queueKey, error);
