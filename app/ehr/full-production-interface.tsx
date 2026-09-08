@@ -567,6 +567,19 @@ function AuthProvider({ children }) {
   const saveQueuesRef = useRef(new Map());
   const saveFailuresRef = useRef(new Map());
   useEffect(() => { storeRef.current = store; }, [store]);
+  // Safety net so the status banner can never sit stuck. Whenever a transient
+  // status is shown ("Saving…" or "Saved…"), auto-clear it after 8 seconds —
+  // unless there are genuine unsaved failures, which must stay visible. This
+  // guarantees "Saving securely to AWS…" cannot linger and confuse anyone.
+  useEffect(() => {
+    if (!saveStatus) return;
+    const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved");
+    if (isFailure) return; // leave real problems on screen
+    const timer = setTimeout(() => {
+      if (saveFailuresRef.current.size === 0) setSaveStatus("");
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [saveStatus]);
 
   useEffect(() => {
     let active = true;
