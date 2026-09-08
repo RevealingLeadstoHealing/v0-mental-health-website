@@ -1,3 +1,7 @@
+# pnpm 9 requires a packages field when this workspace file is present.
+# This is a single-app project (no monorepo), so the workspace is just the root.
+packages:
+  - .
 allowBuilds:
   protobufjs: false
   sharp: true
