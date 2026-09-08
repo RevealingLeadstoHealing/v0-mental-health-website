@@ -27,14 +27,14 @@ Parameters:
     Type: String
   SesFromAddress:
     Type: String
-    Default: "no-reply@revealing-leads-to-healing-wellness-services.org"
-    Description: Verified SES sender address the Vercel runtime is allowed to send from.
+    Default: "connect@rlth.org"
+    Description: Primary practice sending address the runtime is allowed to send from (rlth.org, verified in SES).
   SesIdentityArn:
     Type: String
-    Default: ""
+    Default: "arn:aws:ses:us-east-1:597936860711:identity/rlth.org"
     Description: >
-      ARN of the verified SES domain or email identity. Leave empty to skip
-      the SES send policy (Cognito will handle email directly in that case).
+      ARN of the verified SES domain identity (rlth.org). Leave empty to skip
+      the SES send policy (Cognito would handle email directly in that case).
 
 Conditions:
   HasSesIdentity: !Not [!Equals [!Ref SesIdentityArn, ""]]

@@ -17,19 +17,19 @@ Parameters:
     Description: Deployment environment.
   SesFromAddress:
     Type: String
-    Default: "no-reply@revealing-leads-to-healing-wellness-services.org"
+    Default: "connect@rlth.org"
     Description: >
-      Verified SES sender address used by Cognito for password reset and
-      invitation emails. Must be verified in SES and in production-access
-      mode (not sandbox) before real users can receive email.
+      Primary practice sending address used by Cognito for patient invitation
+      and password reset emails. The rlth.org domain is verified in SES
+      (us-east-1). Requires SES production access (out of sandbox) before real
+      patients can receive email.
   SesIdentityArn:
     Type: String
-    Default: ""
+    Default: "arn:aws:ses:us-east-1:597936860711:identity/rlth.org"
     Description: >
-      ARN of the verified SES domain or email identity. Leave empty to use
-      Cognito's default shared email sender (50 emails/day limit, suitable
-      for initial setup only). Set this to your verified domain identity ARN
-      before going live with real provider accounts.
+      ARN of the verified SES domain identity (rlth.org). When set, Cognito
+      sends from SesFromAddress via this identity. Leave empty only to fall
+      back to Cognito's default shared sender (50/day, sandbox-limited).
 
 Conditions:
   # True when a verified SES identity ARN has been supplied.
