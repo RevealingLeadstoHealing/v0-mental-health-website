@@ -694,9 +694,16 @@ function AuthProvider({ children }) {
     const queueKey = `${clientId}:${moduleKey}`;
     setSaveStatus("Saving securely to AWS…");
     const previous = saveQueuesRef.current.get(queueKey) || Promise.resolve();
+    // Safety net: never let a save spin "Saving…" forever. If the request does
+    // not resolve within 30 seconds, treat it as a failure so the banner clears
+    // and the provider gets a clear, actionable message instead of a hang.
+    const withTimeout = (promise) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("The save timed out. Check your connection and retry.")), 30000)),
+    ]);
     const next = previous
       .catch(() => undefined)
-      .then(() => persistModuleSnapshot(clientId, moduleKey, value))
+      .then(() => withTimeout(persistModuleSnapshot(clientId, moduleKey, value)))
       .then(() => {
         saveFailuresRef.current.delete(queueKey);
         if (saveFailuresRef.current.size) {
