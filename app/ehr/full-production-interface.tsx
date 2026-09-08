@@ -2313,8 +2313,10 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       category: "Scheduling",
     });
     // Fire a booking alert so the provider is notified (standing in-EHR alert +
-    // email to all configured inboxes). Best-effort: never blocks the booking.
-    void productionApi("/api/ehr/booking-alerts", {
+    // email to all configured inboxes). Then refresh the alert list right away
+    // so the amber "needs acknowledgment" banner appears immediately instead of
+    // waiting for the 60s auto-refresh.
+    productionApi("/api/ehr/booking-alerts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2325,7 +2327,9 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
         format: draft.format,
         purpose: draft.purpose,
       }),
-    }).catch(() => {});
+    })
+      .then(() => loadPendingAlerts())
+      .catch(() => {});
     setDraft({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
   };
   const cancel = (appointmentId) => {
