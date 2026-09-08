@@ -3,7 +3,12 @@ frontend:
   phases:
     preBuild:
       commands:
+        # Pin pnpm to a stable version that matches lockfileVersion 9.0.
+        # Without this, `corepack enable` fetched the latest pnpm (12.3.4),
+        # which failed to download in the Amplify build environment and broke
+        # every build before it reached the app code.
         - corepack enable
+        - corepack prepare pnpm@9.15.9 --activate
         - pnpm install --frozen-lockfile
     build:
       commands:
