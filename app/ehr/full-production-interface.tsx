@@ -2312,6 +2312,20 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       clientName: activeClient?.profile?.fullName || currentUser.fullName,
       category: "Scheduling",
     });
+    // Fire a booking alert so the provider is notified (standing in-EHR alert +
+    // email to all configured inboxes). Best-effort: never blocks the booking.
+    void productionApi("/api/ehr/booking-alerts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId: activeClientId,
+        clientName: activeClient?.profile?.fullName || currentUser.fullName,
+        date: draft.date,
+        time: draft.time,
+        format: draft.format,
+        purpose: draft.purpose,
+      }),
+    }).catch(() => {});
     setDraft({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
   };
   const cancel = (appointmentId) => {
@@ -2322,12 +2336,73 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
     else updateCurrentUserData("appointments", update);
     appendAuditLog({ action: "Cancelled client appointment", details: `Appointment ${appointmentId} was cancelled and retained in audit history.`, clientId: activeClientId, clientName: activeClient?.profile?.fullName || currentUser.fullName, category: "Scheduling" });
   };
+
+  // Standing "New Bookings" alerts — provider only. These stay visible until
+  // the provider acknowledges each one (in-EHR or via the email Acknowledge link).
+  const [pendingAlerts, setPendingAlerts] = useState([]);
+  const loadPendingAlerts = () => {
+    if (!isProvider) return;
+    productionApi("/api/ehr/booking-alerts?pending=1")
+      .then((data) => setPendingAlerts(Array.isArray(data.alerts) ? data.alerts : []))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    if (!isProvider) return;
+    loadPendingAlerts();
+    // Auto-acknowledge if arriving via an email "Acknowledge" link (?ack=alertId).
+    const params = new URLSearchParams(window.location.search);
+    const ackId = params.get("ack");
+    if (ackId) void acknowledgeAlertById(ackId);
+    // Refresh every 60s so new bookings surface without a manual reload.
+    const timer = setInterval(loadPendingAlerts, 60000);
+    return () => clearInterval(timer);
+  }, [isProvider]);
+  const acknowledgeAlert = async (alert) => {
+    try {
+      await productionApi("/api/ehr/booking-alerts", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alertId: alert.alertId, createdAt: alert.createdAt }),
+      });
+      setPendingAlerts((prev) => prev.filter((a) => a.alertId !== alert.alertId));
+    } catch { /* leave it standing if it fails */ }
+  };
+  const acknowledgeAlertById = async (alertId) => {
+    // For the email link case, find the matching pending alert to get createdAt.
+    try {
+      const data = await productionApi("/api/ehr/booking-alerts?pending=1");
+      const match = (data.alerts || []).find((a) => a.alertId === alertId);
+      if (match) await acknowledgeAlert(match);
+    } catch { /* ignore */ }
+  };
+
   return (
     <div>
       <SectionHeader
         title="Scheduling"
         description="Client-linked appointment scheduling with status tracking and audited cancellation."
       />
+      {isProvider && pendingAlerts.length > 0 && (
+        <div className="mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-900">
+            {pendingAlerts.length} new booking{pendingAlerts.length === 1 ? "" : "s"} need{pendingAlerts.length === 1 ? "s" : ""} your acknowledgment
+          </p>
+          <p className="mt-1 text-xs text-amber-800">These stay here until you acknowledge each one. An email was also sent to your practice inboxes.</p>
+          <div className="mt-3 space-y-2">
+            {pendingAlerts.map((alert) => (
+              <div key={alert.alertId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-white p-3">
+                <div className="text-sm text-slate-800">
+                  <span className="font-medium">{alert.clientName || "Client"}</span> · {alert.appointmentPurpose || "Appointment"} · {alert.appointmentDate} {alert.appointmentTime}
+                  {alert.bookedByRole === "client" ? <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-xs">client booked</span> : null}
+                </div>
+                <button type="button" className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={() => acknowledgeAlert(alert)}>
+                  Acknowledge
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
