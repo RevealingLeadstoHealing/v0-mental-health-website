@@ -2300,8 +2300,12 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
   const activeClient = store.users[activeClientId];
   const appointments = activeClient?.appointments || [];
   const [draft, setDraft] = useState({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
+  const [scheduleNotice, setScheduleNotice] = useState("");
   const add = () => {
-    if (!activeClientId || !draft.date || !draft.time) return;
+    // Clear feedback when required fields are missing, so the button never
+    // just silently does nothing.
+    if (!activeClientId) { setScheduleNotice("Select a client before scheduling."); return; }
+    if (!draft.date || !draft.time) { setScheduleNotice("Please choose both a date and a time before scheduling."); return; }
     const appointment = { id: `appt-${Date.now()}`, ...draft, status: "Scheduled", createdAt: new Date().toISOString() };
     if (isProvider) updateSpecificUserData(activeClientId, "appointments", (prev) => [appointment, ...(prev || [])]);
     else updateCurrentUserData("appointments", (prev) => [appointment, ...(prev || [])]);
@@ -2330,7 +2334,9 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
     })
       .then(() => loadPendingAlerts())
       .catch(() => {});
+    setScheduleNotice(`Appointment scheduled for ${draft.date} at ${draft.time}. It appears in the appointment list below.`);
     setDraft({ date: "", time: "", format: "Telehealth", purpose: "Follow-up psychotherapy" });
+    setTimeout(() => setScheduleNotice(""), 8000);
   };
   const cancel = (appointmentId) => {
     const update = (prev) => (prev || []).map((appointment) => appointment.id === appointmentId
@@ -2432,6 +2438,8 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
             </Select>
             <Input value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} placeholder="Purpose" />
             <Button className="rounded-2xl" disabled={!activeClientId || !draft.date || !draft.time} onClick={add}><Plus className="mr-2 h-4 w-4" />Schedule appointment</Button>
+            {(!draft.date || !draft.time) && <p className="text-xs text-slate-500">Choose a date and time to enable the Schedule button.</p>}
+            {scheduleNotice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{scheduleNotice}</p>}
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
