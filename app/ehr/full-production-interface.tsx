@@ -9,6 +9,7 @@ import { demographicGroups, editableDemographicFields, patientAge } from "../../
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import ClinicalCodeInput from "./clinical-code-input";
+import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
 import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatment-goals";
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
@@ -376,6 +377,15 @@ function personalTelehealthLink(clientId) {
     : "https://ehr.revealing-leads-to-healing-wellness-services.org";
   return `${origin}/ehr/telehealth?chart=${encodeURIComponent(clientId || "")}`;
 }
+// The patient portal sign-in page. Patients tap this (or scan the QR) to log in.
+function patientLoginLink() {
+  const origin = typeof window !== "undefined" && window.location?.origin
+    ? window.location.origin
+    : "https://ehr.revealing-leads-to-healing-wellness-services.org";
+  return `${origin}/login`;
+}
+// The public practice website.
+const PRACTICE_WEBSITE_URL = "https://revealing-leads-to-healing-wellness-services.org";
 const diagnosisCodeOptions = [
   { code: "F41.1", label: "Generalized Anxiety Disorder", keywords: "anxiety worry gad generalized anxious" },
   { code: "F41.0", label: "Panic Disorder", keywords: "panic attacks anxiety fear" },
@@ -3476,6 +3486,28 @@ function ClientManagementPage() {
                 <p className="mt-1 text-sm text-slate-600">MRN: {savedPatient.medicalRecordNumber || "Not assigned"}</p>
                 <p className="mt-1 text-sm text-slate-600">Permanent username: {savedPatient.email || "Add an email to create the portal login"}</p>
                 <p className="mt-1 text-sm text-slate-600">Temporary password: Delivered securely by email to the patient (never shown here).</p>
+
+                <div className="mt-3 rounded-lg border border-blue-300 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-800">Access points — tap a link, or scan a code from another device</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    On a phone, tap the links directly. On a computer, the patient can scan a code with their phone.
+                    Both lead to the same secure destinations.
+                  </p>
+
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold text-slate-700">Patient portal sign-in</p>
+                    <code className="mt-1 block break-all rounded bg-slate-100 px-2 py-1 text-xs text-slate-800">{patientLoginLink()}</code>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold text-slate-700">Practice website</p>
+                    <code className="mt-1 block break-all rounded bg-slate-100 px-2 py-1 text-xs text-slate-800">{PRACTICE_WEBSITE_URL}</code>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <AccessQrCode url={patientLoginLink()} label="Scan to sign in (EHR)" />
+                    <AccessQrCode url={PRACTICE_WEBSITE_URL} label="Scan for website" />
+                  </div>
+                </div>
 
                 <div className="mt-3 rounded-lg border border-blue-300 bg-white p-3">
                   <p className="text-sm font-semibold text-slate-800">Your personal telehealth link</p>
