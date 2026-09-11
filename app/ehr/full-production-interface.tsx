@@ -386,6 +386,40 @@ function patientLoginLink() {
 }
 // The public practice website.
 const PRACTICE_WEBSITE_URL = "https://revealing-leads-to-healing-wellness-services.org";
+
+// The 5-day intake expectation shown to patients. Stated as an expectation,
+// NOT an automatic action — every removal is the provider's clinical judgment.
+const INTAKE_DISCLAIMER = "Intake should be completed within 5 days of receiving your invitation. Incomplete intakes may be removed.";
+const INTAKE_WINDOW_DAYS = 5;
+
+// Determines whether a patient has meaningfully begun/completed intake.
+// A completed intake has real demographic/clinical content — not just the
+// empty onboarding shell created at invitation.
+function hasCompletedIntake(bucket) {
+  const intake = bucket?.intake || {};
+  // Consider intake "started/completed" if any core clinical/demographic field
+  // was actually filled by the patient (beyond what the provider pre-entered).
+  const meaningfulFields = [
+    intake.presentingProblem, intake.chiefComplaint, intake.biopsychosocialSummary,
+    intake.insuranceMemberId, intake.dateOfBirth,
+  ];
+  const hasIntakeContent = meaningfulFields.some((v) => typeof v === "string" && v.trim().length > 0)
+    || (Array.isArray(intake.diagnoses) && intake.diagnoses.length > 0);
+  // Or any signed onboarding document / journal / message from the patient side.
+  const hasSignedDoc = Array.isArray(bucket?.documents)
+    && bucket.documents.some((d) => d && (d.signature || (Array.isArray(d.signatures) && d.signatures.length)));
+  return Boolean(hasIntakeContent || hasSignedDoc);
+}
+
+// Returns the day count within the 5-day window, and whether it's past due.
+// Returns null when there's no invitation date to measure from.
+function intakeWindowStatus(profile) {
+  const sentAt = profile?.invitationStatusUpdatedAt;
+  if (!sentAt || profile?.invitationStatus !== "Sent") return null;
+  const days = Math.floor((Date.now() - new Date(sentAt).getTime()) / (1000 * 60 * 60 * 24));
+  return { day: days, pastDue: days >= INTAKE_WINDOW_DAYS };
+}
+
 const diagnosisCodeOptions = [
   { code: "F41.1", label: "Generalized Anxiety Disorder", keywords: "anxiety worry gad generalized anxious" },
   { code: "F41.0", label: "Panic Disorder", keywords: "panic attacks anxiety fear" },
@@ -3683,6 +3717,7 @@ function ClientManagementPage() {
                   return <p className="mt-2 text-sm font-medium text-slate-600">Not sent yet. Click Send Intake Package to deliver the invitation.</p>;
                 })()}
                 <p className="mt-2 text-xs text-slate-600">Sends the secure patient-portal invitation with the MRN, portal login, personal telehealth link, intake, and consent access. Telehealth remains available inside that patient&rsquo;s authenticated portal.</p>
+                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">{INTAKE_DISCLAIMER}</p>
               </div>
             )}
           </CardContent>
@@ -3716,6 +3751,17 @@ function ClientManagementPage() {
                         ? <span className="font-semibold text-red-700">✗ Failed to send — try again</span>
                         : <span className="font-semibold text-slate-700">Not sent yet</span>}
                 </p>
+                {(() => {
+                  // 5-day intake flag — informational only. No automatic action.
+                  if (hasCompletedIntake(client.bucket)) {
+                    return <p className="text-emerald-700 font-semibold">✓ Intake started/completed</p>;
+                  }
+                  const w = intakeWindowStatus(client.bucket?.profile || client);
+                  if (!w) return null;
+                  return w.pastDue
+                    ? <p className="font-semibold text-red-700">Intake pending — past {INTAKE_WINDOW_DAYS}-day window (day {w.day}). Your determination.</p>
+                    : <p className="font-semibold text-amber-700">Intake pending — day {w.day} of {INTAKE_WINDOW_DAYS}.</p>;
+                })()}
               </div>
               <Button
                 className="w-full mt-4 rounded-2xl"
