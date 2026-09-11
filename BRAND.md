@@ -38,6 +38,27 @@ logo. These are the definitive values. Nothing may substitute them.
   centered line-art figure, "COUNSELING & WELLNESS SERVICES, LLC" beneath,
   thin black circle border, transparent/white background.
 - Use in site header and EHR header for one consistent brand.
+- File: `public/rlth-logo.png` (owner-provided, 2026-09-11).
+- Current profile headshot: `public/kenseener-carpenter-headshot.jpg`
+  (owner-provided, 2026-09-11 — replaces any earlier headshot file).
+
+---
+
+## Layout (the owner's original structure — as follows, no other)
+
+The owner's original site file (June 2024, later updated) is the structural
+reference for every page: a solid, sticky header band (logo + practice name +
+horizontal nav), a plain white content column capped at ~1000px, sections
+separated by a thin 1px divider (no boxed/bordered "cards"), and a solid
+footer band. The only change from that original file is color: the header/
+footer band uses charcoal (`#3A3A3A`) in place of the placeholder navy
+(`#1a365d`), with champagne gold (`#EBC94E`) reserved for accents (nav hover,
+button fills, the subtitle line under the practice name) — never as a full
+page background wash.
+
+Do not introduce a different structural design (card grids, boxed panels,
+heavy borders around content, etc.) without the owner's direction. This file
+wins if any implementation drifts from it.
 
 ---
 

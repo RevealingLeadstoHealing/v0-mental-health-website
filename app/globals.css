@@ -1,4 +1,220 @@
 @import url('https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:wght@400;600;700&display=swap');
-:root{--champagne-gold:#EBC94E;--charcoal:#3A3A3A;--white:#fff;--black:#111}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--champagne-gold);color:var(--charcoal);font-family:"Montserrat",Arial,sans-serif;line-height:1.7}a{color:var(--black)}.site-header{width:100%;padding:2rem 1rem 1.25rem;background:transparent;text-align:center}.brand{display:block;color:var(--black);font-family:"Bevan",Georgia,serif;font-size:clamp(1.65rem,4vw,3rem);line-height:1.15;text-decoration:none}.brand span{display:block;margin-top:.3rem;font-family:"Montserrat",Arial,sans-serif;font-size:clamp(.85rem,1.7vw,1.1rem);font-weight:700;letter-spacing:.16em;text-transform:uppercase}nav{display:flex;justify-content:center;flex-wrap:wrap;gap:.6rem;margin:1.5rem auto 0}nav a{display:inline-block;padding:.48rem .78rem;border:2px solid var(--black);background:transparent;color:var(--white);font-family:"Bevan",Georgia,serif;font-size:.8rem;line-height:1;text-decoration:none;text-transform:uppercase}nav a:hover,nav a:focus-visible{background:var(--charcoal)}.section-shell{width:min(920px,calc(100% - 2rem));margin:2rem auto}.intro{max-width:760px;text-align:center}h1,h2,h3{margin-top:0;color:var(--black);font-family:"Bevan",Georgia,serif;line-height:1.25;text-transform:uppercase}h1{font-size:clamp(2rem,6vw,4rem)}h2{font-size:clamp(1.3rem,3vw,2rem)}.content-card{padding:clamp(1.25rem,4vw,2.5rem);border:3px solid var(--black);background:var(--white)}.content-card article+article{margin-top:2rem;padding-top:2rem;border-top:1px solid var(--charcoal)}.content-card p:last-child{margin-bottom:0}.portrait{text-align:center}.portrait img{display:block;width:min(100%,620px);height:auto;margin:0 auto;border:4px solid var(--charcoal)}details{border-top:1px solid var(--charcoal);padding:1rem 0}details:last-child{padding-bottom:0}summary{color:var(--black);cursor:pointer;font-weight:700}.testimonials{padding:clamp(1.25rem,4vw,2.5rem);background:var(--charcoal);color:var(--white);text-align:center}.testimonials h2{color:var(--white)}blockquote{margin:1.5rem auto;max-width:760px}blockquote strong{display:block;margin-top:.5rem;color:var(--champagne-gold)}.actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.5rem}.button{display:inline-block;padding:.72rem 1rem;border:2px solid var(--black);background:var(--charcoal);color:var(--white);font-weight:700;text-decoration:none;text-transform:uppercase}.button-light{background:var(--white);color:var(--black)}.map h2{text-align:center}.map iframe{display:block;width:100%;min-height:360px;border:3px solid var(--black)}footer{margin-top:3rem;padding:2rem 1rem;background:var(--black);color:var(--white);text-align:center}footer p{margin:0}@media(max-width:620px){.site-header{padding-top:1.25rem}nav{gap:.4rem}nav a{padding:.45rem .6rem;font-size:.7rem}.section-shell{width:min(100% - 1rem,920px)}.actions,.actions .button{width:100%;text-align:center}}
 
-.nav-search{display:inline-flex;align-items:center;gap:.3rem}.nav-search input{padding:.4rem .5rem;border:2px solid var(--black);background:var(--white);color:var(--charcoal);font-family:"Montserrat",Arial,sans-serif;font-size:.78rem;width:8.5rem}.nav-search button{padding:.4rem .6rem;border:2px solid var(--black);background:var(--charcoal);color:var(--white);cursor:pointer;font-size:.85rem;line-height:1}.nav-search button:hover,.nav-search button:focus-visible{background:var(--champagne-gold);color:var(--black)}
+/* ==========================================================================
+   Revealing Leads to Healing Wellness Services, LLC — site styles
+   Layout structure follows the owner's original design: a solid sticky
+   header band, a centered nav row, a plain white content column with thin
+   section dividers, and a solid footer band.
+   Brand colors (BRAND.md — never teal, never navy):
+     champagne gold #EBC94E, charcoal #3A3A3A, white #FFFFFF, black #111111
+   Fonts: headings Bevan, body Montserrat.
+   ========================================================================== */
+
+:root {
+  --champagne-gold: #EBC94E;
+  --charcoal: #3A3A3A;
+  --white: #FFFFFF;
+  --black: #111111;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--white);
+  color: var(--charcoal);
+  font-family: "Montserrat", Arial, sans-serif;
+  line-height: 1.7;
+}
+
+a { color: var(--charcoal); }
+
+/* ---- Header ---- */
+.site-header {
+  background-color: var(--charcoal);
+  padding: 18px 20px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  border-bottom: 3px solid var(--black);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--white);
+  text-decoration: none;
+  margin: 0 0 10px 0;
+}
+.brand-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--white);
+  flex: none;
+}
+.brand-text {
+  display: block;
+  text-align: left;
+  font-family: "Bevan", Georgia, serif;
+  font-size: clamp(1.1rem, 2.6vw, 1.5rem);
+  line-height: 1.25;
+  color: var(--white);
+}
+.brand-subtitle {
+  display: block;
+  margin-top: .2rem;
+  font-family: "Montserrat", Arial, sans-serif;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--champagne-gold);
+}
+
+nav {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+nav a {
+  color: var(--white);
+  text-decoration: none;
+  font-weight: bold;
+  font-size: .85rem;
+  letter-spacing: .02em;
+  padding: 5px 10px;
+}
+nav a:hover,
+nav a:focus-visible {
+  color: var(--champagne-gold);
+  text-decoration: underline;
+}
+
+/* ---- Content ---- */
+.container,
+.section-shell {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.section {
+  padding: 40px 0;
+  border-bottom: 1px solid #eee;
+}
+.section:last-child { border-bottom: none; }
+
+h1, h2, h3 {
+  margin-top: 0;
+  color: var(--charcoal);
+  font-family: "Bevan", Georgia, serif;
+  line-height: 1.3;
+}
+h1 { font-size: clamp(1.75rem, 5vw, 2.5rem); }
+h2 { color: var(--charcoal); font-size: clamp(1.25rem, 3vw, 1.75rem); }
+h2 em, h2 .accent, h3 .accent { color: var(--champagne-gold); font-style: normal; }
+
+p { margin: 0 0 1rem 0; }
+p:last-child { margin-bottom: 0; }
+ul { line-height: 1.8; padding-left: 1.4rem; }
+li + li { margin-top: .5rem; }
+
+.portrait { text-align: center; }
+.portrait img {
+  display: block;
+  width: min(100%, 420px);
+  height: auto;
+  margin: 0 auto;
+  border: 4px solid var(--charcoal);
+}
+
+details { border-top: 1px solid #eee; padding: 1rem 0; }
+details:first-of-type { border-top: none; }
+summary { color: var(--charcoal); font-weight: 700; cursor: pointer; }
+summary::marker { color: var(--champagne-gold); }
+
+/* ---- Buttons / actions ---- */
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+.button {
+  display: inline-block;
+  padding: .72rem 1.1rem;
+  border: 2px solid var(--black);
+  background: var(--champagne-gold);
+  color: var(--black);
+  font-weight: 700;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  font-size: .85rem;
+}
+.button:hover, .button:focus-visible { background: var(--black); color: var(--champagne-gold); }
+.button-light { background: var(--white); color: var(--charcoal); }
+.button-light:hover, .button-light:focus-visible { background: var(--charcoal); color: var(--white); }
+
+/* ---- Contact page ---- */
+.contact-top {
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .contact-top { grid-template-columns: 1fr; }
+}
+
+.notice {
+  margin: 0 0 2rem 0;
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--black);
+  background: #fbf3d8;
+  color: var(--charcoal);
+  font-weight: 600;
+}
+
+form p { margin: 0 0 1rem 0; }
+form label { display: block; font-weight: 700; color: var(--charcoal); }
+input, textarea {
+  width: 100%;
+  padding: .6rem;
+  margin-top: .35rem;
+  border: 2px solid var(--charcoal);
+  font-family: inherit;
+  font-size: 1rem;
+  background: var(--white);
+  color: var(--charcoal);
+}
+input:focus, textarea:focus { outline: 2px solid var(--champagne-gold); border-color: var(--black); }
+
+.map h2 { text-align: center; }
+.map iframe { display: block; width: 100%; min-height: 360px; border: 3px solid var(--black); }
+
+table.insurance-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+table.insurance-table th, table.insurance-table td {
+  text-align: left; padding: .6rem .75rem; border-bottom: 1px solid #eee;
+}
+table.insurance-table th { font-family: "Bevan", Georgia, serif; color: var(--charcoal); }
+
+/* ---- Footer ---- */
+footer {
+  background-color: var(--charcoal);
+  color: var(--white);
+  text-align: center;
+  padding: 20px;
+  margin-top: 40px;
+  border-top: 3px solid var(--black);
+}
+footer p { margin: 0; }
+footer p + p { margin-top: .35rem; opacity: .85; }
+
+@media (max-width: 620px) {
+  .site-header { padding: 14px 12px; }
+  .brand { flex-direction: column; gap: 8px; }
+  .brand-text { text-align: center; }
+  nav { gap: .5rem; }
+  .actions, .actions .button { width: 100%; text-align: center; }
+}

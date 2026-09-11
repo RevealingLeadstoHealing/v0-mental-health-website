@@ -1,8 +1,11 @@
 import Link from "next/link";
 
 // Shared site header (logo + brand + navigation) and footer.
+// Layout follows the owner's original single-column structure: a solid,
+// sticky header band, a centered nav row, and a solid footer band.
 // Brand and colors are defined in globals.css and BRAND.md — champagne gold
 // (#EBC94E), charcoal (#3A3A3A), white, black; fonts Bevan + Montserrat.
+// Never teal, never navy.
 
 // The EHR lives on its own secured subdomain (patient portal).
 export const EHR_LOGIN_URL = "https://ehr.revealing-leads-to-healing-wellness-services.org/login";
@@ -11,6 +14,7 @@ const NAV_LINKS: Array<{ href: string; label: string }> = [
   { href: "/", label: "Home" },
   { href: "/about-us", label: "About Us" },
   { href: "/therapy-approach", label: "Therapy Approach" },
+  { href: "/insurance", label: "Insurance" },
   { href: "/faqs", label: "FAQs" },
   { href: "/contact", label: "Contact" },
 ];
@@ -19,8 +23,11 @@ export function SiteHeader() {
   return (
     <header className="site-header">
       <Link href="/" className="brand">
-        Revealing Leads to Healing
-        <span>Wellness Services, LLC</span>
+        <img src="/rlth-logo.png" alt="Revealing Leads to Healing logo" className="brand-logo" />
+        <span className="brand-text">
+          Revealing Leads to Healing
+          <span className="brand-subtitle">Wellness Services, LLC</span>
+        </span>
       </Link>
       <nav aria-label="Primary">
         {NAV_LINKS.map((link) => (
@@ -31,10 +38,6 @@ export function SiteHeader() {
         <a href={EHR_LOGIN_URL} target="_blank" rel="noopener noreferrer">
           Existing Patient EHR Login
         </a>
-        <form action="/search" method="get" role="search" className="nav-search">
-          <input type="text" name="q" aria-label="Search" placeholder="Search…" />
-          <button type="submit" aria-label="Search">&#9906;</button>
-        </form>
       </nav>
     </header>
   );
