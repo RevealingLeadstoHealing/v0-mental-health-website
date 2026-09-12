@@ -22,6 +22,7 @@ export default function Faqs() {
 
       <section className="section-shell">
         <div className="content-card">
+          <h2>Frequently asked questions</h2>
           <details open>
             <summary>What types of therapy do you offer?</summary>
             <p>

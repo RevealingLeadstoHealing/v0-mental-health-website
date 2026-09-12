@@ -1,4 +1,4 @@
-import { SiteHeader, SiteFooter, EHR_LOGIN_URL } from "../site-chrome";
+import { SiteHeader, SiteFooter } from "../site-chrome";
 
 export const metadata = {
   title: "Therapy Approach | Revealing Leads to Healing Wellness Services, LLC",
@@ -66,10 +66,7 @@ export default function TherapyApproach() {
           </article>
         </div>
         <div className="actions" style={{ justifyContent: "center" }}>
-          <a className="button" href="/contact">Start Here</a>
-          <a className="button button-light" href={EHR_LOGIN_URL} target="_blank" rel="noopener noreferrer">
-            Existing Patient EHR Login
-          </a>
+          <a className="button" href="/contact">Get Started</a>
         </div>
       </section>
 

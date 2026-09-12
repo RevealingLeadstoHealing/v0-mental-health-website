@@ -184,38 +184,38 @@ function Separator({ className = "", ...props }) { return <div className={cn("h-
 
 function EhrScopedStyles() {
   return <style jsx global>{`
-    @font-face { font-family: "Great Vibes"; src: url("/fonts/great-vibes.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
     .ehr-ui, .ehr-ui * { box-sizing: border-box; }
-    .ehr-ui .ehr-workspace-shell { height: 100dvh; display: flex; flex-direction: column; background: #fff; color: #1a1c1f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .ehr-ui .ehr-workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px 18px; border-bottom: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-workspace-shell { height: 100dvh; display: flex; flex-direction: column; background: #fff; color: #3A3A3A; font-family: Montserrat, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .ehr-ui .ehr-workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px 18px; border-bottom: 1px solid #EBC94E; background: #FFFFFF; }
     .ehr-ui .ehr-workspace-brand { display: flex; align-items: center; gap: 12px; }
-    .ehr-ui .ehr-workspace-brand-name { font-family: "Great Vibes", cursive; font-size: 30px; line-height: 1.3; color: #956d35; }
+    .ehr-ui .ehr-workspace-brand-name { font-family: "Bevan", serif; font-size: 26px; line-height: 1.3; color: #EBC94E; }
+    .ehr-ui .ehr-workspace-brand-name .ehr-brand-initial { color: #3A3A3A; }
     .ehr-ui .ehr-workspace-identity { display: grid; gap: 3px; text-align: right; font-size: 13px; }
     .ehr-ui .ehr-workspace-identity span { font-weight: 400; }
     .ehr-ui .ehr-workspace-body { display: grid; grid-template-columns: minmax(188px, 220px) minmax(0, 1fr); flex: 1; min-height: 0; gap: 24px; padding: 20px 24px 0; }
     .ehr-ui .ehr-workspace-sidebar { min-height: 0; overflow-y: auto; padding-bottom: 20px; }
     .ehr-ui nav.ehr-feature-navigation { display: grid; gap: 17px; margin: 0; }
     .ehr-ui .ehr-navigation-group { display: grid; gap: 5px; }
-    .ehr-ui .ehr-navigation-label { font-size: 12px; font-weight: 500; padding-bottom: 5px; }
-    .ehr-ui nav.ehr-feature-navigation a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 8px; font-family: inherit; font-size: 14px; line-height: 1.35; font-weight: 500; text-transform: none; color: #1a1c1f !important; background: transparent; }
-    .ehr-ui nav.ehr-feature-navigation a svg { flex-shrink: 0; }
-    .ehr-ui nav.ehr-feature-navigation a:hover { background: #e5f2ff; }
-    .ehr-ui nav.ehr-feature-navigation a[aria-current="page"] { background: #339cff; color: #fff !important; }
-    .ehr-ui nav.ehr-feature-navigation a:focus-visible, .ehr-ui .ehr-menu-toggle:focus-visible { outline: 2px solid #1764ad; outline-offset: 2px; }
+    .ehr-ui .ehr-navigation-label { font-size: 12px; font-weight: 700; padding-bottom: 5px; }
+    .ehr-ui nav.ehr-feature-navigation a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 8px; font-family: "Bevan", serif; font-size: 12px; line-height: 1.35; font-weight: 400; text-transform: none; color: #3A3A3A !important; background: transparent; }
+    .ehr-ui nav.ehr-feature-navigation a svg { flex-shrink: 0; width: 12px; height: 12px; }
+    .ehr-ui nav.ehr-feature-navigation a:hover { background: #FBF3D9; }
+    .ehr-ui nav.ehr-feature-navigation a[aria-current="page"] { background: #EBC94E; color: #111111 !important; }
+    .ehr-ui nav.ehr-feature-navigation a:focus-visible, .ehr-ui .ehr-menu-toggle:focus-visible { outline: 2px solid #3A3A3A; outline-offset: 2px; }
     .ehr-ui .ehr-workspace-content { min-width: 0; min-height: 0; overflow: auto; padding: 0 4px 24px; scroll-behavior: auto; }
     .ehr-ui .ehr-workspace-content:focus { outline: none; }
     .ehr-ui .ehr-workspace-content button.bg-slate-50,
     .ehr-ui .ehr-workspace-content button.bg-white,
-    .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #2b2926; }
+    .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #3A3A3A; }
     .ehr-ui .ehr-patient-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
     .ehr-ui .ehr-patient-list { display: grid; gap: 8px; max-height: 150px; overflow: auto; }
-    .ehr-ui .ehr-patient-list button { display: grid; gap: 4px; padding: 10px; text-align: left; background: white; color: #202020; border: 1px solid #ddd; border-radius: 8px; font: inherit; }
-    .ehr-ui .ehr-patient-list button[aria-pressed="true"] { background: #e5f2ff; border-color: #339cff; }
+    .ehr-ui .ehr-patient-list button { display: grid; gap: 4px; padding: 10px; text-align: left; background: white; color: #3A3A3A; border: 1px solid #DDDDDD; border-radius: 8px; font: inherit; }
+    .ehr-ui .ehr-patient-list button[aria-pressed="true"] { background: #FBF3D9; border-color: #EBC94E; }
     .ehr-ui .ehr-patient-list button span { font-size: 11px; overflow-wrap: anywhere; }
-    .ehr-ui .ehr-demographic-group { padding: 16px 0; border-top: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-demographic-group { padding: 16px 0; border-top: 1px solid #DDDDDD; }
     .ehr-ui .ehr-demographic-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-top: 14px; }
     .ehr-ui .ehr-demographic-value { min-width: 0; overflow-wrap: anywhere; }
-    .ehr-ui .ehr-demographic-value > span { display: block; color: #675f54; font-size: 12px; margin-bottom: 4px; }
+    .ehr-ui .ehr-demographic-value > span { display: block; color: #767676; font-size: 12px; margin-bottom: 4px; }
     .ehr-ui .ehr-demographic-value input[type="file"] { font: inherit; max-width: 100%; padding: 6px 0; }
     @media (min-width: 1100px) { .ehr-ui .ehr-patient-dashboard-grid { grid-template-columns: 230px minmax(0, 1fr); } .ehr-ui .ehr-patient-list { max-height: 55dvh; } }
     @media (max-width: 590px) { .ehr-ui .ehr-demographic-fields { grid-template-columns: minmax(0, 1fr); } }
@@ -230,18 +230,18 @@ function EhrScopedStyles() {
       .ehr-ui nav.ehr-feature-navigation { display: none; }
       .ehr-ui nav.ehr-feature-navigation.is-open { display: grid; margin-top: 12px; padding-bottom: 12px; }
     }
-    .ehr-ui { min-height: 100vh; background: #f7f3ea; color: #2b2926; font-family: Montserrat, Arial, sans-serif; font-size: 14px; line-height: 1.45; }
-    .ehr-ui h1, .ehr-ui h2, .ehr-ui h3 { color: #2b2926 !important; font-family: Montserrat, Arial, sans-serif !important; letter-spacing: 0 !important; line-height: 1.2 !important; text-transform: none !important; }
+    .ehr-ui { min-height: 100vh; background: #FFFFFF; color: #3A3A3A; font-family: Montserrat, Arial, sans-serif; font-size: 14px; line-height: 1.45; }
+    .ehr-ui h1, .ehr-ui h2, .ehr-ui h3 { color: #3A3A3A !important; font-family: "Bevan", serif !important; font-weight: 400 !important; letter-spacing: 0 !important; line-height: 1.2 !important; text-transform: none !important; }
     .ehr-ui h1 { font-size: 1.35rem !important; margin: 0; }
     .ehr-ui h2 { font-size: 1.2rem !important; margin: 0; }
     .ehr-ui h3 { font-size: 1rem !important; margin: 0; }
     .ehr-ui p { margin: 0; }
     .ehr-ui a { color: inherit; text-decoration: none; }
     .ehr-ui button, .ehr-ui a { cursor: pointer; }
-    .ehr-ui button { border: 1px solid #2b2926; background: #2b2926; color: #fff; }
-    .ehr-ui input, .ehr-ui textarea, .ehr-ui select { background: #fff; color: #2b2926; border-color: #bdb4a5; }
-    .ehr-ui nav a { display: flex; color: #514a41 !important; background: transparent; }
-    .ehr-ui nav a.bg-slate-900 { background: #2b2926 !important; color: #fff !important; }
+    .ehr-ui button { border: 1px solid #3A3A3A; background: #3A3A3A; color: #fff; }
+    .ehr-ui input, .ehr-ui textarea, .ehr-ui select { background: #fff; color: #3A3A3A; border-color: #3A3A3A; }
+    .ehr-ui nav a { display: flex; color: #3A3A3A !important; background: transparent; }
+    .ehr-ui nav a.bg-slate-900 { background: #3A3A3A !important; color: #fff !important; }
     .ehr-ui nav { display: block; margin: 0; }
     .ehr-ui nav button { width: 100%; }
     .ehr-ui .min-h-screen { min-height: 100vh; }
@@ -296,22 +296,22 @@ function EhrScopedStyles() {
     .ehr-ui .w-5 { width: 1.1rem; }
     .ehr-ui .w-6 { width: 1.2rem; }
     .ehr-ui .rounded-xl, .ehr-ui .rounded-2xl, .ehr-ui .rounded-3xl { border-radius: 8px; }
-    .ehr-ui .border { border: 1px solid #ddd3c1; }
-    .ehr-ui .border-r { border-right: 1px solid #ddd3c1; }
+    .ehr-ui .border { border: 1px solid #DDDDDD; }
+    .ehr-ui .border-r { border-right: 1px solid #DDDDDD; }
     .ehr-ui .bg-white { background-color: #fff; }
-    .ehr-ui .bg-slate-50 { background-color: #f8f7f4; }
-    .ehr-ui .bg-slate-100 { background-color: #eee7d9; }
-    .ehr-ui .bg-slate-900 { background-color: #2b2926; }
-    .ehr-ui .bg-stone-900 { background-color: #2b2926 !important; }
-    .ehr-ui .bg-stone-100 { background-color: #eee7d9 !important; }
+    .ehr-ui .bg-slate-50 { background-color: #F7F7F7; }
+    .ehr-ui .bg-slate-100 { background-color: #F0F0F0; }
+    .ehr-ui .bg-slate-900 { background-color: #3A3A3A; }
+    .ehr-ui .bg-stone-900 { background-color: #3A3A3A !important; }
+    .ehr-ui .bg-stone-100 { background-color: #F0F0F0 !important; }
     .ehr-ui .text-white { color: #fff; }
-    .ehr-ui .text-stone-950, .ehr-ui .text-stone-900, .ehr-ui .text-stone-800 { color: #2b2926 !important; }
-    .ehr-ui .text-stone-700, .ehr-ui .text-stone-600 { color: #675f54 !important; }
-    .ehr-ui .text-slate-950, .ehr-ui .text-slate-900 { color: #2b2926; }
-    .ehr-ui .text-slate-800 { color: #3a352f; }
-    .ehr-ui .text-slate-700 { color: #514a41; }
-    .ehr-ui .text-slate-600 { color: #675f54; }
-    .ehr-ui .text-slate-500 { color: #796f63; }
+    .ehr-ui .text-stone-950, .ehr-ui .text-stone-900, .ehr-ui .text-stone-800 { color: #3A3A3A !important; }
+    .ehr-ui .text-stone-700, .ehr-ui .text-stone-600 { color: #767676 !important; }
+    .ehr-ui .text-slate-950, .ehr-ui .text-slate-900 { color: #3A3A3A; }
+    .ehr-ui .text-slate-800 { color: #4D4D4D; }
+    .ehr-ui .text-slate-700 { color: #5C5C5C; }
+    .ehr-ui .text-slate-600 { color: #767676; }
+    .ehr-ui .text-slate-500 { color: #8A8A8A; }
     .ehr-ui .text-red-600 { color: #b91c1c; }
     .ehr-ui .text-red-800 { color: #7f1d1d; }
     .ehr-ui .bg-red-50 { background-color: #fef2f2; }
@@ -326,8 +326,8 @@ function EhrScopedStyles() {
     .ehr-ui .uppercase { text-transform: uppercase; }
     .ehr-ui .tracking-widest { letter-spacing: .08em; }
     .ehr-ui .whitespace-pre-wrap { white-space: pre-wrap; }
-    .ehr-ui .border-slate-100, .ehr-ui .border-slate-200 { border-color: #ddd3c1; }
-    .ehr-ui .bg-stone-200 { background-color: #ddd3c1; }
+    .ehr-ui .border-slate-100, .ehr-ui .border-slate-200 { border-color: #DDDDDD; }
+    .ehr-ui .bg-stone-200 { background-color: #DDDDDD; }
     .ehr-ui .shadow-sm { box-shadow: 0 1px 2px rgba(43, 41, 38, 0.08); }
     @media (min-width: 768px) {
       .ehr-ui .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1220,7 +1220,12 @@ function MainApp() {
         <div className="ehr-workspace-brand">
           <Shield className="h-5 w-5" aria-hidden="true" />
           <div>
-            <div className="ehr-workspace-brand-name">Revealing Leads to Healing</div>
+            <div className="ehr-workspace-brand-name">
+              <span className="ehr-brand-initial">R</span>evealing{" "}
+              <span className="ehr-brand-initial">L</span>eads{" "}
+              <span className="ehr-brand-initial">T</span>o{" "}
+              <span className="ehr-brand-initial">H</span>ealing
+            </div>
             <p className="text-xs">{VERSION}</p>
           </div>
         </div>

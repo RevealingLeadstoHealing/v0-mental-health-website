@@ -83,6 +83,9 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
           <a className="button" href={EHR_LOGIN_URL} target="_blank" rel="noopener noreferrer">
             Existing Patient EHR Login
           </a>
+          <a className="button" href={EHR_LOGIN_URL} target="_blank" rel="noopener noreferrer">
+            Provider Login
+          </a>
         </div>
       </section>
 
@@ -94,7 +97,7 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
             <p><strong>Office:</strong> 119 DeHaven Dr, Yonkers, NY 10703</p>
             <p><strong>Phone:</strong> (914) 635-2687</p>
             <p><strong>Fax:</strong> (914) 371-3845</p>
-            <p><strong>Email:</strong> info@revealing-leads-to-healing-wellness-services.org</p>
+            <p><strong>Email:</strong> connect@rlth.org &middot; info@revealing-leads-to-healing-wellness-services.org</p>
             <p>
               <strong>Availability:</strong> In-Person Sessions in Yonkers &amp; Secure Telehealth
               Services across New York State.

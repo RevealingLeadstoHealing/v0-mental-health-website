@@ -9,6 +9,10 @@ export default function Home() {
     <>
       <SiteHeader />
 
+      <div className="home-logo-hero">
+        <img src="/rlth-logo.png" alt="Revealing Leads to Healing Wellness Services, LLC" />
+      </div>
+
       <section className="section-shell intro">
         <h1>Your Path to Wellness Starts Here</h1>
         <p>
@@ -35,7 +39,7 @@ export default function Home() {
           <article>
             <h2>Therapy Approaches Tailored for Everyone</h2>
             <p>
-              At Revealing Leads to Healing Wellness Services, we believe in providing compassionate and
+              At Revealing Leads to Healing Wellness Servicces, we believe in providing compassionate and
               personalized care for individuals from all walks of life. Our therapy approaches are
               highly adaptable, designed to meet the unique needs of people across all ages, whether
               you&rsquo;re a child, teenager, adult, or senior. We are proud to support members of the
@@ -48,11 +52,11 @@ export default function Home() {
           </article>
 
           <article className="portrait">
-            <img src="/kenseener-carpenter-headshot.jpg" alt="Kenseener &quot;Kay&quot; Carpenter" />
+            <img className="headshot-photo" src="/kenseener-carpenter-headshot.jpg" alt="Kenseener Carpenter" />
           </article>
 
           <article>
-            <h2>Meet Kenseener &ldquo;Kay&rdquo; Carpenter, LCSW, CCTP, CGP, CASAC-M, SIFI, IFSP, CIMHP</h2>
+            <h2>Meet Kenseener Carpenter, MA, LCSW, CCTP. CGP, CASAC-M, IFSP, CIMHP</h2>
             <p>
               Kenseener is a highly skilled and compassionate Licensed Social Worker based in Yonkers,
               New York. With a thriving private psychotherapy practice, Kay offers a range of counseling

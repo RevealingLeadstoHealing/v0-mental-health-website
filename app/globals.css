@@ -1,5 +1,16 @@
 @import url("https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 
+/*
+  Original branding, per the owner's direct confirmation (Sept 12, 2026):
+  this is the copyrighted 2023/24 design — champagne gold, charcoal grey,
+  bright white, black; Bevan headings, Montserrat body. Do not substitute
+  these for whatever the live Webador site currently happens to render —
+  the owner has stated the live rendering may not reflect the true original
+  (the platform can drift), and these values are the authoritative source.
+  Layout structure (hamburger nav, single-button CTAs, plain unframed logo)
+  was separately verified against the live site and stays as-is.
+*/
+
 :root {
   --champagne-gold: #EBC94E;
   --charcoal: #3A3A3A;
@@ -21,98 +32,149 @@ body {
   background: var(--white);
   color: var(--charcoal);
   font-family: "Montserrat", sans-serif;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 h1,
 h2,
-h3,
-h4 {
+h3 {
   font-family: "Bevan", serif;
+  font-weight: 400;
   color: var(--charcoal);
-  line-height: 1.25;
+  line-height: 1.3;
+  margin: 0 0 15px;
 }
 
-h1 {
-  font-size: 2.25rem;
-}
-
-h2 {
-  font-size: 1.5rem;
-  margin-top: 0;
-}
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.2rem; }
 
 a {
   color: var(--charcoal);
 }
 
-/* ---- Header ---- */
-
-.site-header {
-  background: var(--charcoal);
-  color: var(--white);
-  border-bottom: 4px solid var(--champagne-gold);
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
-.site-header-inner {
+/* ---- Top bar: thin, plain, brand colors ---- */
+
+.site-topbar {
+  background: var(--white);
+  border-bottom: 1px solid var(--champagne-gold);
+}
+
+.site-topbar-inner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0.85rem 1.25rem;
+  padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.brand-link {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+.topbar-brand {
   text-decoration: none;
-  color: var(--white);
-}
-
-.brand-logo {
-  height: 44px;
-  width: 44px;
-  border-radius: 50%;
-}
-
-.brand-text {
+  color: var(--charcoal);
   font-family: "Bevan", serif;
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
-  color: var(--white);
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
 }
 
-.nav-list {
-  list-style: none;
+.hamburger-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.4rem;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.25rem;
-  margin: 0;
-  padding: 0;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
 }
 
-.nav-list a {
+.hamburger-btn span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--charcoal);
+}
+
+/* ---- Full-screen nav overlay, opened from the hamburger ---- */
+
+.nav-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--charcoal);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+.nav-overlay-top {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nav-overlay-close {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--white);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.4rem;
+}
+
+.nav-overlay-list {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.nav-overlay-list a {
+  display: inline-block;
   color: var(--white);
   text-decoration: none;
-  font-size: 0.92rem;
-  font-weight: 500;
+  font-family: "Bevan", serif;
+  font-size: 1.2rem;
+  border: 1.5px solid transparent;
+  padding: 0.2rem 0.4rem;
 }
 
-.nav-list a:hover {
+.nav-overlay-list a[aria-current="page"] {
+  border-color: var(--champagne-gold);
   color: var(--champagne-gold);
 }
 
-.nav-ehr-link {
-  background: var(--champagne-gold);
-  color: var(--black) !important;
-  padding: 0.5rem 0.9rem;
-  border-radius: 999px;
-  font-weight: 600 !important;
+/* ---- Home page logo: large, plain — the artwork itself is the design, no CSS added ---- */
+
+.home-logo-hero {
+  display: flex;
+  justify-content: center;
+  padding: 2.5rem 1.25rem 0.5rem;
+  background: var(--white);
+}
+
+.home-logo-hero img {
+  width: 500px;
+  max-width: 100%;
+}
+
+/* ---- Headshot photo: regular portrait size, NOT the same scale as the logo ---- */
+
+.headshot-photo {
+  width: 280px;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 /* ---- Layout ---- */
@@ -121,10 +183,6 @@ a {
   max-width: 900px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem;
-}
-
-.section-shell + .section-shell {
-  border-top: 1px solid #eee;
 }
 
 .section-shell.intro h1 {
@@ -145,7 +203,7 @@ a {
   text-align: center;
 }
 
-/* ---- Buttons ---- */
+/* ---- Buttons: champagne gold pill, black text ---- */
 
 .button {
   display: inline-block;
@@ -153,15 +211,10 @@ a {
   color: var(--black);
   border: 2px solid var(--black);
   border-radius: 999px;
-  padding: 0.65rem 1.4rem;
+  padding: 0.55rem 1.25rem;
   font-weight: 600;
+  font-family: "Montserrat", sans-serif;
   text-decoration: none;
-}
-
-.button-light {
-  background: var(--white);
-  color: var(--charcoal);
-  border-color: var(--charcoal);
 }
 
 .actions {
@@ -203,7 +256,7 @@ a {
   margin-bottom: 1.5rem;
 }
 
-/* ---- Footer ---- */
+/* ---- Footer: charcoal, gold title, brand colors ---- */
 
 .site-footer {
   background: var(--charcoal);
@@ -233,4 +286,21 @@ a {
 .footer-copyright {
   margin-top: 1rem !important;
   opacity: 0.75;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.92rem;
+  font-family: "Montserrat", sans-serif;
+}
+
+.field-input {
+  width: 100%;
+  padding: 0.6rem;
+  margin-top: 0.35rem;
+  border: 2px solid var(--charcoal);
+  font-family: inherit;
+  font-size: 1rem;
+  background: var(--white);
+  color: var(--charcoal);
 }
