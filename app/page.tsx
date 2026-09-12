@@ -165,8 +165,9 @@ export default function Home() {
             <h3>Additional Areas of Focus</h3>
             <p>
               Somatic Therapy &middot; Geriatric Mental Health &middot; Sleep Disorders &middot; Dementia
-              &amp; Alzheimer&rsquo;s Support &middot; Nutrition &middot; Adolescent ADHD &middot; ABA
-              (Applied Behavior Analysis) &middot; Dual Diagnosis
+              &amp; Alzheimer&rsquo;s Support &middot; Holistic &amp; Nutritional Wellness (training
+              completed through PESI) &middot; Adolescent ADHD &middot; ABA (Applied Behavior Analysis)
+              &middot; Dual Diagnosis
             </p>
           </article>
           <article>
