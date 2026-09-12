@@ -1,6 +1,8 @@
 import { QueryCommand, PutCommand, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
+import { getBackendStatus } from "./backend-status";
+import { assertProductionBackendReady } from "./backend-contract";
 import type { EhrActor } from "./auth";
 import type { DocumentMetadata } from "./domain-model";
 
@@ -54,8 +56,13 @@ export async function listClinicalRecords(clientId: string, limit = 50) {
  * - recordId supplied → updates the existing item in place using UpdateItem,
  *   setting updatedAt, status, and payload. The original createdAt and
  *   createdBy fields are preserved.
+ *
+ * Gated by assertProductionBackendReady() — see lib/ehr/backend-status.ts.
+ * Throws before touching DynamoDB if EHR_PHI_ENTRY_ALLOWED is not "true".
  */
 export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordInput) {
+  assertProductionBackendReady(getBackendStatus());
+
   const dynamo = getDynamoDocumentClient();
   const now = nowIso();
   const recordType = input.recordType || "clinical-note";
@@ -413,6 +420,9 @@ export async function listClientProfiles(actor: EhrActor): Promise<ClientProfile
  * If the caller does not provide a clientId, one is generated. The returned
  * object always includes clientId so the API route can follow up (e.g. to
  * write cognitoUserId) using the same key.
+ *
+ * Gated by assertProductionBackendReady() — see lib/ehr/backend-status.ts.
+ * Throws before touching DynamoDB if EHR_PHI_ENTRY_ALLOWED is not "true".
  */
 /**
  * Generate a human-readable Medical Record Number.
@@ -432,6 +442,8 @@ export async function putClientProfile(
   actor: EhrActor,
   profile: Partial<ClientProfileRecord> & { fullName: string }
 ): Promise<ClientProfileRecord> {
+  assertProductionBackendReady(getBackendStatus());
+
   const dynamo = getDynamoDocumentClient();
   const now = nowIso();
   const clientId = profile.clientId || makeId("client");

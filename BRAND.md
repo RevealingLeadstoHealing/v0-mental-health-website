@@ -4,7 +4,7 @@
 EHR, documents, emails — must use these values. Nothing may substitute or
 override them (no teal, no navy, no reinterpretation).**
 
-Owner: Kenseener "Kay" Carpenter, LCSW, CCTP, CGP, CASAC-M, SIFI
+Owner: Kenseener "Kay" Carpenter, LCSW, CCTP, CGP, CASAC-M, SIFI, IFSP, CIMHP
 Practice: Revealing Leads to Healing Wellness Services, LLC
 
 ---
@@ -20,6 +20,13 @@ Practice: Revealing Leads to Healing Wellness Services, LLC
 
 CONFIRMED by the owner as the exact brand colors, sampled from the official
 logo. These are the definitive values. Nothing may substitute them.
+
+Note (Sept 11, 2026): the live Webador site currently renders in plain
+grayscale (Lato/Montserrat, #202020/#ffffff/#f4f4f4) with no gold and no
+Bevan applied anywhere in its code — these brand values were the owner's
+intended standard, not something already live on Webador. The all-in-one
+rebuild applies them for the first time alongside the owner's verified
+content.
 
 ---
 
@@ -38,27 +45,7 @@ logo. These are the definitive values. Nothing may substitute them.
   centered line-art figure, "COUNSELING & WELLNESS SERVICES, LLC" beneath,
   thin black circle border, transparent/white background.
 - Use in site header and EHR header for one consistent brand.
-- File: `public/rlth-logo.png` (owner-provided, 2026-09-11).
-- Current profile headshot: `public/kenseener-carpenter-headshot.jpg`
-  (owner-provided, 2026-09-11 — replaces any earlier headshot file).
-
----
-
-## Layout (the owner's original structure — as follows, no other)
-
-The owner's original site file (June 2024, later updated) is the structural
-reference for every page: a solid, sticky header band (logo + practice name +
-horizontal nav), a plain white content column capped at ~1000px, sections
-separated by a thin 1px divider (no boxed/bordered "cards"), and a solid
-footer band. The only change from that original file is color: the header/
-footer band uses charcoal (`#3A3A3A`) in place of the placeholder navy
-(`#1a365d`), with champagne gold (`#EBC94E`) reserved for accents (nav hover,
-button fills, the subtitle line under the practice name) — never as a full
-page background wash.
-
-Do not introduce a different structural design (card grids, boxed panels,
-heavy borders around content, etc.) without the owner's direction. This file
-wins if any implementation drifts from it.
+- File: `public/rlth-logo.png`.
 
 ---
 
@@ -66,10 +53,12 @@ wins if any implementation drifts from it.
 
 - Name in full: **Kenseener "Kay" Carpenter** — "Kay" always in quotes (Kenseener
   is the professional/legal name; Kay is the known name).
-- Credentials: **LCSW, CCTP, CGP, CASAC-M, SIFI**. Fully licensed and certified
-  across several clinical areas and modalities, with international credentials,
-  master-level supervisory certification (the "M" in CASAC-M = supervision), and
-  SIFI certification. Do not drop or abbreviate these.
+- Credentials: **LCSW, CCTP, CGP, CASAC-M, SIFI, IFSP, CIMHP**. Fully licensed and
+  certified across several clinical areas and modalities, with international
+  credentials, master-level supervisory certification (the "M" in CASAC-M =
+  supervision), SIFI certification, IFSP, and CIMHP. Do not drop or abbreviate
+  these. (IFSP and CIMHP added September 11, 2026, per the owner's direct
+  instruction.)
 
 ## Content that must remain (owner's June/July 2026 updates)
 
@@ -78,7 +67,16 @@ wins if any implementation drifts from it.
   Do NOT revert to the original 2024 Webador creation.
 - **Music stays.** The uplifting songs are intentional, positive, and personally
   chosen by the owner. They are a deliberate part of the brand and patient
-  experience. Keep the music feature.
+  experience — an intentionally curated playlist meant to create an atmosphere
+  of peace and new beginnings. Keep the music feature.
+
+## Areas of focus added September 11, 2026 (owner's direct instruction)
+
+Somatic Therapy, Geriatric Mental Health, Sleep Disorders, Dementia &
+Alzheimer's Support, Nutrition, Adolescent ADHD, ABA (Applied Behavior
+Analysis), Dual Diagnosis. Listed exactly as given, no added description
+invented. "Nutrition" flagged for the owner to confirm fits LCSW scope of
+practice before wide publication.
 
 ## Rules
 
