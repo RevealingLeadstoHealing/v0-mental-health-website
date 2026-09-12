@@ -4765,15 +4765,18 @@ ${draft.content}`,
     </div>
   );
 }
+// Alphabetized by displayed label (after the "All Claims" filter option) per owner's
+// Sept 12, 2026 instruction. Keep alphabetized on future edits — sort by `label`, not by
+// when a payer category was added.
 const billingPayerDefinitions = [
   { id: "all", label: "All Claims", aliases: [] },
-  { id: "healthfirst", label: "Healthfirst", aliases: ["healthfirst", "health first"] },
   { id: "aetna", label: "Aetna", aliases: ["aetna"] },
   { id: "bcbs", label: "Blue Cross Blue Shield", aliases: ["blue cross", "blue shield", "bcbs", "anthem", "empire"] },
   { id: "cigna", label: "Cigna", aliases: ["cigna", "evernorth"] },
+  { id: "healthfirst", label: "Healthfirst", aliases: ["healthfirst", "health first"] },
   { id: "medicare-medicaid", label: "Medicare / Medicaid", aliases: ["medicare", "medicaid", "emmedny", "emedny"] },
-  { id: "self-pay", label: "Self-Pay", aliases: ["self pay", "self-pay", "private pay", "cash"] },
   { id: "other", label: "Other", aliases: [] },
+  { id: "self-pay", label: "Self-Pay", aliases: ["self pay", "self-pay", "private pay", "cash"] },
 ];
 const billingClaimStatuses = ["Draft", "Action Required", "Ready", "Queued", "Submitted", "Paid", "Rejected", "Denied"];
 function classifyBillingPayer(value = "") {
