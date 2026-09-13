@@ -4,7 +4,7 @@
 import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
-import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
+import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText, credentialRenewalAlerts } from "../../lib/ehr/provider-signature";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
@@ -6072,21 +6072,52 @@ function AssessmentsPage() {
     </div>
   );
 }
+function VerificationTag({ status }) {
+  const verified = status === "verified";
+  return (
+    <span
+      className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle ${verified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
+    >
+      {verified ? "Verified" : "Self-reported"}
+    </span>
+  );
+}
 function InfrastructurePage() {
   const { currentUser } = useAuth();
   const identifiers = providerIdentifiersForName(currentUser?.fullName || "");
+  const renewalAlerts = credentialRenewalAlerts(currentUser?.fullName || "");
   return (
     <div>
       <SectionHeader title="Infrastructure" description="AWS production controls supporting authentication, encrypted chart storage, access boundaries, audit history, backups, and retention." />
+      {renewalAlerts.length > 0 && (
+        <Card className="rounded-2xl shadow-sm mb-4 border-amber-300 bg-amber-50">
+          <CardHeader><CardTitle>Credential renewal alert{renewalAlerts.length > 1 ? "s" : ""}</CardTitle><CardDescription>Stays visible until the credential is renewed and its date is updated in this record — uploading a scanned copy to the Document Library alone will not clear it.</CardDescription></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {renewalAlerts.map(alert => (
+              <p key={alert.id} className={alert.severity === "expired" ? "font-medium text-red-700" : "font-medium text-amber-800"}>
+                {alert.severity === "expired" ? "Expired: " : "Renewal due soon: "}{alert.message}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardHeader><CardTitle>Provider identification</CardTitle><CardDescription>{currentUser?.fullName}</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3 text-sm">
-          <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}</p>
-          <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}</p>
-          <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}</p>
-          <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}</p>
+          <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}{identifiers.npi && <VerificationTag status={identifiers.npiVerification} />}</p>
+          <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}{identifiers.caqhId && <VerificationTag status={identifiers.caqhVerification} />}</p>
+          <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}{identifiers.licenseNumber && <VerificationTag status={identifiers.licenseVerification} />}</p>
+          <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}{identifiers.casacNumber && <VerificationTag status={identifiers.casacVerification} />}</p>
           <p><span className="font-medium">CASAC effective date:</span> {identifiers.casacEffectiveDate || "Not configured"}</p>
           <p><span className="font-medium">CASAC expiration date:</span> {identifiers.casacExpirationDate || "Not configured"}</p>
+          {(identifiers.npiVerificationNote || identifiers.caqhVerificationNote || identifiers.licenseVerificationNote || identifiers.casacVerificationNote) && (
+            <div className="md:col-span-3 text-xs text-slate-500 space-y-0.5">
+              {identifiers.npiVerificationNote && <p>NPI — {identifiers.npiVerificationNote}</p>}
+              {identifiers.caqhVerificationNote && <p>CAQH — {identifiers.caqhVerificationNote}</p>}
+              {identifiers.licenseVerificationNote && <p>License — {identifiers.licenseVerificationNote}</p>}
+              {identifiers.casacVerificationNote && <p>CASAC — {identifiers.casacVerificationNote}</p>}
+            </div>
+          )}
           {identifiers.additionalCredentials.length > 0 && <div className="md:col-span-3"><p className="font-medium">Additional professional credentials</p><ul className="list-disc pl-5">{identifiers.additionalCredentials.map(credential => <li key={credential}>{credential}</li>)}</ul></div>}
           {identifiers.education.length > 0 && <div className="md:col-span-3"><p className="font-medium">Education</p><ul className="list-disc pl-5">{identifiers.education.map(degree => <li key={degree}>{degree}</li>)}</ul></div>}
           {identifiers.completedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">Completed training</p><ul className="list-disc pl-5">{identifiers.completedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
