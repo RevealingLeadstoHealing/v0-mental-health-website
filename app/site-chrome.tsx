@@ -9,6 +9,7 @@ export const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/about-us", label: "About Us" },
   { href: "/therapy-approach", label: "Therapy Approach" },
+  { href: "/insurance", label: "Insurance" },
   { href: "/faqs", label: "FAQs" },
   { href: "/contact", label: "Contact" },
 ];
