@@ -6,6 +6,8 @@ type ProviderIdentifiers = {
   education: readonly string[];
   completedTraining: readonly string[];
   trainingInProgress: readonly string[];
+  publications: readonly string[];
+  publicationsStatus: string;
 };
 const providers: Record<string, Readonly<ProviderIdentifiers>> = {
   "kenseener carpenter": Object.freeze({
@@ -28,9 +30,11 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
       "Somatic Therapy to Tame the Survival Response and Heal Implicit Trauma Memories — May 28, 2026",
       "Somatic Therapy to Create Healthy Attachment: Strategies to Heal Development and Relational Trauma — May 28, 2026",
     ]),
+    publications: Object.freeze([]),
+    publicationsStatus: "None yet — pilot study and related research pending IRB approval.",
   }),
 };
-const emptyIdentifiers = Object.freeze({ npi: "", caqhId: "", licenseNumber: "", casacNumber: "", casacLevel: "", casacEffectiveDate: "", casacExpirationDate: "", additionalCredentials: Object.freeze([]), education: Object.freeze([]), completedTraining: Object.freeze([]), trainingInProgress: Object.freeze([]) });
+const emptyIdentifiers = Object.freeze({ npi: "", caqhId: "", licenseNumber: "", casacNumber: "", casacLevel: "", casacEffectiveDate: "", casacExpirationDate: "", additionalCredentials: Object.freeze([]), education: Object.freeze([]), completedTraining: Object.freeze([]), trainingInProgress: Object.freeze([]), publications: Object.freeze([]), publicationsStatus: "" });
 
 export function providerIdentifiersForName(name: string = "") {
   return providers[name.trim().toLowerCase().replace(/\s+/g, " ")] || emptyIdentifiers;

@@ -6091,6 +6091,12 @@ function InfrastructurePage() {
           {identifiers.education.length > 0 && <div className="md:col-span-3"><p className="font-medium">Education</p><ul className="list-disc pl-5">{identifiers.education.map(degree => <li key={degree}>{degree}</li>)}</ul></div>}
           {identifiers.completedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">Completed training</p><ul className="list-disc pl-5">{identifiers.completedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
           {identifiers.trainingInProgress.length > 0 && <div className="md:col-span-3"><p className="font-medium">Training in progress</p><ul className="list-disc pl-5">{identifiers.trainingInProgress.map(training => <li key={training}>{training}</li>)}</ul></div>}
+          <div className="md:col-span-3">
+            <p className="font-medium">Published</p>
+            {identifiers.publications.length > 0
+              ? <ul className="list-disc pl-5">{identifiers.publications.map(publication => <li key={publication}>{publication}</li>)}</ul>
+              : <p className="text-slate-600">{identifiers.publicationsStatus || "Not configured"}</p>}
+          </div>
         </CardContent>
       </Card>
       <div className="grid md:grid-cols-2 gap-4">
