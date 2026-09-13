@@ -49,15 +49,21 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     ]),
     trainingInProgress: Object.freeze(["Military-related training (provider-reported)"]),
     // State-mandated compliance training, tracked separately from elective CE above because
-    // it is a legal/employment requirement rather than clinical continuing education. Owner
-    // confirmed both were recently completed (Sept 13, 2026) but has not yet given exact
-    // completion dates. Owner approved (Sept 13, 2026) leaving these as self-reported/pending
-    // until her planned file-organization project (consolidating certificates from multiple
-    // devices onto new USB storage) lets her locate the source documents — add exact dates
-    // and each item's renewal cadence at that point so credentialRenewalAlerts() can track
-    // them the same way it tracks CASAC-M.
+    // it is a legal/employment requirement rather than clinical continuing education.
+    // Mandated Reporter training is independently verified directly against NYS OCFS's own
+    // Mandated Reporter Resource Center training-history lookup (nysmandatedreporter.org),
+    // confirmed September 13, 2026 under the owner's registered email. Full recorded history:
+    // Mandated Reporter Web-Based Online Training completed 11/09/2012, 05/15/2014, 10/01/2021,
+    // and 09/17/2024, plus a Mandated Reporter: Intellectual and Developmental Disabilities
+    // Addendum completed 05/28/2026 — the most recent entry on file. Sexual Harassment
+    // Prevention Training has no equivalent state-run lookup (it's employer/vendor-administered,
+    // not centrally registered), so it remains self-reported/pending until the owner's planned
+    // file-organization project (consolidating certificates from multiple devices onto new USB
+    // storage) lets her locate the source document — add its exact completion date and renewal
+    // cadence at that point so credentialRenewalAlerts() can track it the same way it tracks
+    // CASAC-M.
     stateMandatedTraining: Object.freeze([
-      "Mandated Reporter / Child Abuse Identification Training — recently completed; exact completion date pending owner's file-organization project (self-reported)",
+      "Mandated Reporter / Child Abuse Identification Training — most recently completed May 28, 2026 (Intellectual and Developmental Disabilities Addendum); prior core training completed September 17, 2024 — independently verified via NYS OCFS Mandated Reporter Resource Center, September 13, 2026",
       "Sexual Harassment Prevention Training (New York State requires annual completion) — recently completed; exact completion date pending owner's file-organization project (self-reported)",
     ]),
     // Degree titles and issue dates explicitly confirmed by owner (Sept 13, 2026): Lehman
