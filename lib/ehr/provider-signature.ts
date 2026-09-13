@@ -15,6 +15,7 @@ type ProviderIdentifiers = {
   education: readonly string[];
   completedTraining: readonly string[];
   trainingInProgress: readonly string[];
+  stateMandatedTraining: readonly string[];
   publications: readonly string[];
   publicationsStatus: string;
 };
@@ -34,11 +35,31 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     casacEffectiveDate: "2025-01-03", casacExpirationDate: "2028-01-02",
     casacVerification: "self_reported",
     casacVerificationNote: "Provider-reported. Confirm current status directly with NY OASAS credentialing.",
-    additionalCredentials: Object.freeze(["CCTP (provider-reported)"]),
+    // Unless individually noted otherwise, all pending and future certifications/trainings
+    // are issued via PESI/Evergreen, per owner instruction (Sept 13, 2026). None of these
+    // are independently verifiable by Claude from outside the provider's own accounts — PESI/
+    // Evergreen and Lehman's Field Education office have no public certificate registries —
+    // so every entry here is self-reported unless a specific external check is noted.
+    additionalCredentials: Object.freeze([
+      "CCTP — Certified Clinical Trauma Professional (via PESI/Evergreen; self-reported)",
+      "CGP — Certified Geriatric Provider (via PESI/Evergreen; self-reported)",
+      "CIMHP — Certified Integrative Mental Health Provider (via PESI/Evergreen; self-reported)",
+      "IFSP — Integrated Family Systems Provider (via PESI/Evergreen; self-reported)",
+      "SIFI — Seminar in Field Instruction (Lehman College; Director of Field Placement Peter Neidt; self-reported)",
+    ]),
     trainingInProgress: Object.freeze(["Military-related training (provider-reported)"]),
+    // State-mandated compliance training, tracked separately from elective CE above because
+    // it is a legal/employment requirement rather than clinical continuing education. Owner
+    // confirmed both were recently completed (Sept 13, 2026) but has not yet given exact
+    // completion dates — add those, and each item's renewal cadence, as soon as she provides
+    // them so credentialRenewalAlerts() can track them the same way it tracks CASAC-M.
+    stateMandatedTraining: Object.freeze([
+      "Mandated Reporter / Child Abuse Identification Training — recently completed; exact completion date pending owner confirmation (self-reported)",
+      "Sexual Harassment Prevention Training (New York State requires annual completion) — recently completed; exact completion date pending owner confirmation (self-reported)",
+    ]),
     education: Object.freeze([
       "Master of Arts, Psychology — City College — May 28, 2009",
-      "Master of Social Work — Lehman College — May 28, 2015",
+      "Master of Science, Social Work — Lehman College — May 28, 2015",
       "Bachelor of Arts, Psychology — Lehman College — June 3, 2004",
     ]),
     completedTraining: Object.freeze([
@@ -63,6 +84,7 @@ const emptyIdentifiers: Readonly<ProviderIdentifiers> = Object.freeze({
   casacVerification: "self_reported", casacVerificationNote: "",
   additionalCredentials: Object.freeze([]), education: Object.freeze([]),
   completedTraining: Object.freeze([]), trainingInProgress: Object.freeze([]),
+  stateMandatedTraining: Object.freeze([]),
   publications: Object.freeze([]), publicationsStatus: "",
 });
 

@@ -6104,6 +6104,7 @@ function InfrastructurePage() {
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardHeader><CardTitle>Provider identification</CardTitle><CardDescription>{currentUser?.fullName}</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3 text-sm">
+          <p className="md:col-span-3 text-xs text-slate-500">Items marked <VerificationTag status="verified" /> above have been independently confirmed against the issuing body's own records. Everything else on this card — including all entries under additional credentials, education, completed training, and training in progress — is self-reported by the provider and has not been independently verified.</p>
           <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}{identifiers.npi && <VerificationTag status={identifiers.npiVerification} />}</p>
           <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}{identifiers.caqhId && <VerificationTag status={identifiers.caqhVerification} />}</p>
           <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}{identifiers.licenseNumber && <VerificationTag status={identifiers.licenseVerification} />}</p>
@@ -6122,6 +6123,7 @@ function InfrastructurePage() {
           {identifiers.education.length > 0 && <div className="md:col-span-3"><p className="font-medium">Education</p><ul className="list-disc pl-5">{identifiers.education.map(degree => <li key={degree}>{degree}</li>)}</ul></div>}
           {identifiers.completedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">Completed training</p><ul className="list-disc pl-5">{identifiers.completedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
           {identifiers.trainingInProgress.length > 0 && <div className="md:col-span-3"><p className="font-medium">Training in progress</p><ul className="list-disc pl-5">{identifiers.trainingInProgress.map(training => <li key={training}>{training}</li>)}</ul></div>}
+          {identifiers.stateMandatedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">State-mandated training</p><ul className="list-disc pl-5">{identifiers.stateMandatedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
           <div className="md:col-span-3">
             <p className="font-medium">Published</p>
             {identifiers.publications.length > 0
