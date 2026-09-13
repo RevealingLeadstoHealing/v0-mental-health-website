@@ -51,12 +51,19 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     // State-mandated compliance training, tracked separately from elective CE above because
     // it is a legal/employment requirement rather than clinical continuing education. Owner
     // confirmed both were recently completed (Sept 13, 2026) but has not yet given exact
-    // completion dates — add those, and each item's renewal cadence, as soon as she provides
-    // them so credentialRenewalAlerts() can track them the same way it tracks CASAC-M.
+    // completion dates. Owner approved (Sept 13, 2026) leaving these as self-reported/pending
+    // until her planned file-organization project (consolidating certificates from multiple
+    // devices onto new USB storage) lets her locate the source documents — add exact dates
+    // and each item's renewal cadence at that point so credentialRenewalAlerts() can track
+    // them the same way it tracks CASAC-M.
     stateMandatedTraining: Object.freeze([
-      "Mandated Reporter / Child Abuse Identification Training — recently completed; exact completion date pending owner confirmation (self-reported)",
-      "Sexual Harassment Prevention Training (New York State requires annual completion) — recently completed; exact completion date pending owner confirmation (self-reported)",
+      "Mandated Reporter / Child Abuse Identification Training — recently completed; exact completion date pending owner's file-organization project (self-reported)",
+      "Sexual Harassment Prevention Training (New York State requires annual completion) — recently completed; exact completion date pending owner's file-organization project (self-reported)",
     ]),
+    // Degree titles and issue dates explicitly confirmed by owner (Sept 13, 2026): Lehman
+    // College degree is MS (Master of Science, Social Work) — not MSW, despite Lehman/CUNY's
+    // own registrar credential using "Master of Social Work" elsewhere; City College degree is
+    // MA (Master of Arts, Psychology). This resolves the earlier flagged MS/MSW discrepancy.
     education: Object.freeze([
       "Master of Arts, Psychology — City College — May 28, 2009",
       "Master of Science, Social Work — Lehman College — May 28, 2015",
