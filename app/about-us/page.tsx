@@ -58,7 +58,7 @@ export default function AboutUs() {
             </p>
           </article>
         </div>
-        <div className="actions" style={{ justifyContent: "center" }}>
+        <div className="actions">
           <a className="button" href="/contact">Get Started</a>
         </div>
       </section>
