@@ -24,7 +24,7 @@ export default function Faqs() {
             </p>
           </article>
         </div>
-        <div className="actions" style={{ justifyContent: "center" }}>
+        <div className="actions">
           <a className="button" href="/contact">Schedule Now</a>
         </div>
       </section>
