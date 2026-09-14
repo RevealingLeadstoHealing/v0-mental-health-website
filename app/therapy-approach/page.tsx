@@ -9,60 +9,72 @@ export default function TherapyApproach() {
     <>
       <SiteHeader />
 
-      <section className="section-shell intro">
-        <h1>Understanding Our Therapy Approach</h1>
-        <p>
-          At Revealing Leads to Healing Wellness Services, our therapy approach is rooted in empathy
-          and evidence-based practices. We believe in tailoring our methods to meet the unique needs
-          of each individual. By blending traditional psychotherapy techniques with innovative
-          strategies, we aim to foster a healing environment where clients can explore their feelings
-          and thoughts freely. Our approach is client-centered, focusing on empowering individuals to
-          uncover their inner strengths and achieve personal growth.
-        </p>
-      </section>
-
       <section className="section-shell">
         <div className="content-card">
           <article>
-            <h2>Personalized Healing Journeys</h2>
+            <h2 style={{ textAlign: "center" }}>Services &amp; Availability</h2>
             <p>
-              Our therapy sessions are uniquely designed to guide you on a personalized journey towards
-              healing. We recognize that each person&rsquo;s path is different, which is why we
-              emphasize customized treatment plans that address your specific needs and goals. Through
-              a combination of compassionate listening and targeted intervention, we aim to help you
-              unlock your potential and create a path that leads to lasting well-being.
+              Services are available for adolescents, adults, couples, and families through both
+              in-person and telehealth sessions. Areas of support include anxiety, depression, trauma,
+              life transitions, relationship concerns, substance use recovery support, identity
+              exploration, emotional wellness, and personal growth. We strive to provide a safe,
+              affirming, culturally responsive, and compassionate environment where healing and
+              self-discovery can take place at your own pace.
             </p>
           </article>
 
           <article>
-            <h2>Holistic Care and Support</h2>
+            <h2 style={{ textAlign: "center" }}>Our Services</h2>
             <p>
-              At our core, we believe in providing holistic care that addresses the mind, body, and
-              spirit. Our supportive environment encourages clients to explore various aspects of their
-              lives and helps them achieve balance and harmony. We integrate multiple therapeutic
-              modalities to ensure that each client&rsquo;s needs are met comprehensively. Our focus is
-              on building a supportive relationship that allows for genuine healing and transformation.
+              Individual therapy, couples counseling, family support services, trauma-informed care,
+              anxiety and depression treatment, substance use recovery support, identity exploration,
+              life transition support, and culturally responsive psychotherapy services are available
+              based on client needs and clinical appropriateness.
             </p>
           </article>
+        </div>
+      </section>
 
+      <section className="section-shell">
+        <h2>Areas of Focus</h2>
+        <div className="content-card">
           <article>
-            <h2>Embrace Your Path to Well-being</h2>
+            <h3>Trauma &amp; PTSD Recovery</h3>
             <p>
-              We invite you to embrace your unique path to well-being at Revealing Leads to Healing
-              Wellness Services. Our approach is designed to empower you to take charge of your mental
-              health journey. By fostering a supportive and understanding space, we help you build
-              resilience and find clarity in your life. Together, we will work to overcome obstacles
-              and achieve the sense of peace and fulfillment you deserve.
+              Specialized clinical care for individuals navigating trauma, profound grief, loss, and
+              life transitions. Utilizing my credentials as a Certified Clinical Trauma Professional
+              (CCTP), we work together to process past experiences and build a path toward lasting
+              emotional freedom.
             </p>
           </article>
-
           <article>
-            <h2>Take the First Step Today</h2>
+            <h3>Addiction &amp; Substance Use Support</h3>
             <p>
-              Begin your transformative journey towards well-being with our expert therapists. Contact
-              us today to learn more about our personalized therapy approach and start creating a
-              brighter future.
+              Master-level expertise (CASAC-M) in treating alcohol and substance use disorders. I
+              provide a compassionate, non-judgmental space for individuals and families focusing on
+              recovery, harm reduction, and co-occurring mental health challenges.
             </p>
+          </article>
+          <article>
+            <h3>Integrative &amp; Evidence-Based Modalities</h3>
+            <p>
+              A holistic approach to healing that incorporates powerful, proven clinical interventions
+              tailored to you. My practice actively integrates Eye Movement Desensitization and
+              Reprocessing (EMDR), Dialectical Behavior Therapy (DBT), and Cognitive Behavioral Therapy
+              (CBT) to treat the whole person.
+            </p>
+          </article>
+          <article>
+            <h3>Additional Areas of Focus</h3>
+            <p>
+              Somatic Therapy &middot; Geriatric Mental Health &middot; Sleep Disorders &middot; Dementia
+              &amp; Alzheimer&rsquo;s Support &middot; Holistic &amp; Nutritional Wellness (training
+              completed through PESI) &middot; Adolescent ADHD &middot; ABA (Applied Behavior Analysis)
+              &middot; Dual Diagnosis
+            </p>
+          </article>
+          <article>
+            <p>Telehealth and in-person options.</p>
           </article>
         </div>
         <div className="actions" style={{ justifyContent: "center" }}>
