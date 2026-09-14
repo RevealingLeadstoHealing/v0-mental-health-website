@@ -12,7 +12,7 @@ export default function TherapyApproach() {
       <section className="section-shell">
         <div className="content-card">
           <article>
-            <h2 style={{ textAlign: "center" }}>Services &amp; Availability</h2>
+            <h2>Services &amp; Availability</h2>
             <p>
               Services are available for adolescents, adults, couples, and families through both
               in-person and telehealth sessions. Areas of support include anxiety, depression, trauma,
@@ -24,7 +24,7 @@ export default function TherapyApproach() {
           </article>
 
           <article>
-            <h2 style={{ textAlign: "center" }}>Our Services</h2>
+            <h2>Our Services</h2>
             <p>
               Individual therapy, couples counseling, family support services, trauma-informed care,
               anxiety and depression treatment, substance use recovery support, identity exploration,
@@ -77,7 +77,7 @@ export default function TherapyApproach() {
             <p>Telehealth and in-person options.</p>
           </article>
         </div>
-        <div className="actions" style={{ justifyContent: "center" }}>
+        <div className="actions">
           <a className="button" href="/contact">Get Started</a>
         </div>
       </section>
