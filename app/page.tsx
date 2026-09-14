@@ -32,7 +32,7 @@ export default function Home() {
           work together to build the resilience, coping strategies, and insights necessary to reclaim
           your life.
         </p>
-        <div className="actions" style={{ justifyContent: "center" }}>
+        <div className="actions">
           <a className="button" href="/about-us">Meet Kenseener</a>
           <a className="button" href="/therapy-approach">Our Approach &amp; Services</a>
           <a className="button" href="/contact">Contact Us</a>
