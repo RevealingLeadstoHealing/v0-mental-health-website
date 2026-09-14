@@ -1,365 +1,49 @@
-@import url("https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
-
 /*
-Original branding, per the owner's direct confirmation (Sept 13-14, 2026):
-this is the copyrighted 2023/24 design — champagne gold, charcoal grey,
-bright white, black; Bevan headings, Montserrat body. These values are
-correct and confirmed — keep them.
+Visual design restored from the owner's original commit (GitHub main branch,
+b25cadd, Sept 11 2026) on Sept 14 2026, at the owner's explicit, repeated
+instruction to use that exact code for the site's look — champagne-gold page
+background, black-bordered content cards, bold bordered uppercase nav links,
+no hamburger menu. Colors/fonts (champagne gold #EBC94E, charcoal #3A3A3A,
+white, black; Bevan headings, Montserrat body) are unchanged from before —
+they were already correct and match this original exactly.
 
-Layout: the owner's live original site (still hosted on Webador, paid
-through Dec 2026, at revealing-leads-to-healing-wellness-services.org)
-was checked directly Sept 14, 2026 and is the authoritative visual
-reference for page layout/style (header treatment, hero logo band,
-section styling) — NOT a from-scratch redesign. The earlier note here
-claiming the minimal hamburger-only header was "separately verified" was
-wrong; the real site's header has a search icon, the practice name in
-bold uppercase, and a large circular logo directly beneath the header
-band. Colors/text/fonts here are correct and stay; the multi-page
-structure (separate routes per nav item, not one long scrolling page
-like the original) also stays, per the owner's explicit instruction —
-only the *visual styling* should mimic the original page, almost
-exactly, adapted onto the existing multi-page routes.
-
-Logo hero band (Sept 14, 2026, later): the owner's real logo image
-(sampled directly from her live Webador reference page) is itself an
-opaque PNG with a plain WHITE background outside the circle — it has
-no real alpha transparency. The grey #e4e4e4 band here was causing a
-visible mismatched box around the logo on the deployed site. Fixed to
-match the logo image's own background exactly (white), confirmed by
-pixel-sampling the real reference image. Do not change this back to a
-grey/off-white value without re-checking the real reference image.
+Supplemental rules below (clearly marked) style content that is NOT part of
+that original file but is needed for features added since, by the owner's
+own later, explicit instruction: the homepage logo image, the About Us
+headshot, the contact-form confirmation banner, and the two-column Contact
+layout. These are additions, not redesigns — nothing here overrides the
+original's colors, fonts, or nav/header treatment.
 */
+@import url('https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:wght@400;600;700&display=swap');
+:root{--champagne-gold:#EBC94E;--charcoal:#3A3A3A;--white:#fff;--black:#111}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--champagne-gold);color:var(--charcoal);font-family:"Montserrat",Arial,sans-serif;line-height:1.7}a{color:var(--black)}.site-header{width:100%;padding:2rem 1rem 1.25rem;background:transparent;text-align:center}.brand{display:block;color:var(--black);font-family:"Bevan",Georgia,serif;font-size:clamp(1.65rem,4vw,3rem);line-height:1.15;text-decoration:none}.brand span{display:block;margin-top:.3rem;font-family:"Montserrat",Arial,sans-serif;font-size:clamp(.85rem,1.7vw,1.1rem);font-weight:700;letter-spacing:.16em;text-transform:uppercase}nav{display:flex;justify-content:center;flex-wrap:wrap;gap:.6rem;margin:1.5rem auto 0}nav a{display:inline-block;padding:.48rem .78rem;border:2px solid var(--black);background:transparent;color:var(--white);font-family:"Bevan",Georgia,serif;font-size:.8rem;line-height:1;text-decoration:none;text-transform:uppercase}nav a:hover,nav a:focus-visible{background:var(--charcoal)}.section-shell{width:min(920px,calc(100% - 2rem));margin:2rem auto}.intro{max-width:760px;text-align:center}h1,h2,h3{margin-top:0;color:var(--black);font-family:"Bevan",Georgia,serif;line-height:1.25;text-transform:uppercase}h1{font-size:clamp(2rem,6vw,4rem)}h2{font-size:clamp(1.3rem,3vw,2rem)}.content-card{padding:clamp(1.25rem,4vw,2.5rem);border:3px solid var(--black);background:var(--white)}.content-card article+article{margin-top:2rem;padding-top:2rem;border-top:1px solid var(--charcoal)}.content-card p:last-child{margin-bottom:0}.portrait{text-align:center}.portrait img{display:block;width:min(100%,620px);height:auto;margin:0 auto}details{border-top:1px solid var(--charcoal);padding:1rem 0}details:last-child{padding-bottom:0}summary{color:var(--black);cursor:pointer;font-weight:700}.actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.5rem}.button{display:inline-block;padding:.72rem 1rem;border:2px solid var(--black);background:var(--charcoal);color:var(--white);font-weight:700;text-decoration:none;text-transform:uppercase}.button-light{background:var(--white);color:var(--black)}.map h2{text-align:center}.map iframe{display:block;width:100%;min-height:360px;border:3px solid var(--black)}@media(max-width:620px){.site-header{padding-top:1.25rem}nav{gap:.4rem}nav a{padding:.45rem .6rem;font-size:.7rem}.section-shell{width:min(100% - 1rem,920px)}.actions,.actions .button{width:100%;text-align:center}}
 
-:root {
---champagne-gold: #EBC94E;
---charcoal: #3A3A3A;
---white: #FFFFFF;
---black: #111111;
-}
+/* ============ Supplemental — additions, not part of the original file ============ */
 
-* {
-box-sizing: border-box;
-}
+/* Footer: kept from the current site (contact details the owner corrected
+   directly — connect@rlth.org email order, "Office Location:" wording,
+   etc.), restyled to match the bold black/gold treatment above. */
+.site-footer{background:var(--black);color:var(--white);border-top:4px solid var(--champagne-gold);margin-top:3rem}
+.site-footer-inner{max-width:1100px;margin:0 auto;padding:2rem 1.25rem;font-size:.9rem;text-align:center}
+.site-footer-inner p{margin:.25rem 0}
+.footer-title{font-family:"Bevan",Georgia,serif;color:var(--champagne-gold);font-size:1.05rem;text-transform:uppercase;margin-bottom:.5rem!important}
+.footer-copyright{margin-top:1rem!important;opacity:.75}
 
-html,
-body {
-margin: 0;
-padding: 0;
-}
+/* Homepage logo image band — the owner's real logo artwork, per BRAND.md
+   ("the logo is the dominant visual feature on the Home page"). */
+.home-logo-hero{display:flex;justify-content:center;padding:2.5rem 1.25rem;background:var(--white)}
+.home-logo-hero img{width:500px;max-width:100%}
 
-body {
-background: var(--white);
-color: var(--charcoal);
-font-family: "Montserrat", sans-serif;
-line-height: 1.7;
-}
+/* About Us headshot — deliberately smaller than the logo, no extra border,
+   per BRAND.md ("an oversized photo reads as vain... the logo, not her
+   photo, should be dominant"). Higher specificity than .portrait img above
+   so it isn't stretched to that rule's wider max-width. */
+.portrait img.headshot-photo{width:280px;max-width:100%;margin:0 auto}
 
-h1,
-h2,
-h3 {
-font-family: "Bevan", serif;
-font-weight: 400;
-color: var(--charcoal);
-line-height: 1.3;
-margin: 0 0 15px;
-}
+/* Contact-form confirmation/error banner (POST /api/contact redirects back
+   with ?sent=1 / ?error=1; the page reads that to show this). */
+.notice{background:#FFF8E1;border:2px solid var(--champagne-gold);border-radius:10px;padding:.85rem 1.1rem;margin-bottom:1.5rem;color:var(--black)}
 
-h1 { font-size: 2rem; }
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.2rem; }
-
-a {
-color: var(--charcoal);
-}
-
-img {
-max-width: 100%;
-height: auto;
-display: block;
-}
-
-/* ---- Top bar: matches the owner's original site — search icon, bold
-uppercase practice name, hamburger, brand colors ---- */
-
-.site-topbar {
-background: var(--white);
-border-bottom: 1px solid var(--champagne-gold);
-}
-
-.site-topbar-inner {
-max-width: 1200px;
-margin: 0 auto;
-padding: 1rem 1.25rem;
-display: flex;
-align-items: center;
-gap: 1rem;
-}
-
-.topbar-search-btn {
-appearance: none;
-border: none;
-background: none;
-color: var(--charcoal);
-cursor: pointer;
-padding: 0.4rem;
-display: flex;
-align-items: center;
-flex: none;
-}
-
-.topbar-brand {
-text-decoration: none;
-color: var(--charcoal);
-font-family: "Montserrat", sans-serif;
-font-weight: 700;
-text-transform: uppercase;
-font-size: 1rem;
-letter-spacing: 0.04em;
-flex: 1 1 auto;
-}
-
-.topbar-actions {
-display: flex;
-align-items: center;
-gap: 0.85rem;
-flex: none;
-margin-left: auto;
-}
-
-.topbar-login-btn {
-text-decoration: none;
-color: var(--black);
-background: var(--champagne-gold);
-font-family: "Montserrat", sans-serif;
-font-weight: 600;
-font-size: 0.85rem;
-padding: 0.55rem 1rem;
-border-radius: 2px;
-white-space: nowrap;
-}
-
-.hamburger-btn {
-appearance: none;
-border: none;
-background: none;
-cursor: pointer;
-padding: 0.4rem;
-display: flex;
-flex-direction: column;
-gap: 4px;
-flex: none;
-}
-
-.hamburger-btn span {
-display: block;
-width: 22px;
-height: 2px;
-background: var(--charcoal);
-}
-
-/* ---- Full-screen nav overlay, opened from the hamburger ---- */
-
-.nav-overlay {
-position: fixed;
-inset: 0;
-z-index: 50;
-background: var(--charcoal);
-display: flex;
-flex-direction: column;
-padding: 1.25rem;
-}
-
-.nav-overlay-top {
-display: flex;
-justify-content: flex-end;
-}
-
-.nav-overlay-close {
-appearance: none;
-border: none;
-background: none;
-color: var(--white);
-font-size: 2rem;
-line-height: 1;
-cursor: pointer;
-padding: 0.4rem;
-}
-
-.nav-overlay-list {
-list-style: none;
-margin: 2rem 0 0;
-padding: 0;
-display: flex;
-flex-direction: column;
-gap: 1.5rem;
-}
-
-.nav-overlay-list a {
-display: inline-block;
-color: var(--white);
-text-decoration: none;
-font-family: "Bevan", serif;
-font-size: 1.2rem;
-border: 1.5px solid transparent;
-padding: 0.2rem 0.4rem;
-}
-
-.nav-overlay-list a[aria-current="page"] {
-border-color: var(--champagne-gold);
-color: var(--champagne-gold);
-}
-
-.nav-overlay-login {
-color: var(--champagne-gold) !important;
-border-color: var(--champagne-gold) !important;
-}
-
-/* ---- Home page logo: large, plain — the artwork itself is the design, no CSS added ---- */
-
-.home-logo-hero {
-display: flex;
-justify-content: center;
-padding: 2.5rem 1.25rem;
-background: var(--white);
-}
-
-.home-logo-hero img {
-width: 500px;
-max-width: 100%;
-}
-
-/* ---- Headshot photo: regular portrait size, NOT the same scale as the logo ---- */
-
-.headshot-photo {
-width: 280px;
-max-width: 100%;
-margin: 0 auto;
-}
-
-/* ---- Layout ---- */
-
-.section-shell {
-max-width: 900px;
-margin: 0 auto;
-padding: 2.5rem 1.25rem;
-}
-
-.section-shell.intro h1 {
-margin-bottom: 1rem;
-}
-
-.content-card {
-display: flex;
-flex-direction: column;
-gap: 2rem;
-}
-
-.content-card article {
-max-width: 100%;
-}
-
-.content-card article.portrait {
-text-align: center;
-}
-
-/* ---- Buttons: champagne gold pill, black text ---- */
-
-.button {
-display: inline-block;
-background: var(--champagne-gold);
-color: var(--black);
-border: 2px solid var(--black);
-border-radius: 999px;
-padding: 0.55rem 1.25rem;
-font-weight: 600;
-font-family: "Montserrat", sans-serif;
-text-decoration: none;
-}
-
-.actions {
-display: flex;
-flex-wrap: wrap;
-gap: 1rem;
-margin-top: 1.5rem;
-}
-
-/* ---- Contact page ---- */
-
-.contact-top {
-display: grid;
-grid-template-columns: 1.1fr 0.9fr;
-gap: 2rem;
-align-items: start;
-}
-
-@media (max-width: 720px) {
-.contact-top {
-grid-template-columns: 1fr;
-}
-}
-
-.map iframe {
-width: 100%;
-height: 320px;
-border: 0;
-border-radius: 12px;
-}
-
-/* ---- Notices ---- */
-
-.notice {
-background: #FFF8E1;
-border: 2px solid var(--champagne-gold);
-border-radius: 10px;
-padding: 0.85rem 1.1rem;
-margin-bottom: 1.5rem;
-}
-
-/* ---- Footer: charcoal, gold title, brand colors ---- */
-
-.site-footer {
-background: var(--charcoal);
-color: var(--white);
-border-top: 4px solid var(--champagne-gold);
-margin-top: 3rem;
-}
-
-.site-footer-inner {
-max-width: 1100px;
-margin: 0 auto;
-padding: 2rem 1.25rem;
-font-size: 0.9rem;
-}
-
-.site-footer-inner p {
-margin: 0.25rem 0;
-}
-
-.footer-title {
-font-family: "Bevan", serif;
-color: var(--champagne-gold);
-font-size: 1.05rem;
-margin-bottom: 0.5rem !important;
-}
-
-.footer-copyright {
-margin-top: 1rem !important;
-opacity: 0.75;
-}
-
-.field-label {
-display: block;
-font-size: 0.92rem;
-font-family: "Montserrat", sans-serif;
-}
-
-.field-input {
-width: 100%;
-padding: 0.6rem;
-margin-top: 0.35rem;
-border: 2px solid var(--charcoal);
-font-family: inherit;
-font-size: 1rem;
-background: var(--white);
-color: var(--charcoal);
-}
+/* Contact page two-column layout (intro text + the owner's Amazon Music
+   playlist embed). */
+.contact-top{display:grid;grid-template-columns:1.1fr .9fr;gap:2rem;align-items:start}
+@media(max-width:720px){.contact-top{grid-template-columns:1fr}}
