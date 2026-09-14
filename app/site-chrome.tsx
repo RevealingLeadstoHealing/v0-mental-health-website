@@ -1,11 +1,20 @@
-"use client";
+import Link from "next/link";
 
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+// Shared site header (logo + brand + navigation) and footer.
+// Brand and colors: champagne gold (#EBC94E), charcoal (#3A3A3A), white,
+// black; fonts Bevan + Montserrat. See BRAND.md and globals.css.
+//
+// The header/nav below matches the owner's actual original code (GitHub
+// main branch, commit b25cadd, Sept 11 2026): a plain, always-visible row
+// of nav links — no hamburger icon, no hidden overlay menu. Page content
+// (credentials, Areas of Focus, footer contact details, etc.) is left as
+// the owner's own later, explicitly-confirmed corrections — this file only
+// changes the header/nav/visual treatment, not that content.
 
+// The EHR lives on its own secured subdomain (patient portal).
 export const EHR_LOGIN_URL = "https://ehr.revealing-leads-to-healing-wellness-services.org/ehr";
 
-export const NAV_LINKS = [
+export const NAV_LINKS: Array<{ href: string; label: string }> = [
   { href: "/", label: "Home" },
   { href: "/about-us", label: "About Us" },
   { href: "/therapy-approach", label: "Therapy Approach" },
@@ -15,74 +24,23 @@ export const NAV_LINKS = [
 ];
 
 export function SiteHeader() {
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-
   return (
-    <>
-      <header className="site-topbar">
-        <div className="site-topbar-inner">
-          <button
-            type="button"
-            className="topbar-search-btn"
-            aria-label="Search site"
-            onClick={() => setOpen(true)}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-          <a href="/" className="topbar-brand">Revealing Leads to Healing Wellness Services, LLC</a>
-          <div className="topbar-actions">
-            <a href={EHR_LOGIN_URL} className="topbar-login-btn">
-              Client &amp; Provider Login
-            </a>
-            <button
-              type="button"
-              className="hamburger-btn"
-              aria-label="Open menu"
-              aria-expanded={open}
-              onClick={() => setOpen(true)}
-            >
-              <span />
-              <span />
-              <span />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {open ? (
-        <div className="nav-overlay" role="dialog" aria-modal="true" aria-label="Site menu">
-          <div className="nav-overlay-top">
-            <button
-              type="button"
-              className="nav-overlay-close"
-              aria-label="Close menu"
-              onClick={() => setOpen(false)}
-            >
-              &times;
-            </button>
-          </div>
-          <nav aria-label="Primary">
-            <ul className="nav-overlay-list">
-              {NAV_LINKS.map((link) => (
-                <li key={link.href}>
-                  <a
-                    href={link.href}
-                    aria-current={pathname === link.href ? "page" : undefined}
-                    onClick={() => setOpen(false)}
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </div>
-      ) : null}
-    </>
+    <header className="site-header">
+      <Link href="/" className="brand">
+        Revealing Leads to Healing
+        <span>Wellness Services, LLC</span>
+      </Link>
+      <nav aria-label="Primary">
+        {NAV_LINKS.map((link) => (
+          <Link key={link.href} href={link.href}>
+            {link.label}
+          </Link>
+        ))}
+        <a href={EHR_LOGIN_URL} target="_blank" rel="noopener noreferrer">
+          Client &amp; Provider Login
+        </a>
+      </nav>
+    </header>
   );
 }
 
