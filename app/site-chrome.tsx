@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-export const EHR_LOGIN_URL = "https://ehr.revealing-leads-to-healing-wellness-services.org/login";
+export const EHR_LOGIN_URL = "https://ehr.revealing-leads-to-healing-wellness-services.org/ehr";
 
 export const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -22,18 +22,34 @@ export function SiteHeader() {
     <>
       <header className="site-topbar">
         <div className="site-topbar-inner">
-          <a href="/" className="topbar-brand">Revealing Leads to Healing Wellness Services, LLC</a>
           <button
             type="button"
-            className="hamburger-btn"
-            aria-label="Open menu"
-            aria-expanded={open}
+            className="topbar-search-btn"
+            aria-label="Search site"
             onClick={() => setOpen(true)}
           >
-            <span />
-            <span />
-            <span />
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
+          <a href="/" className="topbar-brand">Revealing Leads to Healing Wellness Services, LLC</a>
+          <div className="topbar-actions">
+            <a href={EHR_LOGIN_URL} className="topbar-login-btn">
+              Client &amp; Provider Login
+            </a>
+            <button
+              type="button"
+              className="hamburger-btn"
+              aria-label="Open menu"
+              aria-expanded={open}
+              onClick={() => setOpen(true)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+          </div>
         </div>
       </header>
 
