@@ -39,6 +39,28 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section-shell">
+        <div className="content-card">
+          <article className="portrait">
+            <img className="headshot-photo" src="/kenseener-carpenter-headshot.jpg" alt="Kenseener Carpenter" />
+          </article>
+
+          <article>
+            <h2>Meet Kenseener Carpenter, MA, LCSW, CCTP. CGP, CASAC-M, IFSP, CIMHP</h2>
+            <p>
+              Kenseener is a highly skilled and compassionate Licensed Social Worker based in
+              Yonkers, New York, offering individual, marital, family, and group therapy for adults
+              and teenagers. With advanced training in trauma, group process, substance use, family
+              systems, and integrative mental health care, Kay creates a safe, personalized space
+              where meaningful, lasting change can happen.
+            </p>
+          </article>
+        </div>
+        <div className="actions">
+          <a className="button" href="/about-us">More About Kenseener</a>
+        </div>
+      </section>
+
       <SiteFooter />
     </>
   );
