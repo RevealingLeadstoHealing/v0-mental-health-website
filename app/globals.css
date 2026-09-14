@@ -1,14 +1,24 @@
 @import url("https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 
 /*
-  Original branding, per the owner's direct confirmation (Sept 12, 2026):
+  Original branding, per the owner's direct confirmation (Sept 13-14, 2026):
   this is the copyrighted 2023/24 design — champagne gold, charcoal grey,
-  bright white, black; Bevan headings, Montserrat body. Do not substitute
-  these for whatever the live Webador site currently happens to render —
-  the owner has stated the live rendering may not reflect the true original
-  (the platform can drift), and these values are the authoritative source.
-  Layout structure (hamburger nav, single-button CTAs, plain unframed logo)
-  was separately verified against the live site and stays as-is.
+  bright white, black; Bevan headings, Montserrat body. These values are
+  correct and confirmed — keep them.
+
+  Layout: the owner's live original site (still hosted on Webador, paid
+  through Dec 2026, at revealing-leads-to-healing-wellness-services.org)
+  was checked directly Sept 14, 2026 and is the authoritative visual
+  reference for page layout/style (header treatment, hero logo band,
+  section styling) — NOT a from-scratch redesign. The earlier note here
+  claiming the minimal hamburger-only header was "separately verified" was
+  wrong; the real site's header has a search icon, the practice name in
+  bold uppercase, and a large circular logo directly beneath the header
+  band. Colors/text/fonts here are correct and stay; the multi-page
+  structure (separate routes per nav item, not one long scrolling page
+  like the original) also stays, per the owner's explicit instruction —
+  only the *visual styling* should mimic the original page, almost
+  exactly, adapted onto the existing multi-page routes.
 */
 
 :root {
@@ -59,7 +69,8 @@ img {
   display: block;
 }
 
-/* ---- Top bar: thin, plain, brand colors ---- */
+/* ---- Top bar: matches the owner's original site — search icon, bold
+   uppercase practice name, hamburger, brand colors ---- */
 
 .site-topbar {
   background: var(--white);
@@ -67,21 +78,55 @@ img {
 }
 
 .site-topbar-inner {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+.topbar-search-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--charcoal);
+  cursor: pointer;
+  padding: 0.4rem;
+  display: flex;
+  align-items: center;
+  flex: none;
 }
 
 .topbar-brand {
   text-decoration: none;
   color: var(--charcoal);
-  font-family: "Bevan", serif;
-  font-size: 1.1rem;
-  letter-spacing: 0.01em;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  flex: 1 1 auto;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: none;
+  margin-left: auto;
+}
+
+.topbar-login-btn {
+  text-decoration: none;
+  color: var(--black);
+  background: var(--champagne-gold);
+  font-family: "Montserrat", sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.55rem 1rem;
+  border-radius: 2px;
+  white-space: nowrap;
 }
 
 .hamburger-btn {
@@ -155,13 +200,18 @@ img {
   color: var(--champagne-gold);
 }
 
+.nav-overlay-login {
+  color: var(--champagne-gold) !important;
+  border-color: var(--champagne-gold) !important;
+}
+
 /* ---- Home page logo: large, plain — the artwork itself is the design, no CSS added ---- */
 
 .home-logo-hero {
   display: flex;
   justify-content: center;
-  padding: 2.5rem 1.25rem 0.5rem;
-  background: var(--white);
+  padding: 2.5rem 1.25rem;
+  background: #e4e4e4;
 }
 
 .home-logo-hero img {
