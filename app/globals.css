@@ -1,58 +1,67 @@
 @import url("https://fonts.googleapis.com/css2?family=Bevan&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 
 /*
-  Original branding, per the owner's direct confirmation (Sept 13-14, 2026):
-  this is the copyrighted 2023/24 design — champagne gold, charcoal grey,
-  bright white, black; Bevan headings, Montserrat body. These values are
-  correct and confirmed — keep them.
+Original branding, per the owner's direct confirmation (Sept 13-14, 2026):
+this is the copyrighted 2023/24 design — champagne gold, charcoal grey,
+bright white, black; Bevan headings, Montserrat body. These values are
+correct and confirmed — keep them.
 
-  Layout: the owner's live original site (still hosted on Webador, paid
-  through Dec 2026, at revealing-leads-to-healing-wellness-services.org)
-  was checked directly Sept 14, 2026 and is the authoritative visual
-  reference for page layout/style (header treatment, hero logo band,
-  section styling) — NOT a from-scratch redesign. The earlier note here
-  claiming the minimal hamburger-only header was "separately verified" was
-  wrong; the real site's header has a search icon, the practice name in
-  bold uppercase, and a large circular logo directly beneath the header
-  band. Colors/text/fonts here are correct and stay; the multi-page
-  structure (separate routes per nav item, not one long scrolling page
-  like the original) also stays, per the owner's explicit instruction —
-  only the *visual styling* should mimic the original page, almost
-  exactly, adapted onto the existing multi-page routes.
+Layout: the owner's live original site (still hosted on Webador, paid
+through Dec 2026, at revealing-leads-to-healing-wellness-services.org)
+was checked directly Sept 14, 2026 and is the authoritative visual
+reference for page layout/style (header treatment, hero logo band,
+section styling) — NOT a from-scratch redesign. The earlier note here
+claiming the minimal hamburger-only header was "separately verified" was
+wrong; the real site's header has a search icon, the practice name in
+bold uppercase, and a large circular logo directly beneath the header
+band. Colors/text/fonts here are correct and stay; the multi-page
+structure (separate routes per nav item, not one long scrolling page
+like the original) also stays, per the owner's explicit instruction —
+only the *visual styling* should mimic the original page, almost
+exactly, adapted onto the existing multi-page routes.
+
+Logo hero band (Sept 14, 2026, later): the owner's real logo image
+(sampled directly from her live Webador reference page) is itself an
+opaque PNG with a plain WHITE background outside the circle — it has
+no real alpha transparency. The grey #e4e4e4 band here was causing a
+visible mismatched box around the logo on the deployed site. Fixed to
+match the logo image's own background exactly (white), confirmed by
+pixel-sampling the real reference image. Do not change this back to a
+grey/off-white value without re-checking the real reference image.
 */
 
 :root {
-  --champagne-gold: #EBC94E;
-  --charcoal: #3A3A3A;
-  --white: #FFFFFF;
-  --black: #111111;
+--champagne-gold: #EBC94E;
+--charcoal: #3A3A3A;
+--white: #FFFFFF;
+--black: #111111;
 }
 
 * {
-  box-sizing: border-box;
+box-sizing: border-box;
 }
 
 html,
 body {
-  margin: 0;
-  padding: 0;
+margin: 0;
+padding: 0;
 }
 
 body {
-  background: var(--white);
-  color: var(--charcoal);
-  font-family: "Montserrat", sans-serif;
-  line-height: 1.7;
+background: var(--white);
+color: var(--charcoal);
+font-family: "Montserrat", sans-serif;
+line-height: 1.7;
 }
 
 h1,
 h2,
 h3 {
-  font-family: "Bevan", serif;
-  font-weight: 400;
-  color: var(--charcoal);
-  line-height: 1.3;
-  margin: 0 0 15px;
+font-family: "Bevan", serif;
+font-weight: 400;
+color: var(--charcoal);
+line-height: 1.3;
+margin: 0 0 15px;
 }
 
 h1 { font-size: 2rem; }
@@ -60,297 +69,297 @@ h2 { font-size: 1.5rem; }
 h3 { font-size: 1.2rem; }
 
 a {
-  color: var(--charcoal);
+color: var(--charcoal);
 }
 
 img {
-  max-width: 100%;
-  height: auto;
-  display: block;
+max-width: 100%;
+height: auto;
+display: block;
 }
 
 /* ---- Top bar: matches the owner's original site — search icon, bold
-   uppercase practice name, hamburger, brand colors ---- */
+uppercase practice name, hamburger, brand colors ---- */
 
 .site-topbar {
-  background: var(--white);
-  border-bottom: 1px solid var(--champagne-gold);
+background: var(--white);
+border-bottom: 1px solid var(--champagne-gold);
 }
 
 .site-topbar-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+max-width: 1200px;
+margin: 0 auto;
+padding: 1rem 1.25rem;
+display: flex;
+align-items: center;
+gap: 1rem;
 }
 
 .topbar-search-btn {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--charcoal);
-  cursor: pointer;
-  padding: 0.4rem;
-  display: flex;
-  align-items: center;
-  flex: none;
+appearance: none;
+border: none;
+background: none;
+color: var(--charcoal);
+cursor: pointer;
+padding: 0.4rem;
+display: flex;
+align-items: center;
+flex: none;
 }
 
 .topbar-brand {
-  text-decoration: none;
-  color: var(--charcoal);
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-  flex: 1 1 auto;
+text-decoration: none;
+color: var(--charcoal);
+font-family: "Montserrat", sans-serif;
+font-weight: 700;
+text-transform: uppercase;
+font-size: 1rem;
+letter-spacing: 0.04em;
+flex: 1 1 auto;
 }
 
 .topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  flex: none;
-  margin-left: auto;
+display: flex;
+align-items: center;
+gap: 0.85rem;
+flex: none;
+margin-left: auto;
 }
 
 .topbar-login-btn {
-  text-decoration: none;
-  color: var(--black);
-  background: var(--champagne-gold);
-  font-family: "Montserrat", sans-serif;
-  font-weight: 600;
-  font-size: 0.85rem;
-  padding: 0.55rem 1rem;
-  border-radius: 2px;
-  white-space: nowrap;
+text-decoration: none;
+color: var(--black);
+background: var(--champagne-gold);
+font-family: "Montserrat", sans-serif;
+font-weight: 600;
+font-size: 0.85rem;
+padding: 0.55rem 1rem;
+border-radius: 2px;
+white-space: nowrap;
 }
 
 .hamburger-btn {
-  appearance: none;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 0.4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: none;
+appearance: none;
+border: none;
+background: none;
+cursor: pointer;
+padding: 0.4rem;
+display: flex;
+flex-direction: column;
+gap: 4px;
+flex: none;
 }
 
 .hamburger-btn span {
-  display: block;
-  width: 22px;
-  height: 2px;
-  background: var(--charcoal);
+display: block;
+width: 22px;
+height: 2px;
+background: var(--charcoal);
 }
 
 /* ---- Full-screen nav overlay, opened from the hamburger ---- */
 
 .nav-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: var(--charcoal);
-  display: flex;
-  flex-direction: column;
-  padding: 1.25rem;
+position: fixed;
+inset: 0;
+z-index: 50;
+background: var(--charcoal);
+display: flex;
+flex-direction: column;
+padding: 1.25rem;
 }
 
 .nav-overlay-top {
-  display: flex;
-  justify-content: flex-end;
+display: flex;
+justify-content: flex-end;
 }
 
 .nav-overlay-close {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--white);
-  font-size: 2rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0.4rem;
+appearance: none;
+border: none;
+background: none;
+color: var(--white);
+font-size: 2rem;
+line-height: 1;
+cursor: pointer;
+padding: 0.4rem;
 }
 
 .nav-overlay-list {
-  list-style: none;
-  margin: 2rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+list-style: none;
+margin: 2rem 0 0;
+padding: 0;
+display: flex;
+flex-direction: column;
+gap: 1.5rem;
 }
 
 .nav-overlay-list a {
-  display: inline-block;
-  color: var(--white);
-  text-decoration: none;
-  font-family: "Bevan", serif;
-  font-size: 1.2rem;
-  border: 1.5px solid transparent;
-  padding: 0.2rem 0.4rem;
+display: inline-block;
+color: var(--white);
+text-decoration: none;
+font-family: "Bevan", serif;
+font-size: 1.2rem;
+border: 1.5px solid transparent;
+padding: 0.2rem 0.4rem;
 }
 
 .nav-overlay-list a[aria-current="page"] {
-  border-color: var(--champagne-gold);
-  color: var(--champagne-gold);
+border-color: var(--champagne-gold);
+color: var(--champagne-gold);
 }
 
 .nav-overlay-login {
-  color: var(--champagne-gold) !important;
-  border-color: var(--champagne-gold) !important;
+color: var(--champagne-gold) !important;
+border-color: var(--champagne-gold) !important;
 }
 
 /* ---- Home page logo: large, plain — the artwork itself is the design, no CSS added ---- */
 
 .home-logo-hero {
-  display: flex;
-  justify-content: center;
-  padding: 2.5rem 1.25rem;
-  background: #e4e4e4;
+display: flex;
+justify-content: center;
+padding: 2.5rem 1.25rem;
+background: var(--white);
 }
 
 .home-logo-hero img {
-  width: 500px;
-  max-width: 100%;
+width: 500px;
+max-width: 100%;
 }
 
 /* ---- Headshot photo: regular portrait size, NOT the same scale as the logo ---- */
 
 .headshot-photo {
-  width: 280px;
-  max-width: 100%;
-  margin: 0 auto;
+width: 280px;
+max-width: 100%;
+margin: 0 auto;
 }
 
 /* ---- Layout ---- */
 
 .section-shell {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2.5rem 1.25rem;
+max-width: 900px;
+margin: 0 auto;
+padding: 2.5rem 1.25rem;
 }
 
 .section-shell.intro h1 {
-  margin-bottom: 1rem;
+margin-bottom: 1rem;
 }
 
 .content-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+display: flex;
+flex-direction: column;
+gap: 2rem;
 }
 
 .content-card article {
-  max-width: 100%;
+max-width: 100%;
 }
 
 .content-card article.portrait {
-  text-align: center;
+text-align: center;
 }
 
 /* ---- Buttons: champagne gold pill, black text ---- */
 
 .button {
-  display: inline-block;
-  background: var(--champagne-gold);
-  color: var(--black);
-  border: 2px solid var(--black);
-  border-radius: 999px;
-  padding: 0.55rem 1.25rem;
-  font-weight: 600;
-  font-family: "Montserrat", sans-serif;
-  text-decoration: none;
+display: inline-block;
+background: var(--champagne-gold);
+color: var(--black);
+border: 2px solid var(--black);
+border-radius: 999px;
+padding: 0.55rem 1.25rem;
+font-weight: 600;
+font-family: "Montserrat", sans-serif;
+text-decoration: none;
 }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 1.5rem;
+display: flex;
+flex-wrap: wrap;
+gap: 1rem;
+margin-top: 1.5rem;
 }
 
 /* ---- Contact page ---- */
 
 .contact-top {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 2rem;
-  align-items: start;
+display: grid;
+grid-template-columns: 1.1fr 0.9fr;
+gap: 2rem;
+align-items: start;
 }
 
 @media (max-width: 720px) {
-  .contact-top {
-    grid-template-columns: 1fr;
-  }
+.contact-top {
+grid-template-columns: 1fr;
+}
 }
 
 .map iframe {
-  width: 100%;
-  height: 320px;
-  border: 0;
-  border-radius: 12px;
+width: 100%;
+height: 320px;
+border: 0;
+border-radius: 12px;
 }
 
 /* ---- Notices ---- */
 
 .notice {
-  background: #FFF8E1;
-  border: 2px solid var(--champagne-gold);
-  border-radius: 10px;
-  padding: 0.85rem 1.1rem;
-  margin-bottom: 1.5rem;
+background: #FFF8E1;
+border: 2px solid var(--champagne-gold);
+border-radius: 10px;
+padding: 0.85rem 1.1rem;
+margin-bottom: 1.5rem;
 }
 
 /* ---- Footer: charcoal, gold title, brand colors ---- */
 
 .site-footer {
-  background: var(--charcoal);
-  color: var(--white);
-  border-top: 4px solid var(--champagne-gold);
-  margin-top: 3rem;
+background: var(--charcoal);
+color: var(--white);
+border-top: 4px solid var(--champagne-gold);
+margin-top: 3rem;
 }
 
 .site-footer-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 2rem 1.25rem;
-  font-size: 0.9rem;
+max-width: 1100px;
+margin: 0 auto;
+padding: 2rem 1.25rem;
+font-size: 0.9rem;
 }
 
 .site-footer-inner p {
-  margin: 0.25rem 0;
+margin: 0.25rem 0;
 }
 
 .footer-title {
-  font-family: "Bevan", serif;
-  color: var(--champagne-gold);
-  font-size: 1.05rem;
-  margin-bottom: 0.5rem !important;
+font-family: "Bevan", serif;
+color: var(--champagne-gold);
+font-size: 1.05rem;
+margin-bottom: 0.5rem !important;
 }
 
 .footer-copyright {
-  margin-top: 1rem !important;
-  opacity: 0.75;
+margin-top: 1rem !important;
+opacity: 0.75;
 }
 
 .field-label {
-  display: block;
-  font-size: 0.92rem;
-  font-family: "Montserrat", sans-serif;
+display: block;
+font-size: 0.92rem;
+font-family: "Montserrat", sans-serif;
 }
 
 .field-input {
-  width: 100%;
-  padding: 0.6rem;
-  margin-top: 0.35rem;
-  border: 2px solid var(--charcoal);
-  font-family: inherit;
-  font-size: 1rem;
-  background: var(--white);
-  color: var(--charcoal);
+width: 100%;
+padding: 0.6rem;
+margin-top: 0.35rem;
+border: 2px solid var(--charcoal);
+font-family: inherit;
+font-size: 1rem;
+background: var(--white);
+color: var(--charcoal);
 }
