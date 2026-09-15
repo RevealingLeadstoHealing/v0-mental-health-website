@@ -23,6 +23,12 @@ export const demographicGroups = [
     ["insuranceMemberId", "Member ID"], ["insuranceGroupNumber", "Group number"],
     ["insuranceNetworkStatus", "Network status"],
   ] },
+  { title: "Insurance verification", fields: [
+    ["insuranceVerificationStatus", "Verification status"],
+    ["insuranceVerificationNotes", "Verification notes"],
+    ["insuranceVerifiedAt", "Last checked"],
+    ["insuranceVerifiedBy", "Checked by"],
+  ] },
 ] as const;
 
 export const editableDemographicFields: readonly string[] = demographicGroups.flatMap(group => group.fields.map(field => field[0]));
