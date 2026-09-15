@@ -2456,8 +2456,8 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
   };
     // Practice-wide calendar — every appointment across every client, not just the
   // one selected above. Appointments are stored per-client, so this pulls them
-  // all together and groups by date so the provider can see who's booked on a
-  // given day at a glance, instead of only one client's list at a time.
+  // all together into a real month/week/day calendar grid so the provider can
+  // see who's booked on any given day at a glance, not just a text list.
   const allAppointments = useMemo(() => {
     if (!isProvider) return [];
     return clients
@@ -2470,32 +2470,70 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       )
       .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   }, [isProvider, clients]);
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const upcomingAppointments = allAppointments.filter((appt) => appt.date >= todayIso);
-  const appointmentsByDate = useMemo(() => {
+  const toCalendarIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayIso = toCalendarIso(new Date());
+  const appointmentsByDateMap = useMemo(() => {
     const groups = {};
-    upcomingAppointments.forEach((appt) => {
+    allAppointments.forEach((appt) => {
       if (!groups[appt.date]) groups[appt.date] = [];
       groups[appt.date].push(appt);
     });
-    return Object.entries(groups);
-  }, [upcomingAppointments]);
-  const formatCalendarDate = (dateStr) => {
-    const d = new Date(`${dateStr}T00:00:00`);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffDays = Math.round((d - today) / 86400000);
-    const label = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    if (diffDays === 0) return `Today — ${label}`;
-    if (diffDays === 1) return `Tomorrow — ${label}`;
-    return label;
-  };
+    return groups;
+  }, [allAppointments]);
+  const [calendarView, setCalendarView] = useState("month");
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayIso);
   const formatCalendarTime = (timeStr) => {
     const [h, m] = (timeStr || "0:0").split(":").map(Number);
     const d = new Date();
     d.setHours(h || 0, m || 0, 0, 0);
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   };
+  const formatCalendarDate = (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const diffDays = Math.round((d - new Date(`${todayIso}T00:00:00`)) / 86400000);
+    const label = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    if (diffDays === 0) return `Today — ${label}`;
+    if (diffDays === 1) return `Tomorrow — ${label}`;
+    if (diffDays === -1) return `Yesterday — ${label}`;
+    return label;
+  };
+  const goToToday = () => {
+    const t = new Date();
+    setCalendarCursor(t);
+    setSelectedCalendarDate(toCalendarIso(t));
+  };
+  const navigateCalendar = (direction) => {
+    const next = new Date(calendarCursor);
+    if (calendarView === "month") next.setMonth(next.getMonth() + direction);
+    else if (calendarView === "week") next.setDate(next.getDate() + direction * 7);
+    else next.setDate(next.getDate() + direction);
+    setCalendarCursor(next);
+    setSelectedCalendarDate(toCalendarIso(next));
+  };
+  const monthMatrix = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const startWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = startWeekday; i > 0; i -= 1) cells.push({ date: new Date(year, month, 1 - i), inMonth: false });
+    for (let day = 1; day <= daysInMonth; day += 1) cells.push({ date: new Date(year, month, day), inMonth: true });
+    let trail = 1;
+    while (cells.length < 42) { cells.push({ date: new Date(year, month, daysInMonth + trail), inMonth: false }); trail += 1; }
+    return cells;
+  }, [calendarCursor]);
+  const weekDays = useMemo(() => {
+    const start = new Date(calendarCursor);
+    start.setDate(start.getDate() - start.getDay());
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  }, [calendarCursor]);
+  const calendarHeaderLabel = calendarView === "month"
+    ? calendarCursor.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : calendarView === "week"
+      ? `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+      : calendarCursor.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const selectedDayAppointments = appointmentsByDateMap[selectedCalendarDate] || [];
 
 
   return (
@@ -2527,42 +2565,141 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       )}
       {isProvider && (
         <Card className="rounded-2xl shadow-sm mb-4">
-          <CardHeader>
-            <CardTitle>Practice Calendar — Upcoming Appointments</CardTitle>
-            <CardDescription>Every scheduled appointment across all clients, soonest first — so you can see who's booked on any given day.</CardDescription>
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Practice Calendar</CardTitle>
+                <CardDescription>Every scheduled appointment across all clients — month, week, or day view.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {["month", "week", "day"].map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setCalendarView(view)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold capitalize",
+                      calendarView === view ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 bg-white text-slate-600"
+                    )}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => navigateCalendar(-1)} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold" aria-label="Previous">‹</button>
+                <button type="button" onClick={goToToday} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold">Today</button>
+                <button type="button" onClick={() => navigateCalendar(1)} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold" aria-label="Next">›</button>
+              </div>
+              <p className="text-sm font-semibold text-slate-700">{calendarHeaderLabel}</p>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4 max-h-[420px] overflow-auto">
-            {appointmentsByDate.length === 0 && <p className="text-sm text-slate-500">No upcoming appointments scheduled.</p>}
-            {appointmentsByDate.map(([date, appts]) => (
-              <div key={date}>
-                <p className="text-sm font-semibold text-slate-700 mb-2">{formatCalendarDate(date)}</p>
-                <div className="space-y-2">
-                  {appts.map((appt) => (
-                    <div
-                      key={appt.id}
-                      className={cn(
-                        "flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3",
-                        appt.status === "Cancelled" ? "border-slate-200 bg-slate-50 opacity-60" : "border-stone-200 bg-white"
-                      )}
-                    >
-                      <div className="text-sm">
-                        <span className="font-semibold">{formatCalendarTime(appt.time)}</span>
-                        <span className="mx-2 text-slate-400">·</span>
-                        <span className="font-medium">{appt.clientName}</span>
-                        <span className="mx-2 text-slate-400">·</span>
-                        <span className="text-slate-600">{appt.purpose}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-400">{appt.format}</span>
-                        <span className={cn("font-semibold", appt.status === "Cancelled" ? "text-slate-400" : "text-emerald-700")}>
-                          {appt.status || "Scheduled"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+          <CardContent className="space-y-4">
+            {calendarView === "month" && (
+              <div>
+                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 mb-1">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <div key={d}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {monthMatrix.map(({ date, inMonth }) => {
+                    const iso = toCalendarIso(date);
+                    const dayAppts = appointmentsByDateMap[iso] || [];
+                    const isToday = iso === todayIso;
+                    const isSelected = iso === selectedCalendarDate;
+                    return (
+                      <button
+                        type="button"
+                        key={iso}
+                        onClick={() => { setSelectedCalendarDate(iso); setCalendarCursor(date); }}
+                        className={cn(
+                          "min-h-[64px] rounded-lg border p-1.5 text-left align-top",
+                          inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
+                          isSelected ? "border-stone-800 ring-1 ring-stone-800" : "border-stone-200",
+                          isToday && !isSelected ? "border-amber-400" : ""
+                        )}
+                      >
+                        <span className={cn("text-xs font-semibold", isToday ? "text-amber-700" : "")}>{date.getDate()}</span>
+                        <div className="mt-1 space-y-0.5">
+                          {dayAppts.slice(0, 2).map((appt) => (
+                            <div key={appt.id} className={cn("truncate rounded px-1 py-0.5 text-[10px] font-medium", appt.status === "Cancelled" ? "bg-slate-100 text-slate-400 line-through" : "bg-emerald-100 text-emerald-800")}>
+                              {formatCalendarTime(appt.time)} {appt.clientName}
+                            </div>
+                          ))}
+                          {dayAppts.length > 2 && <div className="text-[10px] text-slate-500">+{dayAppts.length - 2} more</div>}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+            )}
+            {calendarView === "week" && (
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map((date) => {
+                  const iso = toCalendarIso(date);
+                  const dayAppts = appointmentsByDateMap[iso] || [];
+                  const isToday = iso === todayIso;
+                  const isSelected = iso === selectedCalendarDate;
+                  return (
+                    <button
+                      type="button"
+                      key={iso}
+                      onClick={() => { setSelectedCalendarDate(iso); setCalendarCursor(date); }}
+                      className={cn(
+                        "min-h-[140px] rounded-lg border p-2 text-left align-top bg-white",
+                        isSelected ? "border-stone-800 ring-1 ring-stone-800" : "border-stone-200",
+                        isToday && !isSelected ? "border-amber-400" : ""
+                      )}
+                    >
+                      <p className={cn("text-xs font-semibold mb-1", isToday ? "text-amber-700" : "text-slate-600")}>
+                        {date.toLocaleDateString("en-US", { weekday: "short", day: "numeric" })}
+                      </p>
+                      <div className="space-y-1">
+                        {dayAppts.map((appt) => (
+                          <div key={appt.id} className={cn("truncate rounded px-1 py-0.5 text-[10px] font-medium", appt.status === "Cancelled" ? "bg-slate-100 text-slate-400 line-through" : "bg-emerald-100 text-emerald-800")}>
+                            {formatCalendarTime(appt.time)} {appt.clientName}
+                          </div>
+                        ))}
+                        {dayAppts.length === 0 && <p className="text-[10px] text-slate-400">—</p>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+              <p className="text-sm font-semibold text-slate-700 mb-2">
+                {calendarView === "day" ? calendarHeaderLabel : formatCalendarDate(selectedCalendarDate)}
+              </p>
+              {selectedDayAppointments.length === 0 && <p className="text-sm text-slate-500">No appointments scheduled.</p>}
+              <div className="space-y-2">
+                {selectedDayAppointments.map((appt) => (
+                  <div
+                    key={appt.id}
+                    className={cn(
+                      "flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3",
+                      appt.status === "Cancelled" ? "border-slate-200 bg-slate-50 opacity-60" : "border-stone-200 bg-white"
+                    )}
+                  >
+                    <div className="text-sm">
+                      <span className="font-semibold">{formatCalendarTime(appt.time)}</span>
+                      <span className="mx-2 text-slate-400">·</span>
+                      <span className="font-medium">{appt.clientName}</span>
+                      <span className="mx-2 text-slate-400">·</span>
+                      <span className="text-slate-600">{appt.purpose}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-400">{appt.format}</span>
+                      <span className={cn("font-semibold", appt.status === "Cancelled" ? "text-slate-400" : "text-emerald-700")}>
+                        {appt.status || "Scheduled"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
