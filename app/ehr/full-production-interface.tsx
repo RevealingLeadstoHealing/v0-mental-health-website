@@ -3789,8 +3789,98 @@ ${generatedDocs.structuredNote.content}`}</div>
     </div>
   );
 }
+function insuranceStatusBadge(status) {
+  if (status === "Verified") return { label: "Verified", className: "bg-emerald-100 text-emerald-800" };
+  if (status === "Pending") return { label: "Pending", className: "bg-amber-100 text-amber-800" };
+  if (status === "Not verified" || !status) return { label: "Not checked", className: "bg-slate-200 text-slate-700" };
+  return { label: status, className: "bg-slate-200 text-slate-700" };
+}
+// A one-click insurance verification workflow, inspired by Headway's "Check
+// Insurance" feature. This is a manual verification tracker — it records
+// what was confirmed, when, and by whom — not a live payer eligibility API.
+// A real-time eligibility check (like Headway's) would require a
+// clearinghouse account (Availity, pVerify, etc.) with its own credentials;
+// that is a separate decision for the practice to make later.
+function InsuranceCheckPanel({ client, currentUser, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const beginCheck = () => {
+    setDraft({
+      insurancePayer: client.insurancePayer || "",
+      insurancePlanName: client.insurancePlanName || "",
+      insuranceMemberId: client.insuranceMemberId || "",
+      insuranceGroupNumber: client.insuranceGroupNumber || "",
+      insuranceNetworkStatus: client.insuranceNetworkStatus || "",
+      insuranceVerificationNotes: client.insuranceVerificationNotes || "",
+    });
+    setError("");
+    setOpen(true);
+  };
+  const saveStatus = async (status) => {
+    if (!draft || busy) return;
+    setBusy(true);
+    setError("");
+    const payload = {
+      ...draft,
+      insuranceVerificationStatus: status,
+      insuranceVerifiedAt: new Date().toISOString(),
+      insuranceVerifiedBy: currentUser.fullName || "",
+    };
+    try {
+      await productionApi("/api/ehr/clients", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, ...payload }),
+      });
+      onSaved(client.id, payload);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Insurance check could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const badge = insuranceStatusBadge(client.insuranceVerificationStatus);
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${badge.className}`}>
+          Insurance: {badge.label}
+        </span>
+        {client.insuranceVerifiedAt && (
+          <span className="text-xs text-slate-500">
+            Checked {new Date(client.insuranceVerifiedAt).toLocaleDateString()}{client.insuranceVerifiedBy ? ` by ${client.insuranceVerifiedBy}` : ""}
+          </span>
+        )}
+      </div>
+      {!open ? (
+        <Button variant="outline" className="w-full mt-2 rounded-2xl" onClick={beginCheck}>
+          Check Insurance
+        </Button>
+      ) : (
+        <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+          {error && <p className="text-xs text-red-700">{error}</p>}
+          <Input label="Insurance carrier" value={draft.insurancePayer} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePayer: e.target.value })} />
+          <Input label="Plan / product" value={draft.insurancePlanName} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePlanName: e.target.value })} />
+          <Input label="Member ID" value={draft.insuranceMemberId} disabled={busy} onChange={(e) => setDraft({ ...draft, insuranceMemberId: e.target.value })} />
+          <Input label="Group number" value={draft.insuranceGroupNumber} disabled={busy} onChange={(e) => setDraft({ ...draft, insuranceGroupNumber: e.target.value })} />
+          <Input label="Network status" value={draft.insuranceNetworkStatus} disabled={busy} placeholder="In-network / Out-of-network" onChange={(e) => setDraft({ ...draft, insuranceNetworkStatus: e.target.value })} />
+          <Textarea label="Verification notes" rows={2} value={draft.insuranceVerificationNotes} disabled={busy} placeholder="Copay, deductible, effective dates, payer rep spoken with, etc." onChange={(e) => setDraft({ ...draft, insuranceVerificationNotes: e.target.value })} />
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button className="rounded-2xl bg-emerald-600 hover:bg-emerald-700" disabled={busy} onClick={() => saveStatus("Verified")}>{busy ? "Saving…" : "Mark Verified"}</Button>
+            <Button variant="outline" className="rounded-2xl" disabled={busy} onClick={() => saveStatus("Pending")}>Mark Pending</Button>
+            <Button variant="outline" className="rounded-2xl border-red-300 text-red-700" disabled={busy} onClick={() => saveStatus("Not verified")}>Not Verified</Button>
+            <Button variant="outline" className="rounded-2xl" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function ClientManagementPage() {
-  const { store, createClient, updateSpecificUserData } = useAuth();
+  const { store, createClient, updateSpecificUserData, currentUser } = useAuth();
   const { setPage, setSelectedChartClientId } = usePage();
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
@@ -4077,8 +4167,13 @@ function ClientManagementPage() {
                     : <p className="font-semibold text-amber-700">Intake pending — day {w.day} of {INTAKE_WINDOW_DAYS}.</p>;
                 })()}
               </div>
-              <Button
-                className="w-full mt-4 rounded-2xl"
+                              <InsuranceCheckPanel
+                client={client}
+                currentUser={currentUser}
+                onSaved={(clientId, payload) => updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, ...payload }))}
+              />
+      <Button
+        className="w-full mt-4 rounded-2xl"
                 onClick={() => {
                   setSelectedChartClientId(client.id);
                   setPage("chart");
