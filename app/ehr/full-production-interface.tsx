@@ -2454,6 +2454,49 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       if (match) await acknowledgeAlert(match);
     } catch { /* ignore */ }
   };
+    // Practice-wide calendar — every appointment across every client, not just the
+  // one selected above. Appointments are stored per-client, so this pulls them
+  // all together and groups by date so the provider can see who's booked on a
+  // given day at a glance, instead of only one client's list at a time.
+  const allAppointments = useMemo(() => {
+    if (!isProvider) return [];
+    return clients
+      .flatMap(([clientId, bucket]) =>
+        (bucket.appointments || []).map((appt) => ({
+          ...appt,
+          clientId,
+          clientName: bucket.profile?.fullName || "Client",
+        }))
+      )
+      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  }, [isProvider, clients]);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const upcomingAppointments = allAppointments.filter((appt) => appt.date >= todayIso);
+  const appointmentsByDate = useMemo(() => {
+    const groups = {};
+    upcomingAppointments.forEach((appt) => {
+      if (!groups[appt.date]) groups[appt.date] = [];
+      groups[appt.date].push(appt);
+    });
+    return Object.entries(groups);
+  }, [upcomingAppointments]);
+  const formatCalendarDate = (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((d - today) / 86400000);
+    const label = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    if (diffDays === 0) return `Today — ${label}`;
+    if (diffDays === 1) return `Tomorrow — ${label}`;
+    return label;
+  };
+  const formatCalendarTime = (timeStr) => {
+    const [h, m] = (timeStr || "0:0").split(":").map(Number);
+    const d = new Date();
+    d.setHours(h || 0, m || 0, 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
 
   return (
     <div>
@@ -2481,6 +2524,47 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
             ))}
           </div>
         </div>
+      )}
+      {isProvider && (
+        <Card className="rounded-2xl shadow-sm mb-4">
+          <CardHeader>
+            <CardTitle>Practice Calendar — Upcoming Appointments</CardTitle>
+            <CardDescription>Every scheduled appointment across all clients, soonest first — so you can see who's booked on any given day.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 max-h-[420px] overflow-auto">
+            {appointmentsByDate.length === 0 && <p className="text-sm text-slate-500">No upcoming appointments scheduled.</p>}
+            {appointmentsByDate.map(([date, appts]) => (
+              <div key={date}>
+                <p className="text-sm font-semibold text-slate-700 mb-2">{formatCalendarDate(date)}</p>
+                <div className="space-y-2">
+                  {appts.map((appt) => (
+                    <div
+                      key={appt.id}
+                      className={cn(
+                        "flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3",
+                        appt.status === "Cancelled" ? "border-slate-200 bg-slate-50 opacity-60" : "border-stone-200 bg-white"
+                      )}
+                    >
+                      <div className="text-sm">
+                        <span className="font-semibold">{formatCalendarTime(appt.time)}</span>
+                        <span className="mx-2 text-slate-400">·</span>
+                        <span className="font-medium">{appt.clientName}</span>
+                        <span className="mx-2 text-slate-400">·</span>
+                        <span className="text-slate-600">{appt.purpose}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-400">{appt.format}</span>
+                        <span className={cn("font-semibold", appt.status === "Cancelled" ? "text-slate-400" : "text-emerald-700")}>
+                          {appt.status || "Scheduled"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
       <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
