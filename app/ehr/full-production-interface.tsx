@@ -1159,9 +1159,71 @@ function AuthPage() {
     </div>
   );
 }
+// Standing provider alerts — new bookings AND website consultation requests —
+// polled globally so they show (and chime) on every EHR page, not only the
+// Scheduling tab. An alert stays here until the provider explicitly
+// acknowledges it; it is never auto-dismissed by time or by navigating away.
+function useStandingAlerts(isProvider) {
+  const [alerts, setAlerts] = useState([]);
+  const load = () => {
+    if (!isProvider) return;
+    productionApi("/api/ehr/booking-alerts?pending=1")
+      .then((data) => setAlerts(Array.isArray(data.alerts) ? data.alerts : []))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    if (!isProvider) return;
+    load();
+    const timer = setInterval(load, 45000);
+    return () => clearInterval(timer);
+  }, [isProvider]);
+  const acknowledge = async (alert) => {
+    try {
+      await productionApi("/api/ehr/booking-alerts", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alertId: alert.alertId, createdAt: alert.createdAt }),
+      });
+      setAlerts((prev) => prev.filter((a) => a.alertId !== alert.alertId));
+    } catch { /* leave it standing if it fails */ }
+  };
+  return { alerts, acknowledge };
+}
+// A short two-tone chime via the Web Audio API — no audio file needed. Browsers
+// block sound before any user interaction on the page, so the very first
+// chime after login may be silent; the visual banner always stands regardless.
+function playAlertChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const tone = (freq, startAt) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + startAt);
+      osc.stop(ctx.currentTime + startAt + 0.42);
+    };
+    tone(880, 0);
+    tone(1100, 0.22);
+  } catch { /* Web Audio unavailable or blocked — the banner still stands */ }
+}
 function MainApp() {
   const { currentUser, logout, saveStatus } = useAuth();
   const { page, setPage } = usePage();
+  const isProvider = currentUser.role === "provider";
+  const standingAlerts = useStandingAlerts(isProvider);
+  useEffect(() => {
+    if (!isProvider || standingAlerts.alerts.length === 0) return;
+    playAlertChime();
+    const soundTimer = setInterval(playAlertChime, 45000);
+    return () => clearInterval(soundTimer);
+  }, [isProvider, standingAlerts.alerts.length]);
   const clientItems = [
     ["dashboard", "Dashboard", HeartHandshake],
     ["journal", "Journal", PenSquare],
@@ -1267,7 +1329,33 @@ function MainApp() {
         </aside>
         <main className="ehr-workspace-content" ref={workspaceRef} tabIndex={-1} aria-label={navItems.find(([id]) => id === page)?.[1] || "EHR workspace"}>
           {saveStatus && <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-medium ${saveStatus.includes("failed") || saveStatus.includes("not saved") ? "border-red-200 bg-red-50 text-red-800" : saveStatus.includes("Saving") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{saveStatus}</div>}
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+                    {isProvider && standingAlerts.alerts.length > 0 && (
+            <div className="mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-900">
+                {standingAlerts.alerts.length} new alert{standingAlerts.alerts.length === 1 ? "" : "s"} need{standingAlerts.alerts.length === 1 ? "s" : ""} your attention
+              </p>
+              <p className="mt-1 text-xs text-amber-800">New bookings and website consultation requests stay here — with a repeating chime — until you acknowledge each one. This shows on every page, not just Scheduling.</p>
+              <div className="mt-3 space-y-2">
+                {standingAlerts.alerts.map((alert) => (
+                  <div key={alert.alertId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-white p-3">
+                    <div className="text-sm text-slate-800">
+                      <span className="font-medium">{alert.clientName || "Someone"}</span>
+                      {" · "}{alert.appointmentPurpose || "Appointment"}
+                      {alert.appointmentDate ? ` · ${alert.appointmentDate} ${alert.appointmentTime}` : ""}
+                      {alert.contactEmail ? <span className="ml-2 text-slate-500">{alert.contactEmail}</span> : null}
+                      {alert.contactPhone ? <span className="ml-2 text-slate-500">{alert.contactPhone}</span> : null}
+                      {alert.contactMessage ? <div className="mt-1 text-xs text-slate-500 italic">"{alert.contactMessage}"</div> : null}
+                      {alert.bookedByRole === "client" ? <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-xs">client booked</span> : null}
+                    </div>
+                    <button type="button" className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={() => standingAlerts.acknowledge(alert)}>
+                      Acknowledge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+<motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <PageRouter />
           </motion.div>
         </main>
