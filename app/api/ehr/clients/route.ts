@@ -7,6 +7,7 @@ import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../
 import { getAwsRegion, getDynamoDocumentClient } from "../../../../lib/ehr/aws-runtime";
 import { appendAuditEvent, listClientProfiles, putClientProfile } from "../../../../lib/ehr/dynamodb-store";
 import { rlthAwsFoundation } from "../../../../lib/rlth-aws-foundation";
+import { sendPatientInviteEmail } from "../../../../lib/ehr/patient-invite-email";
 
 type CognitoAdminResult = {
   User?: { Username?: string; Attributes?: Array<{ Name?: string; Value?: string }> };
@@ -195,15 +196,22 @@ export async function POST(request: Request) {
       try { await cognitoAdmin("AdminGetUser", { UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email }); }
       catch (error) { if (error instanceof ApiError && error.status === 404) existingAccount = false; else throw error; }
       let cognitoUserId = String(client.cognitoUserId || "");
+      const resendTemporaryPassword = temporaryPatientPassword();
       if (existingAccount) {
+        // RESEND is the only MessageAction Cognito allows against an already-existing
+        // username, and it always delivers Cognito's own plain welcome message via
+        // DesiredDeliveryMediums — that can't be suppressed while still resetting the
+        // password. So the patient still gets that plain AWS email, but we also send
+        // our own branded invite below (same known temp password) so they always have
+        // the full instructions, portal links, QR code, and intake-package direction.
         await cognitoAdmin("AdminCreateUser", {
           UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
-          MessageAction: "RESEND", DesiredDeliveryMediums: ["EMAIL"],
+          MessageAction: "RESEND", TemporaryPassword: resendTemporaryPassword, DesiredDeliveryMediums: ["EMAIL"],
         });
       } else {
         const account = await cognitoAdmin("AdminCreateUser", {
           UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
-          TemporaryPassword: temporaryPatientPassword(), DesiredDeliveryMediums: ["EMAIL"],
+          TemporaryPassword: resendTemporaryPassword, MessageAction: "SUPPRESS",
           UserAttributes: [
             { Name: "email", Value: client.email }, { Name: "email_verified", Value: "true" },
             { Name: "name", Value: client.fullName }, { Name: "custom:role", Value: "client" },
@@ -220,8 +228,11 @@ export async function POST(request: Request) {
           ExpressionAttributeValues: { ":cognitoUserId": cognitoUserId, ":updatedAt": new Date().toISOString() },
         }));
       }
-      await appendAuditEvent(actor, { action: existingAccount ? "Resent patient login invitation" : "Created patient login and sent secure invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: existingAccount ? "A secure Cognito patient invitation was resent." : "The onboarding packet was saved before the secure Cognito invitation was sent." });
-      return NextResponse.json({ invitationSent: true, clientId });
+      const inviteEmailStatus = await sendPatientInviteEmail({
+        fullName: client.fullName, email: client.email, temporaryPassword: resendTemporaryPassword,
+      });
+      await appendAuditEvent(actor, { action: existingAccount ? "Resent patient login invitation" : "Created patient login and sent secure invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: existingAccount ? `A secure Cognito patient invitation was resent (branded invite email: ${inviteEmailStatus}).` : `The onboarding packet was saved before the secure Cognito invitation was sent (branded invite email: ${inviteEmailStatus}).` });
+      return NextResponse.json({ invitationSent: true, clientId, inviteEmailStatus });
     }
     const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -231,12 +242,17 @@ export async function POST(request: Request) {
     }
 
     let cognitoUserId = "";
+    let inviteEmailStatus: string | null = null;
     if (email && body.sendInvitation !== false) {
+      const temporaryPassword = temporaryPatientPassword();
       const account = await cognitoAdmin("AdminCreateUser", {
         UserPoolId: rlthAwsFoundation.cognitoUserPoolId,
         Username: email,
-        TemporaryPassword: temporaryPatientPassword(),
-        DesiredDeliveryMediums: ["EMAIL"],
+        TemporaryPassword: temporaryPassword,
+        // Suppress Cognito's own plain welcome email — sendPatientInviteEmail below
+        // sends the practice's branded invite (username, temp password, portal
+        // links, QR code, intake-package direction) instead, from connect@rlth.org.
+        MessageAction: "SUPPRESS",
         UserAttributes: [
           { Name: "email", Value: email },
           { Name: "email_verified", Value: "true" },
@@ -252,6 +268,7 @@ export async function POST(request: Request) {
         Username: email,
         GroupName: "client",
       });
+      inviteEmailStatus = await sendPatientInviteEmail({ fullName, email, temporaryPassword });
     }
 
     const client = await putClientProfile(actor, {
@@ -295,12 +312,13 @@ export async function POST(request: Request) {
       entityType: "client-profile",
       entityId: client.clientId,
       summary: cognitoUserId
-        ? "A client chart and Cognito patient login were created; AWS delivered a temporary password."
+        ? `A client chart and Cognito patient login were created; the branded invite email was sent (status: ${inviteEmailStatus}).`
         : "A client chart was created through the production API without a portal invitation.",
     });
     return NextResponse.json({
       client: { ...client, ...(cognitoUserId ? { cognitoUserId } : {}) },
       invitationSent: Boolean(cognitoUserId),
+      inviteEmailStatus,
       loginUrl: cognitoUserId ? "/login" : null,
     }, { status: 201 });
   } catch (error) {
