@@ -4,6 +4,7 @@ import { specialtyAssessments, clinicalDomains, validateSpecialtyAssessment } fr
 import { isScoredInstrument } from '../../lib/ehr/scored-instruments';
 import ScoredInstrumentForm from './scored-instrument-form';
 import BlankScoreSheet from './blank-score-sheet';
+import { StructuredPicker, msePickerGroups } from './structured-picker';
 
 type Props = { assessmentKey: string; saved?: any; examiner: string; onSave: (key: string, payload: any, label: string) => Promise<void>; onBusy: (busy: boolean) => void };
 export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner, onSave, onBusy }: Props) {
@@ -73,7 +74,15 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
             setData(previous => ({ ...previous, totalScore: String(total), results: band }));
           }}
         />
-      ) : domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => field(domain, domain, true, 'Observed finding, client report, or not assessed and reason'))}</div> : <>
+      ) : domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => {
+        const pickerGroups = msePickerGroups[domain];
+        if (!pickerGroups) return field(domain, domain, true, 'Observed finding, client report, or not assessed and reason');
+        return <label key={domain} className="block space-y-1 text-sm">
+          <span className="font-medium">{domain}</span>
+          <StructuredPicker value={data[domain] || ''} onAppend={next => setData(previous => ({ ...previous, [domain]: next }))} groups={pickerGroups} disabled={busy} helpText={domain.startsWith('Safety') ? 'Any endorsed ideation, plan, or intent requires a clinical safety assessment regardless of the descriptors selected.' : undefined} />
+          <textarea className="w-full rounded-xl border p-3 min-h-[85px]" value={data[domain] || ''} placeholder="Observed finding, client report, or not assessed and reason" onChange={e => setData(previous => ({ ...previous, [domain]: e.target.value }))} />
+        </label>;
+      })}</div> : <>
         <div className="grid md:grid-cols-2 gap-4">{field('version', 'Exact instrument / edition / language / age interval')}{field('respondent', 'Respondent and relationship to client')}</div>
         {field('source', 'Source form / document reference', false, 'Reference to the completed form in the client chart')}
         <BlankScoreSheet

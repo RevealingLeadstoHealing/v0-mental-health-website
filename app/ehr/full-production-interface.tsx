@@ -11,6 +11,7 @@ import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSessio
 import ClinicalCodeInput from "./clinical-code-input";
 import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
+import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups } from "./structured-picker";
 import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatment-goals";
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
 import { payerCatalog } from "../../lib/ehr/payer-catalog";
@@ -921,43 +922,71 @@ function AuthProvider({ children }) {
       onboardingRequired: template.category !== "ROI",
       createdAt: new Date().toISOString(),
     }));
+    // Insurance card / photo-ID IMAGE uploads must never block patient creation,
+    // consent forms, or the typed insurance details (those are saved in the
+    // intake below regardless). If an image upload fails — for example the AWS
+    // document storage is not provisioned/permissioned yet, or the office
+    // connection dropped — we record a "pending upload" marker on the chart and
+    // continue. The card can be re-uploaded later from Edit client / Documents.
+    const cardUploadFailures: string[] = [];
     for (const item of insuranceCardFiles) {
-      const authorization = await productionApi("/api/ehr/documents/presign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: client.clientId,
-          documentType: item.documentType,
-          fileName: item.file.name,
+      try {
+        const authorization = await productionApi("/api/ehr/documents/presign", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            clientId: client.clientId,
+            documentType: item.documentType,
+            fileName: item.file.name,
+            contentType: item.file.type || "application/octet-stream",
+          }),
+        });
+        const uploadResponse = await fetch(authorization.uploadUrl, {
+          method: "PUT",
+          headers: authorization.uploadHeaders,
+          body: item.file,
+        });
+        if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+        const uploadedInsuranceDocument = {
+          id: authorization.documentId,
+          title: item.title,
+          type: "Insurance",
+          category: "Insurance",
+          status: "Uploaded",
+          viewedAt: "",
+          signature: null,
+          signatures: [],
+          uploadedFileName: item.file.name,
+          generatedLetterText: "",
+          clientVisible: true,
+          onboardingRequired: false,
+          createdAt: new Date().toISOString(),
           contentType: item.file.type || "application/octet-stream",
-        }),
-      });
-      const uploadResponse = await fetch(authorization.uploadUrl, {
-        method: "PUT",
-        headers: authorization.uploadHeaders,
-        body: item.file,
-      });
-      if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
-      const uploadedInsuranceDocument = {
-        id: authorization.documentId,
-        title: item.title,
-        type: "Insurance",
-        category: "Insurance",
-        status: "Uploaded",
-        viewedAt: "",
-        signature: null,
-        signatures: [],
-        uploadedFileName: item.file.name,
-        generatedLetterText: "",
-        clientVisible: true,
-        onboardingRequired: false,
-        createdAt: new Date().toISOString(),
-        contentType: item.file.type || "application/octet-stream",
-        sizeBytes: item.file.size,
-        storageKey: authorization.key,
-        uploadedByRole: currentUser.role,
-      };
-      onboardingDocuments.push(uploadedInsuranceDocument);
+          sizeBytes: item.file.size,
+          storageKey: authorization.key,
+          uploadedByRole: currentUser.role,
+        };
+        onboardingDocuments.push(uploadedInsuranceDocument);
+      } catch (uploadError) {
+        cardUploadFailures.push(item.title);
+        onboardingDocuments.push({
+          id: `pending-upload-${client.clientId}-${item.documentType}-${Date.now()}`,
+          title: `${item.title} — image upload pending`,
+          type: "Insurance",
+          category: "Insurance",
+          status: "Image upload pending — retry from Documents",
+          viewedAt: "",
+          signature: null,
+          signatures: [],
+          uploadedFileName: item.file.name || "",
+          generatedLetterText: "The insurance/ID details were recorded in the intake. The card image did not upload and can be re-uploaded later from Edit client or Documents. Reason: " + (uploadError instanceof Error ? uploadError.message : "upload failed."),
+          clientVisible: false,
+          onboardingRequired: false,
+          uploadPending: true,
+          createdAt: new Date().toISOString(),
+          uploadedByRole: currentUser.role,
+        });
+      }
     }
     const onboardingIntake = {
       fullName: client.fullName,
@@ -1020,11 +1049,14 @@ function AuthProvider({ children }) {
       persistModuleSnapshot(client.clientId, "intake", onboardingIntake),
     ]);
     const failed = results.find((r) => r.status === "rejected");
+    const cardNote = cardUploadFailures.length
+      ? ` Card/photo image${cardUploadFailures.length > 1 ? "s" : ""} did not upload (${cardUploadFailures.join(", ")}); the typed insurance details were saved and the image can be re-uploaded from Documents.`
+      : "";
     if (failed && failed.status === "rejected") {
       followUpError = failed.reason instanceof Error ? failed.reason.message : "Some intake details will finish saving shortly.";
-      setSaveStatus("Patient chart saved. Intake documents are still finishing — you can send the invitation now.");
+      setSaveStatus("Patient chart saved. Intake documents are still finishing — you can send the invitation now." + cardNote);
     } else {
-      setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS.");
+      setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS." + cardNote);
     }
     return { ...client, invitationSent: false, invitationError: followUpError };
   };
@@ -1386,39 +1418,49 @@ function ProviderPatientDashboard() {
         { file: editFiles.photoIdFront, title: "Photo ID - Front", documentType: "photo-id-front", category: "Identification" },
         { file: editFiles.photoIdBack, title: "Photo ID - Back", documentType: "photo-id-back", category: "Identification" },
       ].filter((item) => item.file);
+      // The profile and intake are already saved above. A card/photo IMAGE
+      // upload failing must not lose that save or block the other images — it
+      // reports the affected image(s) and keeps everything else intact.
       const uploadedDocuments = [];
+      const editUploadFailures = [];
       for (const item of uploads) {
-        if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
-        if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
-          throw new Error(`${item.title} must be an image or PDF.`);
+        try {
+          if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
+          if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
+            throw new Error(`${item.title} must be an image or PDF.`);
+          }
+          const authorization = await productionApi("/api/ehr/documents/presign", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              clientId: selectedPatient.id,
+              documentType: item.documentType,
+              fileName: item.file.name,
+              contentType: item.file.type || "application/octet-stream",
+            }),
+          });
+          const uploadResponse = await fetch(authorization.uploadUrl, {
+            method: "PUT",
+            headers: authorization.uploadHeaders,
+            body: item.file,
+          });
+          if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+          uploadedDocuments.push({
+            id: authorization.documentId, title: item.title, type: item.category, category: item.category,
+            status: "Uploaded", viewedAt: "", signature: null, signatures: [],
+            uploadedFileName: item.file.name, generatedLetterText: "", clientVisible: true,
+            onboardingRequired: false, createdAt: new Date().toISOString(),
+            contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
+            storageKey: authorization.key, uploadedByRole: "provider",
+          });
+          await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
+        } catch (uploadError) {
+          editUploadFailures.push(`${item.title}: ${uploadError instanceof Error ? uploadError.message : "upload failed"}`);
         }
-        const authorization = await productionApi("/api/ehr/documents/presign", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            clientId: selectedPatient.id,
-            documentType: item.documentType,
-            fileName: item.file.name,
-            contentType: item.file.type || "application/octet-stream",
-          }),
-        });
-        const uploadResponse = await fetch(authorization.uploadUrl, {
-          method: "PUT",
-          headers: authorization.uploadHeaders,
-          body: item.file,
-        });
-        if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
-        uploadedDocuments.push({
-          id: authorization.documentId, title: item.title, type: item.category, category: item.category,
-          status: "Uploaded", viewedAt: "", signature: null, signatures: [],
-          uploadedFileName: item.file.name, generatedLetterText: "", clientVisible: true,
-          onboardingRequired: false, createdAt: new Date().toISOString(),
-          contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
-          storageKey: authorization.key, uploadedByRole: "provider",
-        });
-        await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
       }
-      setEditNotice("Patient record saved securely.");
+      setEditNotice(editUploadFailures.length
+        ? `Patient record saved. Some images did not upload and can be retried: ${editUploadFailures.join("; ")}.`
+        : "Patient record saved securely.");
       setEditingPatient(false);
     } catch (error) {
       setEditNotice(error instanceof Error ? error.message : "Patient record could not be saved.");
@@ -4205,30 +4247,63 @@ function IntakePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Chief Complaint / Reason for Visit</label>
+                    <StructuredPicker value={intake.chiefComplaint || ""} onAppend={(v) => updateIntakeField("chiefComplaint", v)} groups={intakePickerGroups.chiefComplaint} disabled={isSubmitting} />
                     <Input value={intake.chiefComplaint || ""} onChange={(e) => updateIntakeField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" className="rounded-2xl" />
                   </div>
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Onset / Duration</label>
+                    <StructuredPicker value={intake.onset || ""} onAppend={(v) => updateIntakeField("onset", v)} groups={intakePickerGroups.onset} disabled={isSubmitting} />
                     <Input value={intake.onset || ""} onChange={(e) => updateIntakeField("onset", e.target.value)} placeholder="Onset / duration" className="rounded-2xl" />
                   </div>
                 </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Presenting Problem / Reason for Therapy</label>
+                  <StructuredPicker value={intake.presentingProblem || ""} onAppend={(v) => updateIntakeField("presentingProblem", v)} groups={intakePickerGroups.presentingProblem} disabled={isSubmitting} />
                   <Textarea value={intake.presentingProblem || ""} onChange={(e) => updateIntakeField("presentingProblem", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Document the current symptoms, duration, and life impact..." />
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <p className="text-sm font-bold text-slate-800">Detailed biopsychosocial fields</p>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Textarea label="Demographics / Household / Access Needs" value={intake.demographicsSummary || ""} onChange={(e) => updateIntakeField("demographicsSummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Demographics, household, housing, work/school, language, culture, access needs" />
-                    <Textarea label="Social / Family History" value={intake.socialFamilyHistory || ""} onChange={(e) => updateIntakeField("socialFamilyHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Social and family history, supports, relationships, family mental health/substance history" />
-                    <Textarea label="Mental Health History" value={intake.mentalHealthHistory || ""} onChange={(e) => updateIntakeField("mentalHealthHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Mental health history, prior therapy, diagnoses, medications, response to treatment" />
-                    <Textarea label="Hospitalization / Crisis History" value={intake.hospitalizationHistory || ""} onChange={(e) => updateIntakeField("hospitalizationHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Psychiatric hospitalizations, ER/crisis episodes, higher level of care history" />
-                    <Textarea label="Medical / Physical Health History" value={intake.medicalPhysicalHistory || ""} onChange={(e) => updateIntakeField("medicalPhysicalHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Medical/physical health history, medications, allergies, sleep, appetite, pain, PCP coordination" />
-                    <Textarea label="Abuse / Trauma History" value={intake.abuseTraumaHistory || ""} onChange={(e) => updateIntakeField("abuseTraumaHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Abuse, trauma, violence exposure, grief/loss, safety concerns, triggers" />
-                    <Textarea label="Substance Use History" value={intake.substanceUseHistory || ""} onChange={(e) => updateIntakeField("substanceUseHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Substance use history, frequency, consequences, recovery supports, stage of change" />
-                    <Textarea label="Risk / Safety Summary" value={intake.riskSafetySummary || ""} onChange={(e) => updateIntakeField("riskSafetySummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Risk/safety: SI/HI, self-harm, violence, protective factors, crisis plan, level of care" />
-                    <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
-                    <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.demographicsSummary || ""} onAppend={(v) => updateIntakeField("demographicsSummary", v)} groups={intakePickerGroups.demographicsSummary} disabled={isSubmitting} />
+                      <Textarea label="Demographics / Household / Access Needs" value={intake.demographicsSummary || ""} onChange={(e) => updateIntakeField("demographicsSummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Demographics, household, housing, work/school, language, culture, access needs" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.socialFamilyHistory || ""} onAppend={(v) => updateIntakeField("socialFamilyHistory", v)} groups={intakePickerGroups.socialFamilyHistory} disabled={isSubmitting} />
+                      <Textarea label="Social / Family History" value={intake.socialFamilyHistory || ""} onChange={(e) => updateIntakeField("socialFamilyHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Social and family history, supports, relationships, family mental health/substance history" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.mentalHealthHistory || ""} onAppend={(v) => updateIntakeField("mentalHealthHistory", v)} groups={intakePickerGroups.mentalHealthHistory} disabled={isSubmitting} />
+                      <Textarea label="Mental Health History" value={intake.mentalHealthHistory || ""} onChange={(e) => updateIntakeField("mentalHealthHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Mental health history, prior therapy, diagnoses, medications, response to treatment" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.hospitalizationHistory || ""} onAppend={(v) => updateIntakeField("hospitalizationHistory", v)} groups={intakePickerGroups.hospitalizationHistory} disabled={isSubmitting} />
+                      <Textarea label="Hospitalization / Crisis History" value={intake.hospitalizationHistory || ""} onChange={(e) => updateIntakeField("hospitalizationHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Psychiatric hospitalizations, ER/crisis episodes, higher level of care history" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.medicalPhysicalHistory || ""} onAppend={(v) => updateIntakeField("medicalPhysicalHistory", v)} groups={intakePickerGroups.medicalPhysicalHistory} disabled={isSubmitting} />
+                      <Textarea label="Medical / Physical Health History" value={intake.medicalPhysicalHistory || ""} onChange={(e) => updateIntakeField("medicalPhysicalHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Medical/physical health history, medications, allergies, sleep, appetite, pain, PCP coordination" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.abuseTraumaHistory || ""} onAppend={(v) => updateIntakeField("abuseTraumaHistory", v)} groups={intakePickerGroups.abuseTraumaHistory} disabled={isSubmitting} />
+                      <Textarea label="Abuse / Trauma History" value={intake.abuseTraumaHistory || ""} onChange={(e) => updateIntakeField("abuseTraumaHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Abuse, trauma, violence exposure, grief/loss, safety concerns, triggers" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.substanceUseHistory || ""} onAppend={(v) => updateIntakeField("substanceUseHistory", v)} groups={intakePickerGroups.substanceUseHistory} disabled={isSubmitting} />
+                      <Textarea label="Substance Use History" value={intake.substanceUseHistory || ""} onChange={(e) => updateIntakeField("substanceUseHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Substance use history, frequency, consequences, recovery supports, stage of change" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.riskSafetySummary || ""} onAppend={(v) => updateIntakeField("riskSafetySummary", v)} groups={intakePickerGroups.riskSafetySummary} disabled={isSubmitting} helpText="Document risk carefully; any endorsed ideation, plan, or intent requires a clinical safety assessment regardless of chips selected." />
+                      <Textarea label="Risk / Safety Summary" value={intake.riskSafetySummary || ""} onChange={(e) => updateIntakeField("riskSafetySummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Risk/safety: SI/HI, self-harm, violence, protective factors, crisis plan, level of care" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.strengthsProtectiveFactors || ""} onAppend={(v) => updateIntakeField("strengthsProtectiveFactors", v)} groups={intakePickerGroups.strengthsProtectiveFactors} disabled={isSubmitting} />
+                      <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.clinicalFormulation || ""} onAppend={(v) => updateIntakeField("clinicalFormulation", v)} groups={intakePickerGroups.clinicalFormulation} disabled={isSubmitting} />
+                      <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4307,13 +4382,20 @@ x
                 <section aria-label="Follow-Up Plan" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                   <h5 className="text-base font-bold text-slate-800">Follow-Up Plan</h5>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Input label="Agreed visit frequency" value={intake.followUpFrequency || ""} onChange={(e) => updateIntakeField("followUpFrequency", e.target.value)} placeholder="e.g., 2–3 times weekly, weekly, twice monthly, monthly" className="rounded-2xl" />
-                    <Input label="Next follow-up interval" value={intake.followUpInterval || ""} onChange={(e) => updateIntakeField("followUpInterval", e.target.value)} placeholder="e.g., in 2–3 days, one week, two weeks, one month" className="rounded-2xl" />
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.followUpFrequency || ""} onAppend={(v) => updateIntakeField("followUpFrequency", v)} groups={intakePickerGroups.followUpFrequency} disabled={isSubmitting} />
+                      <Input label="Agreed visit frequency" value={intake.followUpFrequency || ""} onChange={(e) => updateIntakeField("followUpFrequency", e.target.value)} placeholder="e.g., 2–3 times weekly, weekly, twice monthly, monthly" className="rounded-2xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.followUpInterval || ""} onAppend={(v) => updateIntakeField("followUpInterval", v)} groups={intakePickerGroups.followUpInterval} disabled={isSubmitting} />
+                      <Input label="Next follow-up interval" value={intake.followUpInterval || ""} onChange={(e) => updateIntakeField("followUpInterval", e.target.value)} placeholder="e.g., in 2–3 days, one week, two weeks, one month" className="rounded-2xl" />
+                    </div>
                   </div>
                   <Textarea label="Follow-up comments / patient agreement" value={intake.followUpComments || ""} onChange={(e) => updateIntakeField("followUpComments", e.target.value)} placeholder="Document the provider recommendation, patient agreement, and adjustments based on progress." className="min-h-[110px] rounded-2xl" />
                 </section>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
+                  <StructuredPicker value={intake.treatmentGoals || ""} onAppend={(v) => updateIntakeField("treatmentGoals", v)} groups={intakePickerGroups.treatmentGoals} disabled={isSubmitting} />
                   <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
                 </div>
               </div>
@@ -5337,6 +5419,7 @@ function BillingPage() {
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
+            <StructuredPicker value={draft.problem} onAppend={(v) => setDraft({ ...draft, problem: v })} groups={treatmentPlanPickerGroups.problem} disabled={saving} />
             <Input value={draft.problem} onChange={(e) => setDraft({ ...draft, problem: e.target.value })} placeholder="Problem" />
             <fieldset disabled={saving} className="space-y-3 rounded-xl border p-3">
               <legend className="font-medium">Treatment diagnoses and planned services</legend>
@@ -5347,6 +5430,7 @@ function BillingPage() {
               <p className="text-xs text-slate-600">Select diagnoses supported by your assessment. Planned services do not create a charge or claim.</p>
             </fieldset>
             <TreatmentGoalEditor goals={draft.goals} disabled={saving} onChange={(goals) => setDraft({ ...draft, goals })} />
+            <StructuredPicker value={draft.intervention} onAppend={(v) => setDraft({ ...draft, intervention: v })} groups={treatmentPlanPickerGroups.intervention} disabled={saving} />
             <Textarea value={draft.intervention} onChange={(e) => setDraft({ ...draft, intervention: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Intervention" />
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <span className="font-medium text-slate-800">Access policy:</span> Provider Only | Client access by formal records request and provider review.
@@ -6225,6 +6309,7 @@ function DocumentLibraryPage({ advocacyMode = false }) {
   const [signatureDocId, setSignatureDocId] = useState("");
   const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
   const [signatureRole, setSignatureRole] = useState("Provider");
+  const [verbalConsentReason, setVerbalConsentReason] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadType, setUploadType] = useState("Clinical Document");
   const [uploadFile, setUploadFile] = useState(null);
@@ -6339,15 +6424,23 @@ ${organization}`;
   const signDocument = async () => {
     if (!selectedClientId || !signatureDocId) return;
     const effectiveSignatureRole = currentUser?.role === "client" ? "Client" : signatureRole;
-    const authenticatedProvider = effectiveSignatureRole === "Provider" && currentUser?.role === "provider";
+    const providerIsAuthenticated = currentUser?.role === "provider" || currentUser?.role === "owner";
+    const authenticatedProvider = effectiveSignatureRole === "Provider" && providerIsAuthenticated;
     const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === (currentUser.chartClientId || currentUser.id);
-    if (!authenticatedProvider && !authenticatedClient) {
-      setDocumentNotice("The selected signature role must match the currently authenticated EHR account. Guardian signatures require a separately authenticated guardian account.");
+    // In-person, provider-witnessed patient signature: the patient signs on the
+    // provider's device during an on-site visit. This is NOT recorded as the
+    // patient logging in — it is honestly recorded as a witnessed in-person
+    // signature, attributed to the patient, witnessed by the authenticated
+    // provider, with a timestamp and document-version fingerprint.
+    const witnessedInPersonClient = effectiveSignatureRole === "Client (in person)" && providerIsAuthenticated;
+    if (!authenticatedProvider && !authenticatedClient && !witnessedInPersonClient) {
+      setDocumentNotice("Select a valid signature: your own provider signature, the patient signed in on their own portal, or an in-person patient signature you witness on this device.");
       return;
     }
     const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
     if (!selectedDocument) return;
-    const signer = currentUser?.fullName || signatureName.trim();
+    const patientName = selectedClient?.profile?.fullName || signatureName.trim();
+    const signer = witnessedInPersonClient ? patientName : (currentUser?.fullName || signatureName.trim());
     const signedAt = new Date().toISOString();
     const versionSource = JSON.stringify({
       id: selectedDocument.id,
@@ -6362,10 +6455,13 @@ ${organization}`;
       prev.map((doc) =>
         doc.id === signatureDocId
           ? (() => {
-              const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
+              const nextSignature = witnessedInPersonClient
+                ? { signer: patientName, signerId: selectedClientId, authenticatedRole: "client", role: "Client", signatureMethod: "In-person, witnessed on provider device", witnessedBy: currentUser?.fullName || "", witnessedById: currentUser.id, signedAt, documentVersionSha256 }
+                : { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
+              const signerAuthRole = witnessedInPersonClient ? "client" : currentUser.role;
               const previousSignatures = Array.isArray(doc.signatures)
-                ? doc.signatures.filter((entry) => entry.authenticatedRole !== currentUser.role)
-                : doc.signature && doc.signature.authenticatedRole !== currentUser.role ? [doc.signature] : [];
+                ? doc.signatures.filter((entry) => entry.authenticatedRole !== signerAuthRole)
+                : doc.signature && doc.signature.authenticatedRole !== signerAuthRole ? [doc.signature] : [];
               const signatures = [...previousSignatures, nextSignature];
               const signedByClient = signatures.some((entry) => entry.authenticatedRole === "client");
               const signedByProvider = signatures.some((entry) => entry.authenticatedRole === "provider" || entry.authenticatedRole === "owner");
@@ -6381,11 +6477,58 @@ ${organization}`;
     );
     appendAuditLog({ action: "Authenticated electronic signature applied", details: `${effectiveSignatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
     setSignatureName(signer);
+    // Keep the signer positioned on the signature panel and auto-advance to the
+    // next document that still needs this signer's signature, so multiple
+    // consents can be signed in a row without the page jumping to the bottom
+    // or the signer having to re-scroll and re-pick each form.
+    const justSignedAuthRole = witnessedInPersonClient ? "client" : currentUser.role;
+    const stillNeedsSignature = (doc) => {
+      if (doc.id === signatureDocId) return false;
+      const sigs = Array.isArray(doc.signatures) ? doc.signatures : (doc.signature ? [doc.signature] : []);
+      return !sigs.some((entry) => entry && entry.authenticatedRole === justSignedAuthRole);
+    };
+    const nextDoc = visibleDocuments.find(stillNeedsSignature);
+    setSignatureDocId(nextDoc ? nextDoc.id : "");
     try {
       await flushClientModuleSaves(selectedClientId);
-      setDocumentNotice(`Authenticated ${effectiveSignatureRole.toLowerCase()} signature saved. Refresh Signed Documents to view your copy.`);
+      setDocumentNotice(nextDoc
+        ? `Signature saved. Next form ready to sign: “${nextDoc.title}”.`
+        : `Signature saved. All forms in this list have your signature. Refresh Signed Documents to view copies.`);
     } catch (error) {
       setDocumentNotice("Signature could not be saved. Please retry before leaving this page.");
+    }
+  };
+  // Documented VERBAL consent path — for on-site situations where the patient
+  // consents verbally and a digital signature cannot be captured at that moment
+  // (e.g., signature capture unavailable, accessibility need). This does NOT
+  // forge a patient signature. It records a provider attestation: who obtained
+  // consent, when, that the method was verbal, and the reason. It is
+  // audit-logged and clearly labeled as verbal consent on the document.
+  const recordVerbalConsent = async () => {
+    if (!selectedClientId || !signatureDocId) { setDocumentNotice("Select the consent form to record verbal consent for."); return; }
+    if (currentUser?.role !== "provider" && currentUser?.role !== "owner") {
+      setDocumentNotice("Only the treating provider can attest that verbal consent was obtained.");
+      return;
+    }
+    const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
+    if (!selectedDocument) return;
+    const obtainedBy = currentUser?.fullName || signatureName.trim();
+    const obtainedAt = new Date().toISOString();
+    const reason = (verbalConsentReason || "").trim() || "Digital signature could not be captured at the time of service; consent obtained verbally with patient present.";
+    updateSpecificUserData(selectedClientId, "documents", (prev) =>
+      prev.map((doc) => doc.id === signatureDocId ? {
+        ...doc,
+        status: "Verbal consent obtained — provider attested",
+        verbalConsent: { method: "Verbal", obtainedBy, obtainedById: currentUser.id, obtainedByRole: currentUser.role, obtainedAt, reason },
+      } : doc)
+    );
+    appendAuditLog({ action: "Recorded verbal consent (provider attestation)", details: `Verbal consent for “${selectedDocument.title}” obtained by ${obtainedBy} at ${obtainedAt}. Reason: ${reason}`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Consent" });
+    setVerbalConsentReason("");
+    try {
+      await flushClientModuleSaves(selectedClientId);
+      setDocumentNotice(`Verbal consent recorded for “${selectedDocument.title}”. A digital signature can still be added later when available.`);
+    } catch (error) {
+      setDocumentNotice("Verbal consent could not be saved. Please retry before leaving this page.");
     }
   };
   const uploadDocument = async () => {
@@ -6504,7 +6647,7 @@ ${organization}`;
     }
     if (workflow.anchor === "document-signatures") setSignatureDocId(doc.id);
     if (workflow.anchor === "advocacy-letter-builder") setAdvocacyTemplateType(doc.title.split(" | ")[1] || "General Outside Resource Support");
-    window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
   };
   const saveAdvocacyLetter = async () => {
     if (!selectedClientId || documentBusy) return;
@@ -6624,7 +6767,9 @@ ${organization}`;
                   <p>Viewed: {doc.viewedAt || "Not viewed"}</p>
                   <p>File: {doc.uploadedFileName || "No file uploaded"}</p>
                   <p>Signature: {doc.signature ? `${doc.signature.role || "Signer"}: ${documentSignatureText(doc.signature)} | ${doc.signature.signedAt}` : "Not signed"}</p>
-                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {documentSignatureText(entry)} | {entry.signedAt}</p>)}
+                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {documentSignatureText(entry)} | {entry.signedAt}{entry.signatureMethod ? ` | ${entry.signatureMethod}${entry.witnessedBy ? `, witnessed by ${entry.witnessedBy}` : ""}` : ""}</p>)}
+                  {doc.verbalConsent && <p className="text-amber-800">Verbal consent: obtained by {doc.verbalConsent.obtainedBy} | {doc.verbalConsent.obtainedAt}{doc.verbalConsent.reason ? ` | ${doc.verbalConsent.reason}` : ""}</p>}
+                  {doc.uploadPending && <p className="text-amber-800">Image upload pending — the typed details were saved; re-upload the image when able.</p>}
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -6648,10 +6793,11 @@ ${organization}`;
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
                 <SelectContent>{visibleDocuments.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(currentUser?.fullName || PRACTITIONER_NAME); }}>
+              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(value === "Client (in person)" ? (selectedClient?.profile?.fullName || "") : (currentUser?.fullName || PRACTITIONER_NAME)); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {currentUser.role === "provider" && <SelectItem value="Provider">Provider signature</SelectItem>}
+                  {(currentUser.role === "provider" || currentUser.role === "owner") && <SelectItem value="Provider">Provider signature</SelectItem>}
+                  {(currentUser.role === "provider" || currentUser.role === "owner") && <SelectItem value="Client (in person)">Patient signature — signed in person on this device (I witness)</SelectItem>}
                   {currentUser.role === "client" && <SelectItem value="Client">Client / patient signature</SelectItem>}
                 </SelectContent>
               </Select>
@@ -6660,6 +6806,14 @@ ${organization}`;
               {currentUser.role === "provider" && <Input label="Provider license number" value={providerIdentifiersForName(currentUser.fullName || "").licenseNumber} readOnly placeholder="Provider license not configured" />}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their linked client accounts.</div>
               <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
+              {(currentUser.role === "provider" || currentUser.role === "owner") && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <p className="text-sm font-semibold text-slate-800">Verbal consent (on-site)</p>
+                  <p className="text-xs text-slate-600">Use when the patient consents verbally and a digital signature cannot be captured at that moment. Records a provider attestation with a timestamp — it does not create a patient signature. A digital signature can still be added later.</p>
+                  <Input value={verbalConsentReason} onChange={(e) => setVerbalConsentReason(e.target.value)} placeholder="Reason (e.g., signature capture unavailable on-site)" />
+                  <Button variant="outline" className="rounded-2xl" disabled={documentBusy} onClick={recordVerbalConsent}>Record verbal consent obtained</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
           {libraryMode && !advocacyMode && <Card id="document-upload" className="rounded-2xl shadow-sm scroll-mt-4">
