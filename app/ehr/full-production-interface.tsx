@@ -6740,8 +6740,13 @@ ${organization}`;
     } catch (error) { setDocumentNotice(error instanceof Error ? error.message : "Forms were not saved. Please try again."); }
     finally { setDocumentBusy(false); }
   };
-  const signDocument = async () => {
-    if (!selectedClientId || !signatureDocId) return;
+  const signDocument = async (docIdOverride) => {
+    // docIdOverride lets the sequential consent-signing wizard target a specific
+    // document directly without waiting on signatureDocId state to flush. The
+    // existing "Apply authenticated signature" button still calls this with no
+    // argument (or a click event, which is ignored) and falls back to signatureDocId.
+    const targetDocId = typeof docIdOverride === "string" ? docIdOverride : signatureDocId;
+    if (!selectedClientId || !targetDocId) return;
     const effectiveSignatureRole = currentUser?.role === "client" ? "Client" : signatureRole;
     const authenticatedProvider = effectiveSignatureRole === "Provider" && currentUser?.role === "provider";
     const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === (currentUser.chartClientId || currentUser.id);
@@ -6749,7 +6754,7 @@ ${organization}`;
       setDocumentNotice("The selected signature role must match the currently authenticated EHR account. Guardian signatures require a separately authenticated guardian account.");
       return;
     }
-    const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
+    const selectedDocument = documents.find((doc) => doc.id === targetDocId);
     if (!selectedDocument) return;
     const signer = currentUser?.fullName || signatureName.trim();
     const signedAt = new Date().toISOString();
@@ -6764,7 +6769,7 @@ ${organization}`;
     const documentVersionSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) =>
-        doc.id === signatureDocId
+        doc.id === targetDocId
           ? (() => {
               const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
               const previousSignatures = Array.isArray(doc.signatures)
@@ -6971,6 +6976,27 @@ ${organization}`;
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     appendAuditLog({ action: "Downloaded advocacy letter", details: `${doc.title} was downloaded as ${doc.signature ? "a signed copy" : "an unsigned draft"}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Access" });
   };
+  // Sequential, in-order consent signing for the patient intake package.
+  // consentTemplateDefinitions is the practice's fixed, intentional signing
+  // order (treatment consent first, crisis policy last); the patient must
+  // sign each one in that order before the next unlocks, then sees a single
+  // review screen listing every signature once the packet is complete.
+  const hasClientSignature = (doc) => {
+    const signatures = Array.isArray(doc?.signatures) ? doc.signatures : doc?.signature ? [doc.signature] : [];
+    return signatures.some((entry) => entry && (entry.authenticatedRole === "client" || entry.role === "Client") && entry.signedAt);
+  };
+  const consentSigningOrder = consentTemplateDefinitions.map((item) => item.title);
+  const orderedConsentDocuments = consentSigningOrder
+    .map((title) => visibleDocuments.find((doc) => doc.title === title))
+    .filter(Boolean);
+  const firstUnsignedConsentIndex = orderedConsentDocuments.findIndex((doc) => !hasClientSignature(doc));
+  const activeConsentDocument = firstUnsignedConsentIndex === -1 ? null : orderedConsentDocuments[firstUnsignedConsentIndex];
+  const consentPackageComplete = orderedConsentDocuments.length > 0 && firstUnsignedConsentIndex === -1;
+  const isSequentialClientConsentView = currentUser.role === "client" && !libraryMode && !advocacyMode;
+  useEffect(() => {
+    if (isSequentialClientConsentView && activeConsentDocument?.id) void viewDocument(activeConsentDocument);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSequentialClientConsentView, activeConsentDocument?.id]);
   return (
     <div>
       <SectionHeader title={advocacyMode ? "Advocacy Letters" : libraryMode ? "Chart Document Library" : "Patient Intake & Consents"} description={advocacyMode ? "Create, review, sign, and retain client-specific advocacy and care-coordination letters." : libraryMode ? "Clinical documents, letters, and other chart records." : "Patient-completed intake and practice consent forms. This packet is separate from the clinical assessment and does not create a billing entry."} />
@@ -7010,6 +7036,71 @@ ${organization}`;
         <p>Patients complete this packet after signing into their secure portal. Use Client Management to add a patient or send their portal invitation.</p>
         <Button variant="outline" onClick={() => setPage("clients")}>Open patient invitations</Button>
       </CardContent></Card>}
+      {isSequentialClientConsentView && (
+        <div className="space-y-4">
+          <Card className="rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle>Sign your intake package</CardTitle>
+              <CardDescription>
+                {orderedConsentDocuments.length === 0
+                  ? "Your provider hasn't added the practice consent forms yet."
+                  : consentPackageComplete
+                    ? "All forms are signed. Review your signatures below."
+                    : `Step ${firstUnsignedConsentIndex + 1} of ${orderedConsentDocuments.length} — sign each form in order.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ol className="space-y-2">
+                {orderedConsentDocuments.map((doc, index) => {
+                  const signed = hasClientSignature(doc);
+                  const isActive = !signed && index === firstUnsignedConsentIndex;
+                  const isLocked = !signed && index > firstUnsignedConsentIndex;
+                  return (
+                    <li key={doc.id} className={`flex items-center justify-between gap-3 rounded-2xl border p-3 ${isActive ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${signed ? "bg-emerald-600 text-white" : isActive ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"}`}>{signed ? "✓" : index + 1}</span>
+                        <span className={isLocked ? "text-slate-400" : "text-slate-900"}>{doc.title}</span>
+                      </div>
+                      <Badge className="rounded-xl">{signed ? "Signed" : isActive ? "Current" : "Locked"}</Badge>
+                    </li>
+                  );
+                })}
+              </ol>
+              {activeConsentDocument && (
+                <div className="rounded-2xl border border-slate-300 p-4 space-y-3">
+                  <p className="font-medium">{activeConsentDocument.title}</p>
+                  {activeConsentDocument.generatedLetterText && (
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-sm text-slate-600">{activeConsentDocument.generatedLetterText}</p>
+                  )}
+                  <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Type your full legal name to sign" />
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Signing applies your authenticated patient-portal identity, a timestamp, and a document-version fingerprint. This uses your currently signed-in account.</div>
+                  <Button className="rounded-2xl" disabled={documentBusy} onClick={() => signDocument(activeConsentDocument.id)}>Sign and continue</Button>
+                </div>
+              )}
+              {consentPackageComplete && (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 space-y-3">
+                  <p className="font-medium text-emerald-900">Intake package complete — review your signatures</p>
+                  <div className="space-y-2">
+                    {orderedConsentDocuments.map((doc) => {
+                      const clientSignature = (Array.isArray(doc.signatures) ? doc.signatures : doc.signature ? [doc.signature] : []).find((entry) => entry && (entry.authenticatedRole === "client" || entry.role === "Client"));
+                      const providerSignature = (Array.isArray(doc.signatures) ? doc.signatures : []).find((entry) => entry && (entry.authenticatedRole === "provider" || entry.authenticatedRole === "owner"));
+                      return (
+                        <div key={doc.id} className="rounded-xl border border-emerald-200 bg-white p-3 text-sm">
+                          <p className="font-medium text-slate-900">{doc.title}</p>
+                          <p className="text-slate-600">Your signature: {clientSignature ? `${documentSignatureText(clientSignature)} | ${clientSignature.signedAt}` : "Not signed"}</p>
+                          <p className="text-slate-500">Provider countersignature: {providerSignature ? `${documentSignatureText(providerSignature)} | ${providerSignature.signedAt}` : "Pending provider review"}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-emerald-800">A signed copy of each form is saved to your Signed Documents above.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {!isSequentialClientConsentView && (
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader><CardTitle>{advocacyMode ? "Advocacy letters" : libraryMode ? "Chart documents" : "Practice consent forms"}</CardTitle><CardDescription>{advocacyMode ? "Client-specific templates, drafts, and signed letters" : libraryMode ? "Client-specific document set" : "Review and sign each applicable form"}</CardDescription></CardHeader>
@@ -7122,6 +7213,7 @@ ${organization}`;
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
