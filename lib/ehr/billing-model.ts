@@ -5,11 +5,12 @@
 //     -> clinical_review_passed   (clinical documentation + signature complete)
 //       -> billing_review_passed  (payer, codes, charge, eligibility complete)
 //         -> ready_to_transmit    (both reviews recorded by authorized roles)
-//           -> transmitted        (only when a real clearinghouse is connected)
+//           -> transmitted        (accepted by the clearinghouse)
 //   any stage -> rejected         (a reviewer can send it back with a reason)
 //
 // Nothing can reach ready_to_transmit unless BOTH reviews passed. A claim can
-// never be transmitted from the UI until a clearinghouse integration is wired.
+// only be transmitted through the connected clearinghouse (lib/ehr/clearinghouse.ts)
+// by an owner or billing staff member.
 
 export type ClaimStatus =
   | "draft"
@@ -45,6 +46,19 @@ export interface ClaimReviewRecord {
   reason?: string; // required when rejected
 }
 
+export interface ClaimTransmissionRecord {
+  action: "validate" | "submit";
+  mode: "test" | "production";
+  accepted: boolean;
+  errors: string[];
+  patientControlNumber: string;
+  stediClaimId?: string;
+  submissionId?: string;
+  attemptedAt: string;
+  attemptedById: string;
+  attemptedByName: string;
+}
+
 export interface BillingClaim {
   claimId: string;
   practiceId: string;
@@ -68,6 +82,7 @@ export interface BillingClaim {
   billingReview?: ClaimReviewRecord;
   reviews: ClaimReviewRecord[];
   providerSignature?: string;
+  transmissions?: ClaimTransmissionRecord[];
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -153,6 +168,10 @@ export function nextStatusAfterReview(
  */
 export function canReview(role: string, stage: ReviewStage): boolean {
   if (stage === "clinical") return role === "owner" || role === "provider";
+  return role === "owner" || role === "billing_staff";
+}
+
+export function canTransmit(role: string): boolean {
   return role === "owner" || role === "billing_staff";
 }
 

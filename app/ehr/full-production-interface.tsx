@@ -5329,6 +5329,15 @@ function BillingPage() {
   const [billingSearch, setBillingSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [serverClaims, setServerClaims] = useState([]);
+  const [clearinghouse, setClearinghouse] = useState(null);
+  const [transmittingClaimId, setTransmittingClaimId] = useState("");
+  useEffect(() => {
+    let active = true;
+    productionApi("/api/ehr/billing/transmit")
+      .then((data) => { if (active) setClearinghouse(data); })
+      .catch(() => { if (active) setClearinghouse({ connected: false, reason: "Clearinghouse status is unavailable." }); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     let active = true;
     productionApi("/api/ehr/billing")
@@ -5520,6 +5529,30 @@ function BillingPage() {
     setActivePayer(payerId);
     setTimeout(() => setNotice(""), 8000);
   };
+  const runClearinghouseAction = async (serverClaim, action) => {
+    if (action === "submit" && !window.confirm(`Send this claim to ${serverClaim.payerName} through Stedi? This submits a real claim to the insurer.`)) return;
+    setTransmittingClaimId(serverClaim?.claimId || "connection-check");
+    try {
+      const result = await productionApi("/api/ehr/billing/transmit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(serverClaim ? { action, claimId: serverClaim.claimId, dateOfService: serverClaim.dateOfService } : { action }),
+      });
+      if (result.claim) setServerClaims((prev) => prev.map((item) => item.claimId === result.claim.claimId ? result.claim : item));
+      const outcome = result.result || result;
+      const edits = outcome.errors?.length ? ` Stedi edits: ${outcome.errors.join("; ")}` : "";
+      setNotice(
+        action === "submit"
+          ? (outcome.accepted ? "Claim transmitted to the clearinghouse." : `Clearinghouse rejected the claim; it was not sent to the insurer.${edits}`)
+          : (outcome.accepted ? `Stedi check passed${action === "connection-check" ? ` (${result.mode} mode)` : ""}. Nothing was sent to the insurer.` : `Stedi check found problems.${edits}`)
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The clearinghouse request failed.");
+    } finally {
+      setTransmittingClaimId("");
+    }
+    setTimeout(() => setNotice(""), 15000);
+  };
   const runClaimReview = async (serverClaim, stage, decision, reason = "") => {
     try {
       const result = await productionApi("/api/ehr/billing", {
@@ -5657,6 +5690,16 @@ function BillingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+            <span>
+              Clearinghouse (Stedi): {clearinghouse === null ? "checking…" : clearinghouse.connected ? `connected, ${clearinghouse.mode} mode` : clearinghouse.reason || "not connected"}
+            </span>
+            {clearinghouse?.connected && (
+              <Button size="sm" variant="outline" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(null, "connection-check")}>
+                {transmittingClaimId === "connection-check" ? "Checking…" : "Test connection (sample claim, not sent)"}
+              </Button>
+            )}
+          </div>
           {serverClaims.length === 0 ? (
             <p className="text-sm text-slate-600">No server-recorded claims yet. Save a claim draft below to start the review workflow.</p>
           ) : (
@@ -5702,9 +5745,28 @@ function BillingPage() {
                       </div>
                     </div>
                     {ready && (
+                      <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 space-y-2">
+                        <p>Both reviews passed. This claim is submission-ready.</p>
+                        {clearinghouse?.connected && clearinghouse.mode === "production" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(claim, "validate")}>Check claim with Stedi</Button>
+                            <Button size="sm" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(claim, "submit")}>{transmittingClaimId === claim.claimId ? "Sending…" : "Send to insurer"}</Button>
+                          </div>
+                        ) : (
+                          <p>{clearinghouse?.connected ? "The clearinghouse is in test mode. Real claims can be sent once the production Stedi key is connected." : "Electronic transmission activates once the clearinghouse is connected."}</p>
+                        )}
+                      </div>
+                    )}
+                    {claim.status === "transmitted" && (
                       <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                        Both reviews passed. This claim is submission-ready. Electronic transmission activates once a contracted clearinghouse is connected.
+                        Sent to the insurer through Stedi on {new Date(claim.transmissions?.slice(-1)[0]?.attemptedAt || claim.updatedAt).toLocaleString()} · Stedi claim {claim.transmissions?.slice(-1)[0]?.stediClaimId || "pending"} · Patient control number {claim.transmissions?.slice(-1)[0]?.patientControlNumber}
                       </p>
+                    )}
+                    {claim.transmissions?.length > 0 && claim.transmissions.slice(-1)[0].errors?.length > 0 && (
+                      <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                        <p className="font-medium">Stedi edits to fix:</p>
+                        <ul className="list-disc pl-5">{claim.transmissions.slice(-1)[0].errors.map((error, index) => <li key={index}>{error}</li>)}</ul>
+                      </div>
                     )}
                     {rejected && (
                       <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
