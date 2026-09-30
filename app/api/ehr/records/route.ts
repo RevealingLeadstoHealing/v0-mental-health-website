@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
-import { appendAuditEvent, listClinicalRecords, putClinicalRecord, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, listClientChartRecords, putClinicalRecord, putLatestModuleSnapshot, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
+import { MODULE_SNAPSHOT_TYPE, isValidModuleKey } from "../../../../lib/ehr/module-snapshots";
 
 export async function GET(request: Request) {
   try {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
       requireRole(actor, ["owner", "provider", "clinical_staff", "auditor"]);
     }
 
-    const records = await listClinicalRecords(clientId, limit);
+    const records = await listClientChartRecords(clientId, limit);
     await appendAuditEvent(actor, {
       action: "Viewed clinical record list",
       category: "Clinical Record Access",
@@ -53,13 +54,21 @@ export async function POST(request: Request) {
       throw new ApiError(400, "payload is required.");
     }
 
+    if (recordType === MODULE_SNAPSHOT_TYPE && !isValidModuleKey(payload.moduleKey)) {
+      throw new ApiError(400, "A valid payload.moduleKey is required for module snapshots.");
+    }
+
+    const status = typeof body.status === "string" ? body.status : "draft";
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,
       recordId: typeof body.recordId === "string" ? body.recordId : undefined,
       payload,
-      status: typeof body.status === "string" ? body.status : "draft",
+      status,
     });
+    if (recordType === MODULE_SNAPSHOT_TYPE && !body.recordId) {
+      await putLatestModuleSnapshot(actor, clientId, payload, status);
+    }
 
     await appendAuditEvent(actor, {
       action: body.recordId ? "Updated clinical record" : "Created clinical record",

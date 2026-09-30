@@ -5,6 +5,16 @@ import { getBackendStatus } from "./backend-status";
 import { assertProductionBackendReady } from "./backend-contract";
 import type { EhrActor } from "./auth";
 import type { DocumentMetadata } from "./domain-model";
+import {
+  HISTORY_RECORD_ID_PREFIX,
+  LATEST_MODULE_ID_PREFIX,
+  MODULE_INDEX_SK,
+  MODULE_SNAPSHOT_SK_PREFIX,
+  MODULE_SNAPSHOT_TYPE,
+  NON_SNAPSHOT_SK_RANGES,
+  latestModuleRecordId,
+  newestSnapshotPerModule,
+} from "./module-snapshots";
 
 export type ClinicalRecordInput = {
   clientId: string;
@@ -46,6 +56,145 @@ export async function listClinicalRecords(clientId: string, limit = 50) {
   );
 
   return response.Items || [];
+}
+
+async function queryAllItems(input: ConstructorParameters<typeof QueryCommand>[0]) {
+  const dynamo = getDynamoDocumentClient();
+  const items: Record<string, any>[] = [];
+  let cursor: Record<string, any> | undefined;
+  do {
+    const response = await dynamo.send(new QueryCommand({ ...input, ExclusiveStartKey: cursor }));
+    items.push(...((response.Items || []) as Record<string, any>[]));
+    cursor = response.LastEvaluatedKey;
+  } while (cursor);
+  return items;
+}
+
+/**
+ * Keep one "latest" copy of each chart module alongside the append-only history,
+ * so chart loading never depends on how many history snapshots exist.
+ */
+export async function putLatestModuleSnapshot(
+  actor: EhrActor,
+  clientId: string,
+  payload: Record<string, unknown>,
+  status: string
+) {
+  const moduleKey = String(payload.moduleKey || "");
+  const recordId = latestModuleRecordId(moduleKey);
+  const now = nowIso();
+  await getDynamoDocumentClient().send(
+    new PutCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Item: {
+        PK: `CLIENT#${clientId}`,
+        SK: `${MODULE_SNAPSHOT_SK_PREFIX}${recordId}`,
+        recordId,
+        recordType: MODULE_SNAPSHOT_TYPE,
+        clientId,
+        practiceId: actor.practiceId,
+        status,
+        payload,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: actor.sub,
+        updatedByName: actor.name,
+      },
+    })
+  );
+}
+
+/**
+ * Backfill "latest" module copies from the snapshot history for charts saved
+ * before latest copies existed. Runs once per client, then records an index marker.
+ */
+async function backfillLatestModuleSnapshots(clientId: string, existingModules: Set<string>) {
+  const dynamo = getDynamoDocumentClient();
+  const pk = `CLIENT#${clientId}`;
+  const marker = await dynamo.send(
+    new GetCommand({ TableName: rlthAwsFoundation.clinicalRecordsTableName, Key: { PK: pk, SK: MODULE_INDEX_SK } })
+  );
+  if (marker.Item) return [];
+
+  const headers = await queryAllItems({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    ExpressionAttributeValues: { ":pk": pk, ":prefix": `${MODULE_SNAPSHOT_SK_PREFIX}${HISTORY_RECORD_ID_PREFIX}` },
+    ProjectionExpression: "SK, recordId, createdAt, #payload.moduleKey",
+    ExpressionAttributeNames: { "#payload": "payload" },
+  });
+
+  const restored: Record<string, any>[] = [];
+  for (const [moduleKey, header] of newestSnapshotPerModule(headers)) {
+    if (existingModules.has(moduleKey)) continue;
+    const full = await dynamo.send(
+      new GetCommand({ TableName: rlthAwsFoundation.clinicalRecordsTableName, Key: { PK: pk, SK: header.SK } })
+    );
+    if (!full.Item) continue;
+    const recordId = latestModuleRecordId(moduleKey);
+    const item = { ...full.Item, SK: `${MODULE_SNAPSHOT_SK_PREFIX}${recordId}`, recordId, restoredFromRecordId: full.Item.recordId };
+    try {
+      await dynamo.send(
+        new PutCommand({
+          TableName: rlthAwsFoundation.clinicalRecordsTableName,
+          Item: item,
+          ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+        })
+      );
+      restored.push(item);
+    } catch (error: any) {
+      if (error?.name !== "ConditionalCheckFailedException") throw error;
+    }
+  }
+
+  await dynamo.send(
+    new PutCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Item: { PK: pk, SK: MODULE_INDEX_SK, clientId, backfilledAt: nowIso(), historySnapshotsScanned: headers.length },
+    })
+  );
+  return restored;
+}
+
+/**
+ * Chart load: the latest copy of every module plus the most recent non-snapshot
+ * records (notes, plans, assessments, appointments, jobs).
+ */
+export async function listClientChartRecords(clientId: string, limit = 100) {
+  const pk = `CLIENT#${clientId}`;
+  const cappedLimit = Math.min(Math.max(limit, 1), 100);
+  const dynamo = getDynamoDocumentClient();
+
+  const latest = await queryAllItems({
+    TableName: rlthAwsFoundation.clinicalRecordsTableName,
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    ExpressionAttributeValues: { ":pk": pk, ":prefix": `${MODULE_SNAPSHOT_SK_PREFIX}${LATEST_MODULE_ID_PREFIX}` },
+  });
+  const restored = await backfillLatestModuleSnapshots(
+    clientId,
+    new Set(latest.map(item => String(item.payload?.moduleKey || "")))
+  );
+
+  const otherRecords = (
+    await Promise.all(
+      NON_SNAPSHOT_SK_RANGES.map(([from, to]) =>
+        dynamo.send(
+          new QueryCommand({
+            TableName: rlthAwsFoundation.clinicalRecordsTableName,
+            KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+            ExpressionAttributeValues: { ":pk": pk, ":from": from, ":to": to },
+            ScanIndexForward: false,
+            Limit: cappedLimit,
+          })
+        )
+      )
+    )
+  )
+    .flatMap(response => response.Items || [])
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .slice(0, cappedLimit);
+
+  return [...otherRecords, ...latest, ...restored];
 }
 
 /**

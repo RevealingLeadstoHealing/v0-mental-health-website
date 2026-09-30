@@ -4575,7 +4575,7 @@ function IntakePage() {
   const clients = clinicalClientEntries(store);
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
+  const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: "", clientSignature: "" };
   const completedAssessments = completedAssessmentSummary(selectedClient?.assessments);
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
@@ -4632,7 +4632,7 @@ function IntakePage() {
         primaryDiagnosis: "",
         secondaryDiagnosis: "",
         tertiaryDiagnosis: "",
-        providerSignature: PRACTITIONER_NAME,
+        providerSignature: "",
         clientSignature: "",
       }),
       [field]: value,
@@ -5949,6 +5949,20 @@ function BillingPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const pendingPlanId = useRef("");
+  const biopsychosocial = selectedClientId ? store.users[selectedClientId]?.intake || null : null;
+  const copyFromBiopsychosocial = () => {
+    if (!biopsychosocial) { setNotice("No biopsychosocial assessment is saved for this client yet."); return; }
+    setDraft(current => ({
+      ...current,
+      primaryDiagnosis: current.primaryDiagnosis || biopsychosocial.primaryDiagnosis || "",
+      secondaryDiagnosis: current.secondaryDiagnosis || biopsychosocial.secondaryDiagnosis || "",
+      tertiaryDiagnosis: current.tertiaryDiagnosis || biopsychosocial.tertiaryDiagnosis || "",
+      problem: current.problem || biopsychosocial.presentingProblem || biopsychosocial.chiefComplaint || "",
+    }));
+    setNotice(biopsychosocial.treatmentGoals
+      ? "Diagnoses and problem copied from the biopsychosocial. Write each goal and measurable objective below; the assessment's goals are shown for reference."
+      : "Diagnoses and problem copied from the biopsychosocial. Write each goal and measurable objective below.");
+  };
   const save = async () => {
     if (saving) return;
     if (!selectedClientId || !draft.problem.trim()) { setNotice("Select a client and enter the treatment problem."); return; }
@@ -5985,6 +5999,10 @@ function BillingPage() {
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
+            {biopsychosocial && <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <Button type="button" variant="outline" className="rounded-2xl" disabled={saving} onClick={copyFromBiopsychosocial}>Copy diagnoses and problem from Biopsychosocial</Button>
+              {biopsychosocial.treatmentGoals && <p className="whitespace-pre-wrap text-xs text-slate-600"><span className="font-medium text-slate-800">Biopsychosocial treatment goals (reference):</span> {biopsychosocial.treatmentGoals}</p>}
+            </div>}
             <StructuredPicker value={draft.problem} onAppend={(v) => setDraft({ ...draft, problem: v })} groups={treatmentPlanPickerGroups.problem} disabled={saving} />
             <Input value={draft.problem} onChange={(e) => setDraft({ ...draft, problem: e.target.value })} placeholder="Problem" />
             <fieldset disabled={saving} className="space-y-3 rounded-xl border p-3">
@@ -7316,7 +7334,7 @@ ${organization}`;
       <SectionHeader title={advocacyMode ? "Advocacy Letters" : libraryMode ? "Chart Document Library" : "Patient Intake & Consents"} description={advocacyMode ? "Create, review, sign, and retain client-specific advocacy and care-coordination letters." : libraryMode ? "Clinical documents, letters, and other chart records." : "Patient-completed intake and practice consent forms. This packet is separate from the clinical assessment and does not create a billing entry."} />
       {!advocacyMode && <Button variant="outline" className="mb-4" onClick={() => { setLibraryMode(!libraryMode); setSignatureDocId(""); }}>{libraryMode ? "Return to Intake & Consents" : "Other chart documents"}</Button>}
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
-      {currentUser.role === "client" && <SignedDocuments clientId={selectedClientId} />}
+      {selectedClientId && !advocacyMode && <SignedDocuments clientId={selectedClientId} />}
       {currentUser.role === "client" && !libraryMode && (
         <Card className="mb-4 rounded-2xl shadow-sm">
           <CardHeader>
