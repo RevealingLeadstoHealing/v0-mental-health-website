@@ -46,3 +46,11 @@ test("verbal consent does not overwrite a patient-signed status", () => {
   const body = productionInterface.slice(start, start + 2500);
   assert.match(body, /authenticatedRole === "client"\)\s*\?\s*doc\.status/);
 });
+
+test("billing claims send only a verified clearinghouse payer ID and a real provider signature", () => {
+  const billing = productionInterface.slice(productionInterface.indexOf("function BillingPage"), productionInterface.indexOf("function TreatmentPlansPage"));
+  assert.match(billing, /payerId: current\.payerIdVerificationStatus === "Verified" \? String\(current\.payerId \|\| ""\)\.trim\(\) : ""/);
+  assert.match(billing, /providerSignature: String\(current\.providerSignature \|\| ""\)\.trim\(\)/);
+  assert.match(billing, /label="Clearinghouse Payer ID"/);
+  assert.doesNotMatch(billing, /value=\{intake\.providerSignature \|\| PRACTITIONER_NAME\}/);
+});

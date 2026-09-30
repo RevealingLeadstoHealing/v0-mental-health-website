@@ -5311,6 +5311,14 @@ function BillingPage() {
     !intake.chargeAmount && "Charge amount",
     intake.payerIdVerificationStatus !== "Verified" && "Payer ID / electronic routing verification",
   ].filter(Boolean);
+  const clinicalReviewIssues = [
+    !intake.dateOfService && "Date of service",
+    !(Number(intake.sessionMinutes) > 0) && "Actual session minutes",
+    !intake.primaryDiagnosis && "Primary diagnosis",
+    !(intake.billingCodes || []).length && "CPT/HCPCS service",
+    !String(intake.providerSignature || "").trim() && "Provider signature",
+    !providerNpiForName(intake.providerSignature || PRACTITIONER_NAME) && "Rendering provider NPI",
+  ].filter(Boolean);
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
@@ -5352,6 +5360,14 @@ function BillingPage() {
     updateSpecificUserData(selectedClientId, "intake", {
       ...(store.users[selectedClientId].intake || {}),
       [field]: value,
+    });
+  };
+  const updatePayerId = (value) => {
+    if (!selectedClientId) return;
+    updateSpecificUserData(selectedClientId, "intake", {
+      ...(store.users[selectedClientId].intake || {}),
+      payerId: value,
+      payerIdVerificationStatus: "Verification required",
     });
   };
   const choosePayerProduct = (group, product) => {
@@ -5475,13 +5491,13 @@ function BillingPage() {
           renderingProviderName: current.providerSignature || PRACTITIONER_NAME,
           renderingProviderNpi: providerNpiForName(current.providerSignature || PRACTITIONER_NAME),
           payerName,
-          payerId,
+          payerId: current.payerIdVerificationStatus === "Verified" ? String(current.payerId || "").trim() : "",
           insurancePlanName: current.insurancePlanName || "",
           sessionMinutes: Number(current.sessionMinutes) || 0,
           diagnoses,
           serviceLines,
           chargeAmount: Number(current.chargeAmount) || 0,
-          providerSignature: current.providerSignature || PRACTITIONER_NAME,
+          providerSignature: String(current.providerSignature || "").trim(),
         }),
       });
       setServerClaims((prev) => [serverClaim.claim, ...prev]);
@@ -5576,7 +5592,7 @@ function BillingPage() {
           <CardDescription>Clinical completeness is reviewed first. Billing receives a separate final review before any future submission.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border p-4"><p className="font-semibold">1. Clinical review</p><p className="mt-1 text-sm">Documentation, diagnosis support, service details, and authenticated provider signature.</p></div>
+          <div className="rounded-xl border p-4"><p className="font-semibold">1. Clinical review <Badge className={clinicalReviewIssues.length ? "ml-2 bg-red-100 text-red-800" : "ml-2 bg-emerald-100 text-emerald-800"}>{clinicalReviewIssues.length}</Badge></p><p className="mt-1 text-sm">{clinicalReviewIssues.length ? `Needs attention: ${clinicalReviewIssues.join(", ")}.` : "Documentation, diagnosis, service, and provider signature are entered. The provider confirms clinical support at review."}</p></div>
           <div className="rounded-xl border p-4"><p className="font-semibold">2. Billing review <Badge className={billingReviewIssues.length ? "ml-2 bg-red-100 text-red-800" : "ml-2 bg-emerald-100 text-emerald-800"}>{billingReviewIssues.length}</Badge></p><p className="mt-1 text-sm">{billingReviewIssues.length ? `Needs attention: ${billingReviewIssues.join(", ")}.` : "No configured billing-review omissions detected. Final payer validation is still required."}</p></div>
         </CardContent>
       </Card>
@@ -5714,6 +5730,13 @@ function BillingPage() {
               <Input label="Date of Service" type="date" value={intake.dateOfService || ""} onChange={(e) => updateBillingField("dateOfService", e.target.value)} />
               <Input label="Charge Amount" type="number" min="0" step="0.01" value={intake.chargeAmount || ""} onChange={(e) => updateBillingField("chargeAmount", e.target.value)} placeholder="0.00" />
             </div>
+            <div className="grid md:grid-cols-2 gap-3 items-end">
+              <Input label="Clearinghouse Payer ID" value={intake.payerId || ""} onChange={(e) => updatePayerId(e.target.value)} placeholder="Payer ID from the clearinghouse payer list" />
+              <label className="flex items-center gap-2 text-sm pb-2">
+                <input type="checkbox" checked={intake.payerIdVerificationStatus === "Verified"} disabled={!String(intake.payerId || "").trim()} onChange={(e) => updateBillingField("payerIdVerificationStatus", e.target.checked ? "Verified" : "Verification required")} />
+                Payer ID verified for this plan with the clearinghouse
+              </label>
+            </div>
             <div className="grid md:grid-cols-2 gap-3">
               <Input label="Chief Complaint / Reason for Visit" value={intake.chiefComplaint || ""} onChange={(e) => updateBillingField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" />
               <Input label="Actual Session Minutes" type="number" min="1" step="1" value={intake.sessionMinutes || ""} onChange={(e) => updateBillingField("sessionMinutes", e.target.value)} placeholder="Document actual minutes" />
@@ -5740,7 +5763,7 @@ function BillingPage() {
             <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={applyBillingCode} placeholder="Type billing code or service keyword" />
 
             <div className="grid md:grid-cols-2 gap-3">
-              <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder="Provider electronic signature" />
+              <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || ""} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder={`Type provider name to sign (e.g. ${PRACTITIONER_NAME})`} />
               <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateBillingField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" />
             </div>
             <Button className="rounded-2xl" onClick={saveBillingSnapshot}><Save className="mr-2 h-4 w-4" />Save claim draft and billing snapshot</Button>
@@ -5762,7 +5785,8 @@ function BillingPage() {
             <p><span className="font-medium">Secondary:</span> {intake.secondaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Tertiary:</span> {intake.tertiaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Billing codes:</span> {(intake.billingCodes || []).join(", ") || "Not selected"}</p>
-            <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || PRACTITIONER_NAME, intake.providerNpi)}</p>
+            <p><span className="font-medium">Clearinghouse payer ID:</span> {intake.payerId ? `${intake.payerId} (${intake.payerIdVerificationStatus === "Verified" ? "verified" : "not verified"})` : "Not entered"}</p>
+            <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || "", intake.providerNpi)}</p>
             <p><span className="font-medium">Client signature:</span> {intake.clientSignature || "Not signed / not required"}</p>
           </CardContent>
         </Card>
