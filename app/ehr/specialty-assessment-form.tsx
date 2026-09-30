@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { specialtyAssessments, clinicalDomains, validateSpecialtyAssessment } from '../../lib/ehr/specialty-assessments';
-import { isScoredInstrument } from '../../lib/ehr/scored-instruments';
+import { isScoredInstrument, scoredInstruments } from '../../lib/ehr/scored-instruments';
 import ScoredInstrumentForm from './scored-instrument-form';
 import BlankScoreSheet from './blank-score-sheet';
 import { StructuredPicker, msePickerGroups } from './structured-picker';
@@ -28,6 +28,7 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
     } else {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(data.administrationDate || '')) { setNotice('Enter the administration date.'); return; }
       if (!data.examiner?.trim()) { setNotice('Enter the examiner name.'); return; }
+      if (!Object.keys(instrumentAnswers).length) { setNotice('Select the client’s response to each item before saving.'); return; }
       if (!data.interpretation?.trim()) { setNotice('Enter the clinical interpretation / summary.'); return; }
     }
     setBusy(true); onBusy(true); setNotice('Saving…');
@@ -69,9 +70,11 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
       {scored ? (
         <ScoredInstrumentForm
           instrumentKey={assessmentKey}
-          onAnswersChange={({ answers, total, band }) => {
+          initialAnswers={instrumentAnswers}
+          onAnswersChange={({ answers, total, band, answeredAll }) => {
             setInstrumentAnswers(answers);
-            setData(previous => ({ ...previous, totalScore: String(total), results: band }));
+            const itemCount = scoredInstruments[assessmentKey]?.items.length || 0;
+            setData(previous => ({ ...previous, totalScore: String(total), results: answeredAll ? band : `Incomplete — ${Object.keys(answers).length} of ${itemCount} items answered` }));
           }}
         />
       ) : domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => {
@@ -86,8 +89,9 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
         <div className="grid md:grid-cols-2 gap-4">{field('version', 'Exact instrument / edition / language / age interval')}{field('respondent', 'Respondent and relationship to client')}</div>
         {field('source', 'Source form / document reference', false, 'Reference to the completed form in the client chart')}
         <BlankScoreSheet
-          onChange={({ total, itemScores }) => {
-            setData(previous => ({ ...previous, totalScore: String(total), itemScores: itemScores.join(', ') }));
+          initialItemScores={typeof saved?.data?.itemScores === 'string' ? saved.data.itemScores : ''}
+          onChange={({ total, itemScores, scoredCount }) => {
+            setData(previous => ({ ...previous, totalScore: scoredCount ? String(total) : '', itemScores: itemScores.join(', ') }));
           }}
         />
         {field('totalScore', 'Total score, if applicable', false, 'Auto-filled from the scoring sheet above; adjust if the instrument totals differently')}

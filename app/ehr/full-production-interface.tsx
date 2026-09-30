@@ -6892,7 +6892,7 @@ ${organization}`;
     // or the signer having to re-scroll and re-pick each form.
     const justSignedAuthRole = witnessedInPersonClient ? "client" : currentUser.role;
     const stillNeedsSignature = (doc) => {
-      if (doc.id === signatureDocId) return false;
+      if (doc.id === targetDocId) return false;
       const sigs = Array.isArray(doc.signatures) ? doc.signatures : (doc.signature ? [doc.signature] : []);
       return !sigs.some((entry) => entry && entry.authenticatedRole === justSignedAuthRole);
     };
@@ -6927,7 +6927,9 @@ ${organization}`;
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) => doc.id === signatureDocId ? {
         ...doc,
-        status: "Verbal consent obtained — provider attested",
+        status: [doc.signature, ...(Array.isArray(doc.signatures) ? doc.signatures : [])].some((entry) => entry && entry.authenticatedRole === "client")
+          ? doc.status
+          : "Verbal consent obtained — provider attested",
         verbalConsent: { method: "Verbal", obtainedBy, obtainedById: currentUser.id, obtainedByRole: currentUser.role, obtainedAt, reason },
       } : doc)
     );

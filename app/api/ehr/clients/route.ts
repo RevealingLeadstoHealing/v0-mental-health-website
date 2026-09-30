@@ -229,7 +229,7 @@ export async function POST(request: Request) {
         }));
       }
       const inviteEmailStatus = await sendPatientInviteEmail({
-        fullName: client.fullName, email: client.email, temporaryPassword: resendTemporaryPassword,
+        fullName: client.fullName, email: String(client.email), temporaryPassword: resendTemporaryPassword,
       });
       await appendAuditEvent(actor, { action: existingAccount ? "Resent patient login invitation" : "Created patient login and sent secure invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: existingAccount ? `A secure Cognito patient invitation was resent (branded invite email: ${inviteEmailStatus}).` : `The onboarding packet was saved before the secure Cognito invitation was sent (branded invite email: ${inviteEmailStatus}).` });
       return NextResponse.json({ invitationSent: true, clientId, inviteEmailStatus });

@@ -24,7 +24,7 @@ function phrasePresent(value: string, phrase: string): boolean {
   const v = normalize(value);
   const p = normalize(phrase);
   if (!p) return false;
-  return v.split(/[;.\n]/).map(normalize).includes(p) || v.includes(p);
+  return v.split(/[;.\n]/).map(normalize).includes(p);
 }
 
 function appendPhrase(value: string, phrase: string): string {
@@ -36,12 +36,13 @@ function appendPhrase(value: string, phrase: string): string {
 }
 
 function removePhrase(value: string, phrase: string): string {
-  const parts = (value || "")
-    .split(/;\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .filter((part) => normalize(part) !== normalize(phrase));
-  return parts.join("; ");
+  const tokens = (value || "").split(/([;.\n]\s*)/);
+  const kept: string[] = [];
+  for (let index = 0; index < tokens.length; index += 2) {
+    if (normalize(tokens[index]) === normalize(phrase)) continue;
+    kept.push(tokens[index] + (tokens[index + 1] ?? ""));
+  }
+  return kept.join("").replace(/^[;\s]+/, "").replace(/[;\s]+$/, "");
 }
 
 type StructuredPickerProps = {

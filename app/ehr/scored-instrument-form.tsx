@@ -8,12 +8,13 @@ import { scoredInstruments, scoreInstrument } from '../../lib/ehr/scored-instrum
 
 type Props = {
   instrumentKey: string;
-  onAnswersChange?: (result: { answers: Record<string, number>; total: number; band: string }) => void;
+  initialAnswers?: Record<string, number>;
+  onAnswersChange?: (result: { answers: Record<string, number>; total: number; band: string; answeredAll: boolean }) => void;
 };
 
-export default function ScoredInstrumentForm({ instrumentKey, onAnswersChange }: Props) {
+export default function ScoredInstrumentForm({ instrumentKey, initialAnswers, onAnswersChange }: Props) {
   const instrument = scoredInstruments[instrumentKey];
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<string, number>>(() => initialAnswers || {});
 
   const result = useMemo(() => scoreInstrument(instrumentKey, answers), [instrumentKey, answers]);
 
@@ -24,7 +25,7 @@ export default function ScoredInstrumentForm({ instrumentKey, onAnswersChange }:
     setAnswers(next);
     const scored = scoreInstrument(instrumentKey, next);
     if (onAnswersChange && scored) {
-      onAnswersChange({ answers: next, total: scored.total, band: scored.band });
+      onAnswersChange({ answers: next, total: scored.total, band: scored.band, answeredAll: scored.answeredAll });
     }
   };
 

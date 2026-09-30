@@ -1,6 +1,5 @@
 'use client';
-'use client';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 
 // Universal clinician scoring sheet for ANY licensed/copyrighted instrument.
 //
@@ -15,42 +14,42 @@ import React, { useMemo, useState } from 'react';
 type ScoredItem = { id: number; score: string };
 
 type Props = {
-  onChange?: (result: { itemScores: number[]; total: number; count: number }) => void;
+  initialItemScores?: string;
+  onChange?: (result: { itemScores: string[]; total: number; count: number; scoredCount: number }) => void;
 };
 
-export default function BlankScoreSheet({ onChange }: Props) {
-  const [count, setCount] = useState(10);
-  const [items, setItems] = useState<ScoredItem[]>(() =>
-    Array.from({ length: 10 }, (_, i) => ({ id: i + 1, score: '' }))
-  );
+function itemsFromSaved(saved: string | undefined): ScoredItem[] {
+  const scores = (saved || '').split(',').map((score) => score.trim());
+  const length = saved?.trim() ? Math.min(100, scores.length) : 10;
+  return Array.from({ length }, (_, i) => ({ id: i + 1, score: saved?.trim() ? scores[i] || '' : '' }));
+}
 
-  const total = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.score) || 0), 0),
-    [items]
-  );
+function summarize(items: ScoredItem[]) {
+  const entered = items.filter((it) => it.score.trim() !== '' && Number.isFinite(Number(it.score)));
+  return {
+    itemScores: items.map((it) => it.score.trim()),
+    total: entered.reduce((sum, it) => sum + Number(it.score), 0),
+    count: items.length,
+    scoredCount: entered.length,
+  };
+}
+
+export default function BlankScoreSheet({ initialItemScores, onChange }: Props) {
+  const [items, setItems] = useState<ScoredItem[]>(() => itemsFromSaved(initialItemScores));
+  const { total, count, scoredCount } = summarize(items);
+
+  const update = (next: ScoredItem[]) => {
+    setItems(next);
+    onChange?.(summarize(next));
+  };
 
   const setCountSafe = (n: number) => {
-    const next = Math.max(1, Math.min(100, Math.floor(n) || 1));
-    setCount(next);
-    setItems((prev) => {
-      const arr = Array.from({ length: next }, (_, i) => prev[i] || { id: i + 1, score: '' });
-      return arr.map((it, i) => ({ ...it, id: i + 1 }));
-    });
+    const length = Math.max(1, Math.min(100, Math.floor(n) || 1));
+    update(Array.from({ length }, (_, i) => ({ id: i + 1, score: items[i]?.score || '' })));
   };
 
   const setScore = (index: number, value: string) => {
-    setItems((prev) => {
-      const next = prev.map((it, i) => (i === index ? { ...it, score: value } : it));
-      const t = next.reduce((sum, it) => sum + (Number(it.score) || 0), 0);
-      if (onChange) {
-        onChange({
-          itemScores: next.map((it) => Number(it.score) || 0),
-          total: t,
-          count: next.length,
-        });
-      }
-      return next;
-    });
+    update(items.map((it, i) => (i === index ? { ...it, score: value } : it)));
   };
 
   return (
@@ -89,7 +88,10 @@ export default function BlankScoreSheet({ onChange }: Props) {
       </div>
 
       <div className="rounded-xl border bg-slate-50 p-3 text-sm">
-        <span className="font-semibold">Calculated total:</span> {total}
+        <span className="font-semibold">Calculated total:</span> {scoredCount ? total : '—'}
+        {scoredCount < count && (
+          <span className="ml-2 text-amber-700">({scoredCount} of {count} items scored)</span>
+        )}
       </div>
     </div>
   );
