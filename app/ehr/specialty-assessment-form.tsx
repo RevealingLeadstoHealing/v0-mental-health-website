@@ -1,12 +1,18 @@
 'use client';
 import React, { useState } from 'react';
 import { specialtyAssessments, clinicalDomains, validateSpecialtyAssessment } from '../../lib/ehr/specialty-assessments';
+import { isScoredInstrument } from '../../lib/ehr/scored-instruments';
+import ScoredInstrumentForm from './scored-instrument-form';
+import BlankScoreSheet from './blank-score-sheet';
+import { StructuredPicker, msePickerGroups } from './structured-picker';
 
 type Props = { assessmentKey: string; saved?: any; examiner: string; onSave: (key: string, payload: any, label: string) => Promise<void>; onBusy: (busy: boolean) => void };
 export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner, onSave, onBusy }: Props) {
   const definition = specialtyAssessments.find(item => item.key === assessmentKey)!;
   const domains = clinicalDomains[assessmentKey];
+  const scored = isScoredInstrument(assessmentKey);
   const [data, setData] = useState<Record<string, string>>(() => ({ administrationDate: '', examiner, administeredBy: 'Primary clinician', referralStatus: '', version: definition.version, ...saved?.data }));
+  const [instrumentAnswers, setInstrumentAnswers] = useState<Record<string, number>>(() => saved?.data?.instrumentAnswers || {});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const field = (key: string, label: string, multiline = false, placeholder = '') => <label key={key} className="block space-y-1 text-sm">
@@ -16,18 +22,35 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
   </label>;
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    const error = validateSpecialtyAssessment(assessmentKey, data);
-    if (error) { setNotice(error); return; }
+    if (!scored) {
+      const error = validateSpecialtyAssessment(assessmentKey, data);
+      if (error) { setNotice(error); return; }
+    } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data.administrationDate || '')) { setNotice('Enter the administration date.'); return; }
+      if (!data.examiner?.trim()) { setNotice('Enter the examiner name.'); return; }
+      if (!data.interpretation?.trim()) { setNotice('Enter the clinical interpretation / summary.'); return; }
+    }
     setBusy(true); onBusy(true); setNotice('Saving…');
     try {
-      await onSave(assessmentKey, { data: { ...data }, ...(data.totalScore?.trim() ? { score: Number(data.totalScore) } : {}), administrationMode: domains ? 'Clinical examination' : 'Official-form result entry' }, definition.label);
+      const payload = scored
+        ? {
+            data: { ...data, instrumentAnswers },
+            ...(typeof data.totalScore !== 'undefined' && data.totalScore !== '' ? { score: Number(data.totalScore) } : {}),
+            administrationMode: 'Interactive scored questionnaire',
+          }
+        : {
+            data: { ...data },
+            ...(data.totalScore?.trim() ? { score: Number(data.totalScore) } : {}),
+            administrationMode: domains ? 'Clinical examination' : 'Official-form result entry',
+          };
+      await onSave(assessmentKey, payload, definition.label);
       setNotice('Saved to this client’s assessments.');
     } catch { setNotice('Save could not be confirmed. Your entries are still here; retry saving.'); }
     finally { setBusy(false); onBusy(false); }
   };
   return <form onSubmit={save} className="rounded-2xl border bg-white p-5 space-y-4">
     <h3 className="text-xl font-semibold">{definition.label}</h3>
-    <p className="text-sm text-slate-600">{domains ? 'Document the clinical interview or examination you performed. No findings are selected automatically. This clinical template has no standardized score.' : 'Record results from the official administered form. This entry does not contain the questionnaire or calculate its score. Identify the exact edition, language, age-specific form, and respondent before interpreting results.'}</p>
+    <p className="text-sm text-slate-600">{scored ? 'Administer this public-domain screener directly: select the client’s response to each item below. The total score and severity band are calculated automatically. Add your clinical interpretation and disposition before saving.' : domains ? 'Document the clinical interview or examination you performed. No findings are selected automatically. This clinical template has no standardized score.' : 'Record results from the official administered form. This entry does not contain the questionnaire or calculate its score. Identify the exact edition, language, age-specific form, and respondent before interpreting results.'}</p>
     {assessmentKey === 'mse' && <p className="text-sm">MSE is a clinical examination, separate from MMSE cognitive screening.</p>}
     {['epds', 'pass', 'perinatalReview'].includes(assessmentKey) && <p className="text-sm">Document safety concerns and disposition regardless of the total score. Suspected psychosis, mania, or imminent danger to parent or infant requires urgent clinical evaluation.</p>}
     {assessmentKey === 'bodyImageReview' && <p className="text-sm">Record the client’s own meaning of body-image distress; this entry does not assign a body dysmorphic disorder diagnosis.</p>}
@@ -43,10 +66,31 @@ export default function SpecialtyAssessmentForm({ assessmentKey, saved, examiner
     <fieldset disabled={busy} className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">{field('administrationDate', 'Administration date')}{field('examiner', 'Examiner')}{field('setting', 'Setting / telehealth and examination limitations')}{field('ageAtAssessment', 'Age at assessment / developmental context')}</div>
       <label className="block space-y-1 text-sm"><span className="font-medium">Administered by</span><select className="w-full rounded-xl border p-3" value={data.administeredBy || 'Primary clinician'} onChange={event => setData(previous => ({ ...previous, administeredBy: event.target.value }))}><option>Primary clinician</option><option>Other clinician / outside evaluator</option></select></label>
-      {domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => field(domain, domain, true, 'Observed finding, client report, or not assessed and reason'))}</div> : <>
+      {scored ? (
+        <ScoredInstrumentForm
+          instrumentKey={assessmentKey}
+          onAnswersChange={({ answers, total, band }) => {
+            setInstrumentAnswers(answers);
+            setData(previous => ({ ...previous, totalScore: String(total), results: band }));
+          }}
+        />
+      ) : domains ? <div className="grid md:grid-cols-2 gap-4">{domains.map(domain => {
+        const pickerGroups = msePickerGroups[domain];
+        if (!pickerGroups) return field(domain, domain, true, 'Observed finding, client report, or not assessed and reason');
+        return <label key={domain} className="block space-y-1 text-sm">
+          <span className="font-medium">{domain}</span>
+          <StructuredPicker value={data[domain] || ''} onAppend={next => setData(previous => ({ ...previous, [domain]: next }))} groups={pickerGroups} disabled={busy} helpText={domain.startsWith('Safety') ? 'Any endorsed ideation, plan, or intent requires a clinical safety assessment regardless of the descriptors selected.' : undefined} />
+          <textarea className="w-full rounded-xl border p-3 min-h-[85px]" value={data[domain] || ''} placeholder="Observed finding, client report, or not assessed and reason" onChange={e => setData(previous => ({ ...previous, [domain]: e.target.value }))} />
+        </label>;
+      })}</div> : <>
         <div className="grid md:grid-cols-2 gap-4">{field('version', 'Exact instrument / edition / language / age interval')}{field('respondent', 'Respondent and relationship to client')}</div>
         {field('source', 'Source form / document reference', false, 'Reference to the completed form in the client chart')}
-        {field('totalScore', 'Total score, if applicable', false, 'Leave blank for tools without a total score')}
+        <BlankScoreSheet
+          onChange={({ total, itemScores }) => {
+            setData(previous => ({ ...previous, totalScore: String(total), itemScores: itemScores.join(', ') }));
+          }}
+        />
+        {field('totalScore', 'Total score, if applicable', false, 'Auto-filled from the scoring sheet above; adjust if the instrument totals differently')}
         {field('results', 'Scoring method, subscales, and results', true, 'Record the official scoring method, applicable norms, subscale results, and any scoring limitations')}
       </>}
       {field('interpretation', 'Clinical interpretation / summary', true)}

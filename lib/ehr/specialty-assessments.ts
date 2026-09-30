@@ -86,6 +86,10 @@ export const specialtyAssessments = [
   { key: 'tec', label: 'Trauma Experiences Checklist (TEC)', group: 'Trauma & stress', version: '' },
   { key: 'scoff', label: 'SCOFF', group: 'Eating & body image', version: 'SCOFF — 5 items' },
   { key: 'eat26', label: 'Eating Attitudes Test (EAT-26)', group: 'Eating & body image', version: 'EAT-26' },
+  { key: 'phq2', label: 'PHQ-2 (Patient Health Questionnaire-2)', group: 'Mood & anxiety', version: 'PHQ-2 — 2 items (public domain, interactive)' },
+  { key: 'phq9', label: 'PHQ-9 (Patient Health Questionnaire-9)', group: 'Mood & anxiety', version: 'PHQ-9 — 9 items (public domain, interactive)' },
+  { key: 'gad7', label: 'GAD-7 (Generalized Anxiety Disorder-7)', group: 'Mood & anxiety', version: 'GAD-7 — 7 items (public domain, interactive)' },
+  { key: 'pcptsd5', label: 'PC-PTSD-5 (Primary Care PTSD Screen for DSM-5) — interactive', group: 'Trauma & stress', version: 'PC-PTSD-5 — 5 items (public domain, interactive)' },
   { key: 'otherInstrument', label: 'Other named assessment — record results', group: 'Additional assessments', version: '' },
 ] as const;
 export const mseDomains = [
