@@ -54,3 +54,9 @@ test("billing claims send only a verified clearinghouse payer ID and a real prov
   assert.match(billing, /label="Clearinghouse Payer ID"/);
   assert.doesNotMatch(billing, /value=\{intake\.providerSignature \|\| PRACTITIONER_NAME\}/);
 });
+
+test("biopsychosocial submit requires a typed provider signature instead of a displayed default", () => {
+  const intakePage = productionInterface.slice(productionInterface.indexOf("function IntakePage"), productionInterface.indexOf("function BillingPage"));
+  assert.match(intakePage, /Type the provider electronic signature before submitting the assessment\./);
+  assert.doesNotMatch(intakePage, /value=\{intake\.providerSignature \|\| PRACTITIONER_NAME\}/);
+});

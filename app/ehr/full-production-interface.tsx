@@ -4576,6 +4576,11 @@ function IntakePage() {
   };
   const handleSubmitIntake = async () => {
     if (!selectedClientId || isSubmitting) return;
+    if (!String(store.users[selectedClientId]?.intake?.providerSignature || "").trim()) {
+      setSaveFailed(true);
+      setSaveNotice("Type the provider electronic signature before submitting the assessment.");
+      return;
+    }
     setIsSubmitting(true);
     setSaveNotice("");
     setSaveFailed(false);
@@ -4807,7 +4812,7 @@ x
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <p className="text-sm font-bold text-slate-800">Assessment electronic signatures</p>
               <div className="grid md:grid-cols-2 gap-3">
-                <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
+                <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || ""} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder={`Type provider name to sign (e.g. ${PRACTITIONER_NAME})`} className="rounded-2xl" />
                 <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
               </div>
             </section>
