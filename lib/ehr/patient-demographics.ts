@@ -21,7 +21,7 @@ export const demographicGroups = [
   { title: "Insurance information", fields: [
     ["insurancePayer", "Insurance carrier"], ["insurancePlanName", "Plan"],
     ["insuranceMemberId", "Member ID"], ["insuranceGroupNumber", "Group number"],
-    ["insuranceNetworkStatus", "Network status"],
+    ["insuranceNetworkStatus", "Network status"], ["insurancePayerId", "Electronic payer ID"],
   ] },
   { title: "Insurance verification", fields: [
     ["insuranceVerificationStatus", "Verification status"],

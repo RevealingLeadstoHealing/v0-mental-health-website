@@ -543,6 +543,72 @@ async function productionApi(path, options) {
   if (!response.ok) throw new Error(data.error || "The EHR request could not be completed.");
   return data;
 }
+const SERVER_UPLOAD_TARGET_BYTES = 3.5 * 1024 * 1024;
+async function shrinkImageForUpload(file) {
+  if (file.size <= SERVER_UPLOAD_TARGET_BYTES || !file.type?.startsWith("image/") || typeof createImageBitmap !== "function") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    for (const maxSide of [2400, 1800, 1400]) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.85, 0.7]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+        if (blob && blob.size <= SERVER_UPLOAD_TARGET_BYTES) {
+          return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "image"}.jpg`, { type: "image/jpeg" });
+        }
+      }
+    }
+  } catch {
+    return file;
+  }
+  return file;
+}
+// Uploads a chart file to encrypted S3. Tries the presigned direct upload first;
+// if the browser cannot reach S3 (e.g. missing bucket CORS rule, network block),
+// falls back to sending the file through the EHR server.
+async function uploadChartFile({ clientId, documentType, file, title }) {
+  let directProblem = "";
+  try {
+    const authorization = await productionApi("/api/ehr/documents/presign", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        documentType,
+        title,
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+      }),
+    });
+    const uploadResponse = await fetch(authorization.uploadUrl, {
+      method: "PUT",
+      headers: authorization.uploadHeaders,
+      body: file,
+    });
+    if (uploadResponse.ok) return { documentId: authorization.documentId, key: authorization.key, file };
+    directProblem = `storage responded ${uploadResponse.status}`;
+  } catch (error) {
+    directProblem = error instanceof Error ? error.message : "direct upload failed";
+  }
+  const prepared = await shrinkImageForUpload(file);
+  if (prepared.size > 4 * 1024 * 1024) {
+    throw new Error(`${title} could not be uploaded (${directProblem}); files over 4 MB need direct storage access.`);
+  }
+  const form = new FormData();
+  form.append("file", prepared);
+  form.append("clientId", clientId);
+  form.append("documentType", documentType);
+  form.append("title", title);
+  try {
+    const result = await productionApi("/api/ehr/documents/upload", { method: "POST", body: form });
+    return { documentId: result.documentId, key: result.key, file: prepared };
+  } catch (error) {
+    throw new Error(`${title} could not be uploaded: ${error instanceof Error ? error.message : "upload failed"} (direct upload: ${directProblem}).`);
+  }
+}
 const AuthContext = createContext(null);
 const PageContext = createContext(null);
 class ErrorBoundary extends Component {
@@ -931,24 +997,9 @@ function AuthProvider({ children }) {
     const cardUploadFailures: string[] = [];
     for (const item of insuranceCardFiles) {
       try {
-        const authorization = await productionApi("/api/ehr/documents/presign", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            clientId: client.clientId,
-            documentType: item.documentType,
-            fileName: item.file.name,
-            contentType: item.file.type || "application/octet-stream",
-          }),
-        });
-        const uploadResponse = await fetch(authorization.uploadUrl, {
-          method: "PUT",
-          headers: authorization.uploadHeaders,
-          body: item.file,
-        });
-        if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+        const uploaded = await uploadChartFile({ clientId: client.clientId, documentType: item.documentType, file: item.file, title: item.title });
         const uploadedInsuranceDocument = {
-          id: authorization.documentId,
+          id: uploaded.documentId,
           title: item.title,
           type: "Insurance",
           category: "Insurance",
@@ -956,19 +1007,19 @@ function AuthProvider({ children }) {
           viewedAt: "",
           signature: null,
           signatures: [],
-          uploadedFileName: item.file.name,
+          uploadedFileName: uploaded.file.name,
           generatedLetterText: "",
           clientVisible: true,
           onboardingRequired: false,
           createdAt: new Date().toISOString(),
-          contentType: item.file.type || "application/octet-stream",
-          sizeBytes: item.file.size,
-          storageKey: authorization.key,
+          contentType: uploaded.file.type || "application/octet-stream",
+          sizeBytes: uploaded.file.size,
+          storageKey: uploaded.key,
           uploadedByRole: currentUser.role,
         };
         onboardingDocuments.push(uploadedInsuranceDocument);
       } catch (uploadError) {
-        cardUploadFailures.push(item.title);
+        cardUploadFailures.push(`${item.title}: ${uploadError instanceof Error ? uploadError.message : "upload failed"}`);
         onboardingDocuments.push({
           id: `pending-upload-${client.clientId}-${item.documentType}-${Date.now()}`,
           title: `${item.title} — image upload pending`,
@@ -1050,7 +1101,7 @@ function AuthProvider({ children }) {
     ]);
     const failed = results.find((r) => r.status === "rejected");
     const cardNote = cardUploadFailures.length
-      ? ` Card/photo image${cardUploadFailures.length > 1 ? "s" : ""} did not upload (${cardUploadFailures.join(", ")}); the typed insurance details were saved and the image can be re-uploaded from Documents.`
+      ? ` Card/photo image${cardUploadFailures.length > 1 ? "s" : ""} did not upload (${cardUploadFailures.join("; ")}); the typed insurance details were saved and the image can be re-uploaded from Documents.`
       : "";
     if (failed && failed.status === "rejected") {
       followUpError = failed.reason instanceof Error ? failed.reason.message : "Some intake details will finish saving shortly.";
@@ -1517,29 +1568,14 @@ function ProviderPatientDashboard() {
           if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
             throw new Error(`${item.title} must be an image or PDF.`);
           }
-          const authorization = await productionApi("/api/ehr/documents/presign", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              clientId: selectedPatient.id,
-              documentType: item.documentType,
-              fileName: item.file.name,
-              contentType: item.file.type || "application/octet-stream",
-            }),
-          });
-          const uploadResponse = await fetch(authorization.uploadUrl, {
-            method: "PUT",
-            headers: authorization.uploadHeaders,
-            body: item.file,
-          });
-          if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
+          const uploaded = await uploadChartFile({ clientId: selectedPatient.id, documentType: item.documentType, file: item.file, title: item.title });
           uploadedDocuments.push({
-            id: authorization.documentId, title: item.title, type: item.category, category: item.category,
+            id: uploaded.documentId, title: item.title, type: item.category, category: item.category,
             status: "Uploaded", viewedAt: "", signature: null, signatures: [],
-            uploadedFileName: item.file.name, generatedLetterText: "", clientVisible: true,
+            uploadedFileName: uploaded.file.name, generatedLetterText: "", clientVisible: true,
             onboardingRequired: false, createdAt: new Date().toISOString(),
-            contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
-            storageKey: authorization.key, uploadedByRole: "provider",
+            contentType: uploaded.file.type || "application/octet-stream", sizeBytes: uploaded.file.size,
+            storageKey: uploaded.key, uploadedByRole: "provider",
           });
           await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
         } catch (uploadError) {
@@ -3884,6 +3920,29 @@ function InsuranceCheckPanel({ client, currentUser, onSaved }) {
       setBusy(false);
     }
   };
+  const [payerId, setPayerId] = useState(client.insurancePayerId || "");
+  const [eligibilityResult, setEligibilityResult] = useState(null);
+  const canRunEligibility = currentUser.role === "owner" || currentUser.role === "provider" || currentUser.role === "billing_staff";
+  const runEligibility = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setEligibilityResult(null);
+    try {
+      const result = await productionApi("/api/ehr/insurance/eligibility", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, payerId: payerId.trim() }),
+      });
+      onSaved(client.id, result.updates);
+      setEligibilityResult(result.updates);
+      if (draft) setDraft({ ...draft, insuranceVerificationNotes: result.updates.insuranceVerificationNotes });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The eligibility check could not be completed.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const badge = insuranceStatusBadge(client.insuranceVerificationStatus);
   return (
     <div className="mt-3">
@@ -3904,6 +3963,18 @@ function InsuranceCheckPanel({ client, currentUser, onSaved }) {
       ) : (
         <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
           {error && <p className="text-xs text-red-700">{error}</p>}
+          {canRunEligibility && (
+            <div className="rounded-xl border border-emerald-200 bg-white p-3 space-y-2">
+              <p className="text-sm font-semibold text-slate-800">Real-time eligibility (Stedi)</p>
+              <p className="text-xs text-slate-600">Sends the patient's name, date of birth, and member ID to the insurer and saves the payer's response. Requires the practice's Stedi production connection; otherwise use the manual buttons below.</p>
+              <Input label="Electronic payer ID" value={payerId} disabled={busy} placeholder="e.g. 87726 for UnitedHealthcare — confirm in Stedi Payer Network" onChange={(e) => setPayerId(e.target.value)} />
+              <Button className="rounded-2xl" disabled={busy || !payerId.trim()} onClick={runEligibility}>{busy ? "Checking…" : "Run eligibility check"}</Button>
+              {eligibilityResult && (
+                <p className="text-xs text-slate-700">Result saved: <strong>{eligibilityResult.insuranceVerificationStatus}</strong>. {eligibilityResult.insuranceVerificationNotes}</p>
+              )}
+            </div>
+          )}
+          <p className="text-xs font-semibold text-slate-700">Manual verification (payer portal or phone call)</p>
           <Input label="Insurance carrier" value={draft.insurancePayer} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePayer: e.target.value })} />
           <Input label="Plan / product" value={draft.insurancePlanName} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePlanName: e.target.value })} />
           <Input label="Member ID" value={draft.insuranceMemberId} disabled={busy} onChange={(e) => setDraft({ ...draft, insuranceMemberId: e.target.value })} />
@@ -6916,7 +6987,23 @@ ${organization}`;
     } catch (error) { setDocumentNotice(error instanceof Error ? error.message : "Forms were not saved. Please try again."); }
     finally { setDocumentBusy(false); }
   };
+  const signingInProgressRef = useRef(false);
   const signDocument = async (docIdOverride) => {
+    if (signingInProgressRef.current) return;
+    signingInProgressRef.current = true;
+    setDocumentBusy(true);
+    try {
+      await applySignature(docIdOverride);
+    } finally {
+      signingInProgressRef.current = false;
+      setDocumentBusy(false);
+    }
+  };
+  const consentOrderIndex = (doc) => {
+    const index = consentTemplateDefinitions.findIndex((item) => item.title === doc.title);
+    return index === -1 ? consentTemplateDefinitions.length : index;
+  };
+  const applySignature = async (docIdOverride) => {
     // docIdOverride lets the sequential consent-signing wizard target a specific
     // document directly without waiting on signatureDocId state to flush. The
     // existing "Apply authenticated signature" button still calls this with no
@@ -6987,8 +7074,9 @@ ${organization}`;
       const sigs = Array.isArray(doc.signatures) ? doc.signatures : (doc.signature ? [doc.signature] : []);
       return !sigs.some((entry) => entry && entry.authenticatedRole === justSignedAuthRole);
     };
-    const nextDoc = visibleDocuments.find(stillNeedsSignature);
+    const nextDoc = [...visibleDocuments].sort((a, b) => consentOrderIndex(a) - consentOrderIndex(b)).find(stillNeedsSignature);
     setSignatureDocId(nextDoc ? nextDoc.id : "");
+    window.setTimeout(() => document.getElementById("document-signatures")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
     try {
       await flushClientModuleSaves(selectedClientId);
       setDocumentNotice(nextDoc
@@ -7041,35 +7129,20 @@ ${organization}`;
     setDocumentBusy(true);
     setDocumentNotice("Encrypting and uploading the document to AWS…");
     try {
-      const authorization = await productionApi("/api/ehr/documents/presign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: selectedClientId,
-          documentType: uploadType,
-          fileName: uploadFile.name,
-          contentType: uploadFile.type || "application/octet-stream",
-        }),
-      });
-      const uploadResponse = await fetch(authorization.uploadUrl, {
-        method: "PUT",
-        headers: authorization.uploadHeaders,
-        body: uploadFile,
-      });
-      if (!uploadResponse.ok) throw new Error("The encrypted AWS file upload failed.");
+      const uploaded = await uploadChartFile({ clientId: selectedClientId, documentType: uploadType, file: uploadFile, title: uploadTitle.trim() });
       const uploadedAt = new Date().toISOString();
       updateSpecificUserData(selectedClientId, "documents", (prev) => [
         {
-          id: authorization.documentId,
+          id: uploaded.documentId,
           title: uploadTitle.trim(),
           type: uploadType,
           status: "Uploaded",
           viewedAt: "",
           signature: null,
-          uploadedFileName: uploadFile.name,
-          contentType: uploadFile.type || "application/octet-stream",
-          sizeBytes: uploadFile.size,
-          storageKey: authorization.key,
+          uploadedFileName: uploaded.file.name,
+          contentType: uploaded.file.type || "application/octet-stream",
+          sizeBytes: uploaded.file.size,
+          storageKey: uploaded.key,
           uploadedByRole: currentUser.role,
           clientVisible: currentUser.role === "client",
           createdAt: uploadedAt,
@@ -7229,6 +7302,11 @@ ${organization}`;
   const activeConsentDocument = firstUnsignedConsentIndex === -1 ? null : orderedConsentDocuments[firstUnsignedConsentIndex];
   const consentPackageComplete = orderedConsentDocuments.length > 0 && firstUnsignedConsentIndex === -1;
   const isSequentialClientConsentView = currentUser.role === "client" && !libraryMode && !advocacyMode;
+  const signatureDocumentsInOrder = [...visibleDocuments].sort((a, b) => consentOrderIndex(a) - consentOrderIndex(b));
+  const signatureDocument = visibleDocuments.find((doc) => doc.id === signatureDocId) || null;
+  const signatureDocumentPosition = signatureDocument ? signatureDocumentsInOrder.findIndex((doc) => doc.id === signatureDocument.id) + 1 : 0;
+  const currentSignerAuthRole = currentUser.role === "client" || signatureRole === "Client (in person)" ? "client" : currentUser.role;
+  const signatureDocumentSignedByCurrentSigner = !!signatureDocument && (Array.isArray(signatureDocument.signatures) ? signatureDocument.signatures : signatureDocument.signature ? [signatureDocument.signature] : []).some((entry) => entry && entry.authenticatedRole === currentSignerAuthRole);
   useEffect(() => {
     if (isSequentialClientConsentView && activeConsentDocument?.id) void viewDocument(activeConsentDocument);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7389,11 +7467,18 @@ ${organization}`;
                   {currentUser.role === "client" && <SelectItem value="Client">Client / patient signature</SelectItem>}
                 </SelectContent>
               </Select>
+              {signatureDocument && (
+                <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-600">Form {signatureDocumentPosition} of {signatureDocumentsInOrder.length}{signatureDocumentSignedByCurrentSigner ? " — already signed by this signer" : ""}</p>
+                  <p className="font-semibold text-slate-900">{signatureDocument.title}</p>
+                  <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-sm text-slate-800">{signatureDocument.generatedLetterText || "Open the document from the list to review it before signing."}</div>
+                </div>
+              )}
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
               {currentUser.role === "provider" && <Input label="Provider NPI" value={providerNpiForName(currentUser.fullName || "")} readOnly placeholder="Provider NPI not configured" />}
               {currentUser.role === "provider" && <Input label="Provider license number" value={providerIdentifiersForName(currentUser.fullName || "").licenseNumber} readOnly placeholder="Provider license not configured" />}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their linked client accounts.</div>
-              <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
+              <Button className="rounded-2xl" disabled={documentBusy || !signatureDocId} onClick={() => signDocument()}>{documentBusy ? "Saving signature…" : "Sign this form and continue"}</Button>
               {(currentUser.role === "provider" || currentUser.role === "owner") && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2">
                   <p className="text-sm font-semibold text-slate-800">Verbal consent (on-site)</p>

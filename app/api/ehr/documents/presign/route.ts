@@ -6,25 +6,12 @@ import { appendAuditEvent, putDocumentMetadata } from "../../../../../lib/ehr/dy
 import { getS3Client } from "../../../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../../../lib/rlth-aws-foundation";
 import type { AccessLevel } from "../../../../../lib/ehr/domain-model";
-
-function safeSegment(value: string) {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-}
-
-const ALLOWED_DOCUMENT_TYPES = [
-  "consent",
-  "assessment",
-  "insurance",
-  "clinical",
-  "billing",
-  "other",
-] as const;
-
-type AllowedDocumentType = (typeof ALLOWED_DOCUMENT_TYPES)[number];
-
-function isAllowedDocumentType(value: string): value is AllowedDocumentType {
-  return (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(value);
-}
+import {
+  documentStorageKey,
+  newDocumentId,
+  normalizeDocumentType,
+  safeSegment,
+} from "../../../../../lib/ehr/document-storage";
 
 // ---------------------------------------------------------------------------
 // POST — generate a presigned S3 upload URL
@@ -37,10 +24,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const clientId = typeof body.clientId === "string" ? body.clientId : actor.sub;
-    const rawDocumentType = typeof body.documentType === "string" ? body.documentType : "other";
-    const documentType: AllowedDocumentType = isAllowedDocumentType(rawDocumentType)
-      ? rawDocumentType
-      : "other";
+    const documentType = normalizeDocumentType(body.documentType);
     const fileName = typeof body.fileName === "string" ? body.fileName : "upload.bin";
     const contentType =
       typeof body.contentType === "string" ? body.contentType : "application/octet-stream";
@@ -54,14 +38,8 @@ export async function POST(request: Request) {
       throw new ApiError(403, "Clients can only upload documents to their own chart.");
     }
 
-    const documentId = `document_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const key = [
-      "ehr-documents",
-      actor.practiceId,
-      `client-${safeSegment(clientId)}`,
-      safeSegment(documentType),
-      `${documentId}-${safeSegment(fileName)}`,
-    ].join("/");
+    const documentId = newDocumentId();
+    const key = documentStorageKey(actor.practiceId, clientId, documentType, documentId, fileName);
 
     const command = new PutObjectCommand({
       Bucket: rlthAwsFoundation.documentsBucketName,
