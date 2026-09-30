@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { indexCodes, searchCodes, type ClinicalCode } from '../../lib/ehr/code-search';
+import { commonCodes, indexCodes, searchCodes, type ClinicalCode } from '../../lib/ehr/code-search';
 
 type Catalog = { version: string; effectiveThrough?: string; codes: ReturnType<typeof indexCodes> };
 const catalogs = new Map<string, Promise<Catalog>>();
@@ -46,7 +46,12 @@ export default function ClinicalCodeInput({ kind, label, value = '', placeholder
     return () => { cancelled = true; };
   }, [open, kind, catalog]);
   const indexedFallback = useMemo(() => indexCodes(fallback), [fallback]);
-  const results = useMemo(() => searchCodes(catalog?.codes || indexedFallback, query.split('|')[0], limit), [catalog, indexedFallback, query, limit]);
+  const searchText = query.split('|')[0].trim();
+  const showingCommon = !searchText || (!searchOnly && !multiple && query === value && value.includes('|'));
+  const results = useMemo(() => {
+    if (showingCommon) { const matches = commonCodes(catalog?.codes || indexedFallback, limit); return { matches, total: matches.length, categories: [] }; }
+    return searchCodes(catalog?.codes || indexedFallback, searchText, limit);
+  }, [catalog, indexedFallback, searchText, showingCommon, limit]);
   function choose(item: ClinicalCode) {
     const selected = `${item.code} | ${item.label}`;
     onSelect?.(item);
@@ -54,21 +59,21 @@ export default function ClinicalCodeInput({ kind, label, value = '', placeholder
     setQuery(searchOnly ? '' : multiple ? [...new Set([...value.split(',').map(s => s.trim()).filter(Boolean), item.code])].join(', ') : selected);
     setOpen(false); setActive(-1); input.current?.focus();
   }
-  return <div className="w-full space-y-1">
+  return <div className="relative w-full space-y-1">
     {label && <label htmlFor={id} className="block text-xs font-bold uppercase tracking-wider text-slate-600">{label}</label>}
     <input ref={input} id={id} role="combobox" aria-label={label || placeholder || `${kind} code search`} aria-autocomplete="list" aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open && active >= 0 ? `${id}-${active}` : undefined}
       className={`w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-950 ${className}`}
       disabled={disabled} autoComplete="off" value={query} placeholder={placeholder || 'Type a code or a few letters'}
-      onFocus={() => setOpen(true)} onBlur={event => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) setOpen(false); }}
-      onChange={event => { setQuery(event.target.value); setOpen(true); setActive(-1); setLimit(50); }}
+      onFocus={event => { setOpen(true); setActive(-1); event.currentTarget.select(); }} onBlur={event => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) setOpen(false); }}
+      onChange={event => { setQuery(event.target.value); setOpen(true); setActive(event.target.value.trim() ? 0 : -1); setLimit(50); }}
       onKeyDown={event => {
         if (event.key === 'Escape') { setOpen(false); setQuery(value); }
         if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActive(n => Math.min(n + 1, results.matches.length - 1)); }
         if (event.key === 'ArrowUp') { event.preventDefault(); setActive(n => Math.max(n - 1, 0)); }
         if (event.key === 'Enter' && open && active >= 0 && results.matches[active]) { event.preventDefault(); choose(results.matches[active]); }
       }} />
-    {open && <div className="rounded-xl border border-stone-300 bg-white p-2 space-y-2">
-      <p role="status" className="text-xs text-slate-600">{error || (!catalog ? 'Loading complete catalog…' : !query ? 'Type a diagnosis, service, abbreviation, or code.' : `${results.total} matches. Select the applicable code.`)}</p>
+    {open && <div className="absolute left-0 right-0 z-50 mt-1 rounded-xl border border-stone-300 bg-white p-2 space-y-2 shadow-lg">
+      <p role="status" className="text-xs text-slate-600">{error || (showingCommon ? `Common ${kind === 'diagnosis' ? 'diagnoses' : 'service codes'} — or type a few letters (e.g. ${kind === 'diagnosis' ? '"anx", "dep", "alc"' : '"therapy", "intake"'}) or a code.` : `${results.categories.length ? `${results.categories.map(category => category.name).join(', ')} · ` : ''}${results.total} matches${!catalog ? ' (loading complete catalog…)' : ''}. Click or press Enter to select.`)}</p>
       <div id={`${id}-list`} role="listbox" aria-label={`${label || kind} matches`} className="overflow-auto" style={{ maxHeight: 240 }}>
         {results.matches.map((item, index) => <button key={item.code} id={`${id}-${index}`} type="button" role="option" aria-selected={active === index}
           className={`block w-full rounded-lg p-2 text-left text-sm ${active === index ? 'bg-blue-100' : 'hover:bg-slate-50'}`}

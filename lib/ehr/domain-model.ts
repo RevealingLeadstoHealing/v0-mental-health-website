@@ -53,7 +53,7 @@ export interface DiagnosisCode {
   system: "ICD-10-CM" | "DSM-5-TR";
   code: string;
   label: string;
-  rank: "primary" | "secondary" | "tertiary";
+  rank: "primary" | "secondary" | "tertiary" | "quaternary";
 }
 
 export interface ServiceCode {

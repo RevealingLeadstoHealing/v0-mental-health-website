@@ -25,7 +25,7 @@ export type ReviewStage = "clinical" | "billing";
 export interface ClaimDiagnosis {
   code: string;
   label: string;
-  rank: "primary" | "secondary" | "tertiary";
+  rank: "primary" | "secondary" | "tertiary" | "quaternary";
 }
 
 export interface ClaimServiceLine {

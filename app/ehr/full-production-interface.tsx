@@ -9,6 +9,8 @@ import { demographicGroups, editableDemographicFields, patientAge } from "../../
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import ClinicalCodeInput from "./clinical-code-input";
+import DiagnosisBillingPanel from "./diagnosis-billing-panel";
+import { claimDiagnoses, diagnosisPatch, otherDiagnoses, selectedDiagnoses } from "../../lib/ehr/diagnosis-billing";
 import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
 import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups } from "./structured-picker";
@@ -3018,7 +3020,6 @@ function TelehealthPage() {
   const [scribeSeconds, setScribeSeconds] = useState(0);
   const [isScribeTimerRunning, setIsScribeTimerRunning] = useState(false);
   const [scribeDiagnosisSearch, setScribeDiagnosisSearch] = useState("");
-  const [scribeDiagnosisTarget, setScribeDiagnosisTarget] = useState("primaryDiagnosis");
   const [scribeBillingSearch, setScribeBillingSearch] = useState("");
   const [awsScribeJob, setAwsScribeJob] = useState({ jobName: "", mediaKey: "", status: "" });
   const [isAudioRecording, setIsAudioRecording] = useState(false);
@@ -3051,6 +3052,7 @@ function TelehealthPage() {
     primaryDiagnosis: "",
     secondaryDiagnosis: "",
     tertiaryDiagnosis: "",
+    fourthDiagnosis: "",
     serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
     interpreterCode: "",
     manualMinutes: "",
@@ -3068,7 +3070,7 @@ function TelehealthPage() {
     setScribeSeconds(0); setIsScribeTimerRunning(false); recordingStartRef.current = 0;
     mediaChunksRef.current = []; mediaRecorderRef.current = null;
     setScribeTemplate("Progress Note - SOAP"); setScribeDiagnosisSearch(""); setScribeBillingSearch("");
-    setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", serviceCode: "", interpreterCode: "", manualMinutes: "", clientSignature: "" }));
+    setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", serviceCode: "", interpreterCode: "", manualMinutes: "", clientSignature: "" }));
     setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, dialNumber: "", sessionUrl: "", interpreterNeeded: false, interpreterName: "", translationNotes: "", technicalNotes: "" }));
     setCopyNotice("New test ready. Timer, transcript, draft and appointment selection cleared. Confirm both consents above. Saved chart history has not changed.");
   };
@@ -3204,14 +3206,12 @@ function TelehealthPage() {
     `Primary ICD-10-CM: ${scribeMeta.primaryDiagnosis || "Not selected"}`,
     `Secondary ICD-10-CM: ${scribeMeta.secondaryDiagnosis || "Not selected"}`,
     `Tertiary ICD-10-CM: ${scribeMeta.tertiaryDiagnosis || "Not selected"}`,
+    `Fourth ICD-10-CM: ${scribeMeta.fourthDiagnosis || "Not selected"}`,
     `Service / CPT-HCPCS: ${scribeMeta.serviceCode || "Not selected"}`,
     `Interpreter service code: ${scribeMeta.interpreterCode || "Not used"}`,
     `Provider e-signature: ${providerSignatureText(scribeMeta.providerSignature)}`,
     `Client e-signature: ${scribeMeta.clientSignature || "Not signed / not required"}`,
   ].join("\n");
-  const applyScribeDiagnosisCode = (item) => {
-    setScribeMeta((prev) => ({ ...prev, [scribeDiagnosisTarget]: `${item.code} | ${item.label}` }));
-  };
   const handleScribeTemplateChange = (value) => {
     setScribeTemplate(value); setGeneratedDocs(null); setReviewConfirmed(false);
     setScribeMeta((prev) => {
@@ -3426,7 +3426,7 @@ ${sessionForm.recordingVerbiage}`);
       onset: scribeMeta.onset,
       ...intakeFieldPatch(scribeTemplate, generatedDocs.structuredNote.fields),
       biopsychosocialSummary: structured.content,
-      diagnoses: [scribeMeta.primaryDiagnosis, scribeMeta.secondaryDiagnosis, scribeMeta.tertiaryDiagnosis].filter(Boolean),
+      diagnoses: selectedDiagnoses(scribeMeta),
       billingCodes: [scribeMeta.serviceCode, scribeMeta.interpreterCode].filter(Boolean),
       sessionMinutes: scribeSessionMinutes,
       scribeUpdatedAt: new Date().toLocaleString(),
@@ -3722,28 +3722,7 @@ ${sessionForm.recordingVerbiage}`);
                   <p className="text-xs text-slate-500">Merged minutes: {scribeSessionMinutes || "Not entered"}</p>
                 </div>
               </div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={scribeMeta.primaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, primaryDiagnosis: e.target.value })} placeholder="Primary ICD-10-CM" />
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={scribeMeta.secondaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, secondaryDiagnosis: e.target.value })} placeholder="Secondary ICD-10-CM" />
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={scribeMeta.tertiaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, tertiaryDiagnosis: e.target.value })} placeholder="Tertiary ICD-10-CM" />
-              </div>
-              <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                <Select value={scribeDiagnosisTarget} onValueChange={setScribeDiagnosisTarget}>
-                  <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                    <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                    <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                  </SelectContent>
-                </Select>
-                <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyScribeDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-3">
-                <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="CPT / HCPCS Service Code" value={scribeMeta.serviceCode} onChange={(e) => setScribeMeta({ ...scribeMeta, serviceCode: e.target.value })} placeholder="CPT/HCPCS service code" />
-                <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="Interpreter Code" value={scribeMeta.interpreterCode} onChange={(e) => setScribeMeta({ ...scribeMeta, interpreterCode: e.target.value })} placeholder="Interpreter code, if used" />
-              </div>
-              <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={item => item.code === "T1013" ? setScribeMeta({ ...scribeMeta, interpreterCode: `${item.code} | ${item.type} | ${item.label}` }) : setScribeMeta({ ...scribeMeta, serviceCode: `${item.code} | ${item.type} | ${item.label}` })} placeholder="Type billing code or service keyword" />
+              <DiagnosisBillingPanel values={scribeMeta} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={(field, value) => setScribeMeta(current => ({ ...current, [field]: value }))} onServiceCodeChange={value => setScribeMeta(current => ({ ...current, serviceCode: value }))} onInterpreterCodeChange={value => setScribeMeta(current => ({ ...current, interpreterCode: value }))} />
 
               <div className="grid md:grid-cols-2 gap-3">
                 <ProviderSignatureInput label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
@@ -4577,28 +4556,12 @@ function IntakePage() {
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: "", clientSignature: "" };
   const completedAssessments = completedAssessmentSummary(selectedClient?.assessments);
-  const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
-  const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
   const [intakeBillingSearch, setIntakeBillingSearch] = useState("");
-  const applyIntakeDiagnosisCode = (item) => {
+  const updateIntakeDiagnosis = (field, value) => {
     if (!selectedClientId) return;
-    const value = `${item.code} | ${item.label}`;
     const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      [intakeDiagnosisTarget]: value,
-      diagnoses: Array.from(new Set([...(current.diagnoses || []), value])),
-    });
-  };
-  const applyIntakeBillingCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.type} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      billingCodes: Array.from(new Set([...(current.billingCodes || []), value])),
-    });
+    updateSpecificUserData(selectedClientId, "intake", { ...current, ...diagnosisPatch(current, field, value) });
   };
   const [saveNotice, setSaveNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -4637,13 +4600,6 @@ function IntakePage() {
       }),
       [field]: value,
     });
-  };
-  const addDiagnosis = () => {
-    if (!diagnosisInput.trim() || !selectedClientId) return;
-    const diagnoses = [...(store.users[selectedClientId].intake?.diagnoses || [])];
-    if (!diagnoses.includes(diagnosisInput.trim())) diagnoses.push(diagnosisInput.trim());
-    updateIntakeField("diagnoses", diagnoses);
-    setDiagnosisInput("");
   };
   const handleSubmitIntake = async () => {
     if (!selectedClientId || isSubmitting) return;
@@ -4805,60 +4761,12 @@ function IntakePage() {
                   </div>)}
                   <Button type="button" variant="outline" onClick={() => { setSelectedChartClientId(selectedClientId); setPage("assessments", { clientId: selectedClientId }); }}>Open Assessments</Button>
                 </section>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Diagnostic Formulation</label>
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={intake.primaryDiagnosis || ""} onChange={(e) => updateIntakeField("primaryDiagnosis", e.target.value)} placeholder="Primary ICD-10-CM" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={intake.secondaryDiagnosis || ""} onChange={(e) => updateIntakeField("secondaryDiagnosis", e.target.value)} placeholder="Secondary ICD-10-CM" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={intake.tertiaryDiagnosis || ""} onChange={(e) => updateIntakeField("tertiaryDiagnosis", e.target.value)} placeholder="Tertiary ICD-10-CM" className="rounded-2xl" />
-                  </div>
-                  <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                    <Select value={intakeDiagnosisTarget} onValueChange={setIntakeDiagnosisTarget}>
-                      <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                        <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                        <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyIntakeDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} value={diagnosisInput} onChange={(e) => setDiagnosisInput(e.target.value)} placeholder="Add diagnosis" className="rounded-2xl" />
-                    <Button type="button" className="rounded-2xl" onClick={addDiagnosis}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(intake.diagnoses || []).map((dx) => (
-                      <Badge key={dx} variant="secondary" className="rounded-xl flex items-center gap-1">
-                        {dx}
-                        <button
-                          type="button"
-                          className="ml-1 text-xs opacity-70 hover:opacity-100"
-                          onClick={() => {
-                            const list = (store.users[selectedClientId].intake?.diagnoses || []).filter((d) => d !== dx);
-                            updateIntakeField("diagnoses", list);
-                          }}
-                        >
-
-x
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Session Minutes</label>
+                <DiagnosisBillingPanel values={intake} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} disabled={isSubmitting} onDiagnosisChange={updateIntakeDiagnosis} onBillingCodesChange={codes => updateIntakeField("billingCodes", codes)} otherDiagnoses={otherDiagnoses(intake)} onRemoveOtherDiagnosis={entry => updateIntakeField("diagnoses", (intake.diagnoses || []).filter(item => item !== entry))}>
+                  <div className="max-w-xs space-y-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Session minutes</label>
                     <Input value={intake.sessionMinutes || ""} onChange={(e) => updateIntakeField("sessionMinutes", e.target.value)} placeholder="Session minutes" className="rounded-2xl" />
                   </div>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
-                    <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={applyIntakeBillingCode} placeholder="Type billing code or service keyword" />
-
-                  </div>
-                </div>
+                </DiagnosisBillingPanel>
                 <section aria-label="Follow-Up Plan" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                   <h5 className="text-base font-bold text-slate-800">Follow-Up Plan</h5>
                   <div className="grid md:grid-cols-2 gap-4">
@@ -4922,7 +4830,6 @@ function ProgressNotesPage() {
   const [sessionSeconds, setSessionSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [codeDraft, setCodeDraft] = useState({
     chiefComplaint: "",
@@ -4930,15 +4837,13 @@ function ProgressNotesPage() {
     primaryDiagnosis: "",
     secondaryDiagnosis: "",
     tertiaryDiagnosis: "",
+    fourthDiagnosis: "",
     serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
     interpreterCode: "",
     manualMinutes: "",
     providerSignature: PRACTITIONER_NAME,
     clientSignature: "",
   });
-  const applyDiagnosisCode = (item) => {
-    setCodeDraft((prev) => ({ ...prev, [diagnosisTarget]: `${item.code} | ${item.label}` }));
-  };
   useEffect(() => {
     if (!isTimerRunning) return;
     const id = window.setInterval(() => setSessionSeconds((prev) => prev + 1), 1000);
@@ -4965,6 +4870,7 @@ function ProgressNotesPage() {
       `Primary ICD-10-CM: ${codeDraft.primaryDiagnosis || "Not selected"}`,
       `Secondary ICD-10-CM: ${codeDraft.secondaryDiagnosis || "Not selected"}`,
       `Tertiary ICD-10-CM: ${codeDraft.tertiaryDiagnosis || "Not selected"}`,
+      `Fourth ICD-10-CM: ${codeDraft.fourthDiagnosis || "Not selected"}`,
       `Service / CPT-HCPCS: ${codeDraft.serviceCode || "Not selected"}`,
       `Interpreter service code: ${codeDraft.interpreterCode || "Not used"}`,
       `Provider e-signature: ${providerSignatureText(codeDraft.providerSignature)}`,
@@ -5247,28 +5153,7 @@ ${draft.content}`,
                     <p className="text-xs text-slate-500">Saved minutes: {sessionMinutes || "Not entered"}</p>
                   </div>
                 </div>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={codeDraft.primaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, primaryDiagnosis: e.target.value })} placeholder="Primary ICD-10-CM" />
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={codeDraft.secondaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, secondaryDiagnosis: e.target.value })} placeholder="Secondary ICD-10-CM" />
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={codeDraft.tertiaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, tertiaryDiagnosis: e.target.value })} placeholder="Tertiary ICD-10-CM" />
-                </div>
-                <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                  <Select value={diagnosisTarget} onValueChange={setDiagnosisTarget}>
-                    <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                      <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                      <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-3">
-                  <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="CPT / HCPCS Service Code" value={codeDraft.serviceCode} onChange={(e) => setCodeDraft({ ...codeDraft, serviceCode: e.target.value })} placeholder="CPT/HCPCS service code" />
-                  <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="Interpreter Code" value={codeDraft.interpreterCode} onChange={(e) => setCodeDraft({ ...codeDraft, interpreterCode: e.target.value })} placeholder="Interpreter code, if used" />
-                </div>
-                <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={item => item.code === "T1013" ? setCodeDraft({ ...codeDraft, interpreterCode: `${item.code} | ${item.type} | ${item.label}` }) : setCodeDraft({ ...codeDraft, serviceCode: `${item.code} | ${item.type} | ${item.label}` })} placeholder="Type billing code or service keyword" />
+                <DiagnosisBillingPanel values={codeDraft} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={(field, value) => setCodeDraft(current => ({ ...current, [field]: value }))} onServiceCodeChange={value => setCodeDraft(current => ({ ...current, serviceCode: value }))} onInterpreterCodeChange={value => setCodeDraft(current => ({ ...current, interpreterCode: value }))} />
 
                 <div className="grid md:grid-cols-2 gap-3">
                   <ProviderSignatureInput label="Provider Electronic Signature" value={codeDraft.providerSignature} onChange={(e) => setCodeDraft({ ...codeDraft, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
@@ -5396,7 +5281,6 @@ function BillingPage() {
     !providerNpiForName(intake.providerSignature || PRACTITIONER_NAME) && "Rendering provider NPI",
   ].filter(Boolean);
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [serverClaims, setServerClaims] = useState([]);
@@ -5471,24 +5355,10 @@ function BillingPage() {
     });
     setNotice(`${product.name} selected. Verify the insurance card, eligibility, network status, and clearinghouse payer ID before submission.`);
   };
-  const applyDiagnosisCode = (item) => {
+  const updateBillingDiagnosis = (field, value) => {
     if (!selectedClientId) return;
-    const value = `${item.code} | ${item.label}`;
     const current = store.users[selectedClientId].intake || {};
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      [diagnosisTarget]: value,
-      diagnoses: Array.from(new Set([...(current.diagnoses || []), value])),
-    });
-  };
-  const applyBillingCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.type} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || {};
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      billingCodes: Array.from(new Set([...(current.billingCodes || []), value])),
-    });
+    updateSpecificUserData(selectedClientId, "intake", { ...current, ...diagnosisPatch(current, field, value) });
   };
   const reviewAppointment = (appointment) => {
     setBillingAppointmentId(appointment.id);
@@ -5527,13 +5397,13 @@ function BillingPage() {
       appointmentId: linkedAppointment?.id || "",
       status: ready ? "Ready" : "Action Required",
       billingCodes: current.billingCodes || [],
-      diagnoses: [current.primaryDiagnosis, current.secondaryDiagnosis, current.tertiaryDiagnosis].filter(Boolean),
+      diagnoses: selectedDiagnoses(current),
       chargeAmount: Number(current.chargeAmount) || 0,
       paidAmount: 0,
       transmissionEnabled: false,
       createdAt: new Date().toISOString(),
     };
-    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${providerSignatureText(current.providerSignature || PRACTITIONER_NAME, current.providerNpi)}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
+    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nFourth ICD-10-CM: ${current.fourthDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${providerSignatureText(current.providerSignature || PRACTITIONER_NAME, current.providerNpi)}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
     updateSpecificUserData(selectedClientId, "billingClaims", (prev) => [claim, ...(prev || [])]);
     updateSpecificUserData(selectedClientId, "documents", (prev) => [
       {
@@ -5553,11 +5423,7 @@ function BillingPage() {
     // review workflow. Local state above keeps the UI responsive; the server
     // record is the source of truth for review status and submission.
     try {
-      const diagnoses = [
-        current.primaryDiagnosis && { code: String(current.primaryDiagnosis).split(" | ")[0], label: String(current.primaryDiagnosis), rank: "primary" },
-        current.secondaryDiagnosis && { code: String(current.secondaryDiagnosis).split(" | ")[0], label: String(current.secondaryDiagnosis), rank: "secondary" },
-        current.tertiaryDiagnosis && { code: String(current.tertiaryDiagnosis).split(" | ")[0], label: String(current.tertiaryDiagnosis), rank: "tertiary" },
-      ].filter(Boolean);
+      const diagnoses = claimDiagnoses(current);
       const serviceLines = (current.billingCodes || []).map((entry) => {
         const parts = String(entry).split(" | ");
         return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0 };
@@ -5880,25 +5746,7 @@ function BillingPage() {
               <Input label="Actual Session Minutes" type="number" min="1" step="1" value={intake.sessionMinutes || ""} onChange={(e) => updateBillingField("sessionMinutes", e.target.value)} placeholder="Document actual minutes" />
             </div>
             <p className="text-xs text-slate-600">Document actual time and select the service supported by the record and payer rules. Time guidance assists review; it does not select or guarantee a billable code.</p>
-            <div className="grid md:grid-cols-3 gap-3">
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={intake.primaryDiagnosis || ""} onChange={(e) => updateBillingField("primaryDiagnosis", e.target.value)} placeholder="Primary ICD-10-CM" />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={intake.secondaryDiagnosis || ""} onChange={(e) => updateBillingField("secondaryDiagnosis", e.target.value)} placeholder="Secondary ICD-10-CM" />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={intake.tertiaryDiagnosis || ""} onChange={(e) => updateBillingField("tertiaryDiagnosis", e.target.value)} placeholder="Tertiary ICD-10-CM" />
-            </div>
-            <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-              <Select value={diagnosisTarget} onValueChange={setDiagnosisTarget}>
-                <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                  <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                  <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                </SelectContent>
-              </Select>
-              <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-            </div>
-
-            <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple label="CPT / HCPCS Billing Codes" value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateBillingField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" />
-            <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={applyBillingCode} placeholder="Type billing code or service keyword" />
+            <DiagnosisBillingPanel values={intake} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={updateBillingDiagnosis} onBillingCodesChange={codes => updateBillingField("billingCodes", codes)} otherDiagnoses={otherDiagnoses(intake)} onRemoveOtherDiagnosis={entry => updateBillingField("diagnoses", (intake.diagnoses || []).filter(item => item !== entry))} />
 
             <div className="grid md:grid-cols-2 gap-3">
               <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || ""} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder={`Type provider name to sign (e.g. ${PRACTITIONER_NAME})`} />
@@ -5922,6 +5770,7 @@ function BillingPage() {
             <p><span className="font-medium">Primary:</span> {intake.primaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Secondary:</span> {intake.secondaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Tertiary:</span> {intake.tertiaryDiagnosis || "Not selected"}</p>
+            <p><span className="font-medium">Diagnosis 4:</span> {intake.fourthDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Billing codes:</span> {(intake.billingCodes || []).join(", ") || "Not selected"}</p>
             <p><span className="font-medium">Clearinghouse payer ID:</span> {intake.payerId ? `${intake.payerId} (${intake.payerIdVerificationStatus === "Verified" ? "verified" : "not verified"})` : "Not entered"}</p>
             <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || "", intake.providerNpi)}</p>
@@ -5939,7 +5788,7 @@ function BillingPage() {
   const plans = selectedClientId ? store.users[selectedClientId]?.treatmentPlans || [] : [];
   const selectedClientName = selectedClientId ? store.users[selectedClientId]?.profile?.fullName || "Client" : "Client";
   const [draft, setDraft] = useState({
-    primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "",
+    primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "",
     problem: "",
     longTermGoal: "",
     shortTermGoal: "",
@@ -5957,6 +5806,7 @@ function BillingPage() {
       primaryDiagnosis: current.primaryDiagnosis || biopsychosocial.primaryDiagnosis || "",
       secondaryDiagnosis: current.secondaryDiagnosis || biopsychosocial.secondaryDiagnosis || "",
       tertiaryDiagnosis: current.tertiaryDiagnosis || biopsychosocial.tertiaryDiagnosis || "",
+      fourthDiagnosis: current.fourthDiagnosis || biopsychosocial.fourthDiagnosis || "",
       problem: current.problem || biopsychosocial.presentingProblem || biopsychosocial.chiefComplaint || "",
     }));
     setNotice(biopsychosocial.treatmentGoals
@@ -5982,7 +5832,7 @@ function BillingPage() {
       clientName: selectedClientName,
       category: "Medical Record",
     });
-    setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() });
+    setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() });
     pendingPlanId.current = ""; setNotice("Treatment plan saved to the selected chart.");
     } catch (error) { setNotice(`Plan save not confirmed. Your draft is retained for retry. ${error instanceof Error ? error.message : ""}`); }
     finally { setSaving(false); }
@@ -5993,7 +5843,7 @@ function BillingPage() {
       <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardContent className="p-4 space-y-3">
-            <Select value={selectedClientId} disabled={saving} onValueChange={(value) => { setSelectedClientId(value); setSelectedChartClientId(value); setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() }); pendingPlanId.current = ""; setNotice(""); }}>
+            <Select value={selectedClientId} disabled={saving} onValueChange={(value) => { setSelectedClientId(value); setSelectedChartClientId(value); setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() }); pendingPlanId.current = ""; setNotice(""); }}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
@@ -6005,14 +5855,10 @@ function BillingPage() {
             </div>}
             <StructuredPicker value={draft.problem} onAppend={(v) => setDraft({ ...draft, problem: v })} groups={treatmentPlanPickerGroups.problem} disabled={saving} />
             <Input value={draft.problem} onChange={(e) => setDraft({ ...draft, problem: e.target.value })} placeholder="Problem" />
-            <fieldset disabled={saving} className="space-y-3 rounded-xl border p-3">
-              <legend className="font-medium">Treatment diagnoses and planned services</legend>
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={draft.primaryDiagnosis} onChange={e => setDraft(current => ({ ...current, primaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={draft.secondaryDiagnosis} onChange={e => setDraft(current => ({ ...current, secondaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Additional ICD-10-CM Diagnosis" value={draft.tertiaryDiagnosis} onChange={e => setDraft(current => ({ ...current, tertiaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple label="Planned CPT / HCPCS services (optional)" value={draft.plannedServiceCodes} onChange={e => setDraft(current => ({ ...current, plannedServiceCodes: e.target.value }))} />
+            <DiagnosisBillingPanel title="Treatment diagnoses and planned services" values={draft} diagnosisOptions={diagnosisCodeOptions} showBilling={false} disabled={saving} onDiagnosisChange={(field, value) => setDraft(current => ({ ...current, [field]: value }))}>
+              <ClinicalCodeInput kind="billing" disabled={saving} fallback={billingCodeOptions} multiple label="Planned CPT / HCPCS services (optional)" value={draft.plannedServiceCodes} onChange={e => setDraft(current => ({ ...current, plannedServiceCodes: e.target.value }))} />
               <p className="text-xs text-slate-600">Select diagnoses supported by your assessment. Planned services do not create a charge or claim.</p>
-            </fieldset>
+            </DiagnosisBillingPanel>
             <TreatmentGoalEditor goals={draft.goals} disabled={saving} onChange={(goals) => setDraft({ ...draft, goals })} />
             <StructuredPicker value={draft.intervention} onAppend={(v) => setDraft({ ...draft, intervention: v })} groups={treatmentPlanPickerGroups.intervention} disabled={saving} />
             <Textarea value={draft.intervention} onChange={(e) => setDraft({ ...draft, intervention: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Intervention" />

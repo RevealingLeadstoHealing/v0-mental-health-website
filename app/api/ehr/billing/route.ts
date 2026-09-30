@@ -69,7 +69,7 @@ export async function POST(request: Request) {
           .map((d: Record<string, unknown>) => ({
             code: String(d.code || "").slice(0, 20),
             label: String(d.label || "").slice(0, 300),
-            rank: (["primary", "secondary", "tertiary"].includes(String(d.rank))
+            rank: (["primary", "secondary", "tertiary", "quaternary"].includes(String(d.rank))
               ? d.rank
               : "primary") as ClaimDiagnosis["rank"],
           }))
