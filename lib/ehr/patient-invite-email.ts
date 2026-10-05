@@ -194,8 +194,28 @@ export async function sendPatientInviteEmail(input: PatientInviteEmailInput): Pr
     });
 
     if (response.ok) return "sent";
-    return "email-pending-ses";
-  } catch {
-    return "email-error";
+
+    // Surface WHY SES refused (permissions, unverified identity, sandbox, etc.)
+    // so it shows up in the audit log instead of a generic "pending" label.
+    let reason = "";
+    try {
+      const body = await response.text();
+      try {
+        const parsed = JSON.parse(body);
+        reason = String(parsed.message || parsed.Message || parsed.__type || body);
+      } catch {
+        reason = body;
+      }
+    } catch {
+      reason = "";
+    }
+    const errType = response.headers.get("x-amzn-errortype") || "";
+    const detail = `${errType} ${reason}`.replace(/\s+/g, " ").trim().slice(0, 220);
+    console.error("[patient-invite-email] SES rejected send", response.status, detail);
+    return `email-failed: SES ${response.status}${detail ? ` - ${detail}` : ""}`;
+  } catch (error) {
+    const detail = (error instanceof Error ? error.message : String(error)).slice(0, 160);
+    console.error("[patient-invite-email] send error", detail);
+    return `email-error: ${detail}`;
   }
 }
