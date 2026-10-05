@@ -822,24 +822,28 @@ function AuthProvider({ children }) {
       .then(() => withTimeout(persistModuleSnapshot(clientId, moduleKey, value)))
       .then(() => {
         saveFailuresRef.current.delete(queueKey);
-        if (saveFailuresRef.current.size) {
-          // Leave a failure message standing so it isn't missed.
-          setSaveStatus("Some chart changes have not saved. Please retry them.");
-        } else {
-          // Success: show the confirmation briefly, then clear it so the
-          // banner doesn't linger permanently at the top of the page.
-          setSaveStatus("Saved securely to AWS.");
-          setTimeout(() => {
-            setSaveStatus((current) => (current === "Saved securely to AWS." ? "" : current));
-          }, 4000);
-        }
       })
       .catch((error) => {
         saveFailuresRef.current.set(queueKey, error);
-        setSaveStatus(`AWS save failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       })
       .finally(() => {
         if (saveQueuesRef.current.get(queueKey) === next) saveQueuesRef.current.delete(queueKey);
+        // Reconcile the banner to the TRUE state after every save settles.
+        // While work remains in flight it reads "Saving…"; once nothing is in
+        // flight it shows a real result — a clear "Saved to chart" confirmation
+        // on success, or a named failure. It can never stay stuck on "Saving…".
+        const stillSaving = saveQueuesRef.current.size > 0;
+        if (stillSaving) {
+          setSaveStatus("Saving securely to AWS…");
+        } else if (saveFailuresRef.current.size) {
+          const firstError = [...saveFailuresRef.current.values()][0];
+          setSaveStatus(`Not saved — ${firstError instanceof Error ? firstError.message : "some chart changes have not saved. Please retry."}`);
+        } else {
+          setSaveStatus("Saved to chart.");
+          setTimeout(() => {
+            setSaveStatus((current) => (current === "Saved to chart." ? "" : current));
+          }, 4000);
+        }
       });
     saveQueuesRef.current.set(queueKey, next);
   };
