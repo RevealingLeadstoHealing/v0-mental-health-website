@@ -669,6 +669,7 @@ function AuthProvider({ children }) {
   const storeRef = useRef(store);
   const saveQueuesRef = useRef(new Map());
   const saveFailuresRef = useRef(new Map());
+  const inFlightSavesRef = useRef(0);
   useEffect(() => { storeRef.current = store; }, [store]);
   // Safety net so the status banner can never sit stuck. Whenever a transient
   // status is shown ("Saving…" or "Saved…"), auto-clear it after 8 seconds —
@@ -679,7 +680,9 @@ function AuthProvider({ children }) {
     const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved");
     if (isFailure) return; // leave real problems on screen
     const timer = setTimeout(() => {
-      if (saveFailuresRef.current.size === 0) setSaveStatus("");
+      // Hard backstop: if nothing is actually in flight, never let any transient
+      // banner (including "Saving…") linger past 8 seconds.
+      if (inFlightSavesRef.current === 0 && saveFailuresRef.current.size === 0) setSaveStatus("");
     }, 8000);
     return () => clearTimeout(timer);
   }, [saveStatus]);
@@ -808,6 +811,10 @@ function AuthProvider({ children }) {
   };
   const enqueueModuleSave = (clientId, moduleKey, value) => {
     const queueKey = `${clientId}:${moduleKey}`;
+    // Count this save as in flight. The banner is driven ONLY by this counter,
+    // so it reflects the true number of saves still running — not the queue map
+    // (which could keep stale entries) and not any single save's view of state.
+    inFlightSavesRef.current += 1;
     setSaveStatus("Saving securely to AWS…");
     const previous = saveQueuesRef.current.get(queueKey) || Promise.resolve();
     // Safety net: never let a save spin "Saving…" forever. If the request does
@@ -828,14 +835,16 @@ function AuthProvider({ children }) {
       })
       .finally(() => {
         if (saveQueuesRef.current.get(queueKey) === next) saveQueuesRef.current.delete(queueKey);
-        // Reconcile the banner to the TRUE state after every save settles.
-        // While work remains in flight it reads "Saving…"; once nothing is in
-        // flight it shows a real result — a clear "Saved to chart" confirmation
-        // on success, or a named failure. It can never stay stuck on "Saving…".
-        const stillSaving = saveQueuesRef.current.size > 0;
-        if (stillSaving) {
-          setSaveStatus("Saving securely to AWS…");
-        } else if (saveFailuresRef.current.size) {
+        // This save has settled — decrement the in-flight counter.
+        inFlightSavesRef.current = Math.max(0, inFlightSavesRef.current - 1);
+        // Only reconcile the banner once NOTHING is still in flight. This is
+        // what prevents the stuck "Saving securely to AWS…" banner: an earlier
+        // save finishing no longer re-arms "Saving…" while a later one runs, and
+        // once the last one finishes the banner shows the real result.
+        if (inFlightSavesRef.current > 0) {
+          return; // other saves still running; leave "Saving…" as-is
+        }
+        if (saveFailuresRef.current.size) {
           const firstError = [...saveFailuresRef.current.values()][0];
           setSaveStatus(`Not saved — ${firstError instanceof Error ? firstError.message : "some chart changes have not saved. Please retry."}`);
         } else {
