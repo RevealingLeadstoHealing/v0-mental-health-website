@@ -1671,7 +1671,7 @@ function ProviderPatientDashboard() {
                 const uploaded = (selectedPatient.documents || []).filter(doc => doc.title === label && doc.storageKey);
                 return <div className="ehr-demographic-value" key={key}><span>{label}</span>
                   <p>{uploaded.length ? uploaded.map(doc => doc.uploadedFileName || "Uploaded").join(", ") : "Not uploaded"}</p>
-                  <label className="block text-sm">Upload {label}<input key={`${selectedPatient.id}-${editingPatient}-${key}`} className="block w-full" type="file" accept="image/*,application/pdf" disabled={editBusy} onChange={event => {
+                  <label className="block text-sm">Upload {label}<input key={`${selectedPatient.id}-${editingPatient}-${key}`} className="block w-full" type="file" accept="image/*,application/pdf" capture="environment" disabled={editBusy} onChange={event => {
                     const file = event.target.files?.[0]; if (!file) return;
                     if (!editingPatient) beginPatientEdit();
                     setEditFiles(previous => ({ ...previous, [key]: file }));
@@ -4132,14 +4132,15 @@ function ClientManagementPage() {
               <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Insurance card - front
-                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardFrontFile(event.target.files?.[0] || null)} />
+                <input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardFrontFile(event.target.files?.[0] || null)} />
+                <span className="text-xs font-normal text-slate-500">On a phone or tablet this opens the camera to photograph the card, or you can choose an existing file.</span>
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Insurance card - back
-                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
+                <input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
             </div>
             <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
             {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
