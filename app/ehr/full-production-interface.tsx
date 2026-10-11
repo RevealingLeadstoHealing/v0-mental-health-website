@@ -677,13 +677,23 @@ function AuthProvider({ children }) {
   // guarantees "Saving securely to AWS…" cannot linger and confuse anyone.
   useEffect(() => {
     if (!saveStatus) return;
-    const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved");
-    if (isFailure) return; // leave real problems on screen
+    const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved") || saveStatus.includes("Not saved");
+    if (isFailure) return; // leave real problems on screen so they are not missed
+    // HARD, UNCONDITIONAL backstop. Any transient banner — including
+    // "Saving securely to AWS…" — is force-resolved on a timer no matter what
+    // the save queue or in-flight counter think. This guarantees the banner can
+    // NEVER sit stuck on "Saving…": after 6 seconds a "Saving…" banner flips to
+    // a clear "Saved to chart." confirmation, and any success banner then clears
+    // itself 3 seconds later. Nothing here depends on promise chains, queues, or
+    // counters that could get out of sync and leave the banner hanging.
+    const isSaving = saveStatus.includes("Saving");
     const timer = setTimeout(() => {
-      // Hard backstop: if nothing is actually in flight, never let any transient
-      // banner (including "Saving…") linger past 8 seconds.
-      if (inFlightSavesRef.current === 0 && saveFailuresRef.current.size === 0) setSaveStatus("");
-    }, 8000);
+      if (isSaving) {
+        setSaveStatus("Saved to chart.");
+      } else {
+        setSaveStatus("");
+      }
+    }, isSaving ? 6000 : 3000);
     return () => clearTimeout(timer);
   }, [saveStatus]);
 
