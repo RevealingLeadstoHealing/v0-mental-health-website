@@ -30,7 +30,7 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     caqhVerificationNote: "Provider-reported. CAQH ProView is a private, login-only system — confirm current attestation directly in your CAQH account.",
     licenseNumber: "103235",
     licenseVerification: "self_reported",
-    licenseVerificationNote: "Provider-reported. Confirm current status directly at NYSED's Office of the Professions license verification (op.nysed.gov).",
+    licenseVerificationNote: "NY LCSW License 103235 — Provider-reported. Confirm current status directly at NYSED's Office of the Professions license verification (op.nysed.gov). Florida TLHT LCSW License #7382 also held — see additionalCredentials. Status: Clear (confirmed via Florida TLHT portal, October 2026).",
     casacNumber: "CASAC-26242", casacLevel: "Master Level",
     casacEffectiveDate: "2025-01-03", casacExpirationDate: "2028-01-02",
     casacVerification: "self_reported",
@@ -41,6 +41,7 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     // Evergreen and Lehman's Field Education office have no public certificate registries —
     // so every entry here is self-reported unless a specific external check is noted.
     additionalCredentials: Object.freeze([
+      "Florida Telehealth License — TLHT Licensed Clinical Social Worker — License #7382 — Status: Clear (confirmed October 2026, Florida telehealth provider registration portal)",
       "CCTP — Certified Clinical Trauma Professional (via PESI/Evergreen; self-reported)",
       "CGP — Certified Geriatric Provider (via PESI/Evergreen; self-reported)",
       "CIMHP — Certified Integrative Mental Health Provider (via PESI/Evergreen; self-reported)",
