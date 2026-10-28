@@ -3592,11 +3592,11 @@ ${sessionForm.recordingVerbiage}`);
               </Select>
             )}
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => setSessionForm({ ...sessionForm, recordingConsent: e.target.checked })} />
+              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, recordingConsent: v })); }} />
               Recording consent obtained
             </label>
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => setSessionForm({ ...sessionForm, consentObtained: e.target.checked })} />
+              <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, consentObtained: v })); }} />
               Telehealth consent obtained verbally
             </label>
 <details><summary className="cursor-pointer text-sm">Review or edit consent wording</summary>
