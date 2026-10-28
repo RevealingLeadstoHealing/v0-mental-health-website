@@ -13,7 +13,7 @@ import DiagnosisBillingPanel from "./diagnosis-billing-panel";
 import { claimDiagnoses, diagnosisPatch, otherDiagnoses, selectedDiagnoses } from "../../lib/ehr/diagnosis-billing";
 import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
-import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups } from "./structured-picker";
+import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups, MentalStatusExam, mseToText } from "./structured-picker";
 import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatment-goals";
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
 import { payerCatalog } from "../../lib/ehr/payer-catalog";
@@ -4768,6 +4768,10 @@ function IntakePage() {
                 </div>
               </div>
             </section>
+            <section className="space-y-4">
+              <h4 className="text-xl font-bold text-slate-800">Mental Status Exam</h4>
+              <MentalStatusExam value={intake.mentalStatusExam || {}} onChange={(next) => updateIntakeField("mentalStatusExam", next)} disabled={isSubmitting} />
+            </section>
             <section className="space-y-6">
               <h4 className="text-xl font-bold text-slate-800">Summary, Diagnosis & Plan</h4>
               <div className="space-y-6">
@@ -4849,6 +4853,7 @@ function ProgressNotesPage() {
     content: "",
     modality: "CBT",
     noteType: "Medical Record Note",
+    mse: {},
   });
   const [ehrDestination, setEhrDestination] = useState("treatment-plan");
   const [sessionSeconds, setSessionSeconds] = useState(0);
@@ -4900,7 +4905,8 @@ function ProgressNotesPage() {
       `Provider e-signature: ${providerSignatureText(codeDraft.providerSignature)}`,
       `Client e-signature: ${codeDraft.clientSignature || "Not signed / not required"}`,
     ].join("\n");
-    const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}`;
+    const mseText = mseToText(draft.mse || {});
+    const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}${mseText ? `\n\n${mseText}` : ""}`;
     updateSpecificUserData(selectedClientId, "notes", (prev) => [
       {
         id: `note-${Date.now()}`,
@@ -4926,7 +4932,7 @@ function ProgressNotesPage() {
       clientName: selectedClientName,
       category: draft.noteType === "Psychotherapy Note" ? "Psychotherapy Notes" : "Medical Record",
     });
-    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note" });
+    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note", mse: {} });
   };
   const generateStarter = () => {
     setDraft((prev) => ({
@@ -5207,6 +5213,10 @@ ${draft.content}`,
               </CardContent>
             </Card>
             <Textarea label="Note text" value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} className="min-h-[260px] rounded-2xl" placeholder="Write note..." />
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-slate-700">Mental Status Exam (this session)</p>
+              <MentalStatusExam value={draft.mse || {}} onChange={(next) => setDraft({ ...draft, mse: next })} />
+            </div>
             <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />Save note</Button>
           </CardContent>
         </Card>

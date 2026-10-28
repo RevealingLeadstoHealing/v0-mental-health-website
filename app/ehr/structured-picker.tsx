@@ -358,3 +358,84 @@ export const msePickerGroups: Record<string, PickerGroup[]> = {
     { label: "Disposition", options: ["Protective factors present", "Safety plan reviewed", "Crisis resources provided", "No acute safety concerns"] },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// MentalStatusExam — a complete, reusable MSE block used in BOTH the
+// biopsychosocial assessment and each progress/follow-up note, so the MSE is
+// documented consistently everywhere. Each domain is click-to-fill (chips add
+// standard descriptors) with a free-text box. The whole MSE is stored as one
+// object keyed by domain name, so a parent can persist it as a single field.
+// ---------------------------------------------------------------------------
+
+export const mseDomainOrder: string[] = [
+  "Appearance and grooming",
+  "Behavior and engagement",
+  "Psychomotor activity",
+  "Speech",
+  "Mood (client report)",
+  "Affect (observed)",
+  "Thought process",
+  "Thought content",
+  "Perception",
+  "Orientation",
+  "Attention and concentration",
+  "Memory",
+  "Insight",
+  "Judgment",
+  "Safety: suicidal and homicidal thoughts",
+];
+
+type MentalStatusExamProps = {
+  value: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+  disabled?: boolean;
+};
+
+export function MentalStatusExam({ value, onChange, disabled }: MentalStatusExamProps) {
+  const mse = value || {};
+  const setDomain = (domain: string, next: string) => {
+    onChange({ ...mse, [domain]: next });
+  };
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
+      <div>
+        <p className="text-base font-bold text-slate-800">Mental Status Exam (MSE)</p>
+        <p className="text-xs text-slate-500">Click descriptors to document each domain, or type your own. Standard clinical observation — not a copyrighted instrument.</p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {mseDomainOrder.map((domain) => {
+          const groups = msePickerGroups[domain] || [{ options: [] }];
+          const isSafety = domain.startsWith("Safety");
+          return (
+            <div key={domain} className="space-y-1 text-sm">
+              <span className="font-medium">{domain}</span>
+              <StructuredPicker
+                value={mse[domain] || ""}
+                onAppend={(next) => setDomain(domain, next)}
+                groups={groups}
+                disabled={disabled}
+                helpText={isSafety ? "Any endorsed ideation, plan, or intent requires a clinical safety assessment regardless of the descriptors selected." : undefined}
+              />
+              <textarea
+                className="w-full rounded-xl border p-3 min-h-[70px]"
+                value={mse[domain] || ""}
+                placeholder="Observed finding, client report, or not assessed and reason"
+                disabled={disabled}
+                onChange={(e) => setDomain(domain, e.target.value)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Render an MSE object as readable text for inclusion in a saved note.
+export function mseToText(value: Record<string, string>): string {
+  const mse = value || {};
+  const lines = mseDomainOrder
+    .filter((domain) => (mse[domain] || "").trim())
+    .map((domain) => `${domain}: ${mse[domain].trim()}`);
+  return lines.length ? `Mental Status Exam:\n${lines.join("\n")}` : "";
+}
