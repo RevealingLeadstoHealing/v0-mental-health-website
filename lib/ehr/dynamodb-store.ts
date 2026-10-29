@@ -290,6 +290,63 @@ export async function putClinicalRecord(actor: EhrActor, input: ClinicalRecordIn
   return item;
 }
 
+/**
+ * Create a clinical record with a caller-supplied recordId.
+ *
+ * Unlike putClinicalRecord — where supplying a recordId means "update the
+ * existing item" — this always CREATES a new item at
+ *   PK = CLIENT#{clientId}, SK = RECORD#{recordType}#{recordId}
+ * using the same item shape as putClinicalRecord's generated-id create path.
+ * The write is guarded by attribute_not_exists so it never overwrites an
+ * existing record (a duplicate recordId throws ConditionalCheckFailedException).
+ *
+ * Needed by flows that must create a record under a known id so a later step
+ * can look it up by that exact id (e.g. the microphone-captions start/stop
+ * pair keyed by sessionId).
+ *
+ * Gated by assertProductionBackendReady() — see lib/ehr/backend-status.ts.
+ * Throws before touching DynamoDB if EHR_PHI_ENTRY_ALLOWED is not "true".
+ */
+export async function createClinicalRecordWithId(
+  actor: EhrActor,
+  input: ClinicalRecordInput & { recordId: string }
+) {
+  assertProductionBackendReady(getBackendStatus());
+
+  const dynamo = getDynamoDocumentClient();
+  const now = nowIso();
+  const recordType = input.recordType || "clinical-note";
+  const recordId = input.recordId;
+
+  const item = {
+    PK: `CLIENT#${input.clientId}`,
+    SK: `RECORD#${recordType}#${recordId}`,
+    GSI1PK: `PRACTICE#${actor.practiceId}#TYPE#${recordType}`,
+    GSI1SK: now,
+    recordId,
+    recordType,
+    clientId: input.clientId,
+    practiceId: actor.practiceId,
+    status: input.status || "draft",
+    payload: input.payload,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: actor.sub,
+    createdByName: actor.name,
+  };
+
+  await dynamo.send(
+    new PutCommand({
+      TableName: rlthAwsFoundation.clinicalRecordsTableName,
+      Item: item,
+      // Create-only: never overwrite an existing record with the same id.
+      ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+    })
+  );
+
+  return item;
+}
+
 // ---------------------------------------------------------------------------
 // Audit Events (append-only — never updated)
 // ---------------------------------------------------------------------------

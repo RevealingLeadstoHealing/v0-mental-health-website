@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { ChimeSDKMeetingsClient, CreateMeetingCommand, CreateAttendeeCommand, DeleteMeetingCommand, StartMeetingTranscriptionCommand } from '@aws-sdk/client-chime-sdk-meetings';
 import { ApiError, apiErrorResponse, requireEhrActor, requireRole } from '../../../../../lib/ehr/auth';
 import { requireClientAccess } from '../../../../../lib/ehr/authorization';
-import { appendAuditEvent, getClinicalRecord, putClinicalRecord } from '../../../../../lib/ehr/dynamodb-store';
+import { appendAuditEvent, createClinicalRecordWithId, getClinicalRecord } from '../../../../../lib/ehr/dynamodb-store';
 import { isAllowedTelehealthOrigin } from '../../../../../lib/ehr/telehealth-origin';
 
 export const runtime = 'nodejs';
@@ -41,7 +41,11 @@ export async function POST(request: Request) {
       operation = 'Chime:CreateAttendee';
       const { Attendee } = await chime.send(new CreateAttendeeCommand({ MeetingId: Meeting.MeetingId, ExternalUserId: sessionId }));
       operation = 'DynamoDB:SaveCaptionSession';
-      await putClinicalRecord(actor, { clientId, recordType: 'microphone-captions', recordId: sessionId, status: 'active', payload: { owner: actor.sub, meetingId: Meeting.MeetingId } });
+      // Create a brand-new caption-session record keyed by sessionId so the stop
+      // action can look it up by that exact id. Use the create-with-id path:
+      // putClinicalRecord treats a supplied recordId as an UPDATE of an existing
+      // item, which fails for a new session (ConditionalCheckFailedException).
+      await createClinicalRecordWithId(actor, { clientId, recordType: 'microphone-captions', recordId: sessionId, status: 'active', payload: { owner: actor.sub, meetingId: Meeting.MeetingId } });
       operation = 'Chime:StartMeetingTranscription';
       await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: Meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' } } }));
       operation = 'DynamoDB:AppendCaptionAudit';
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
     // Preserve authorization/consent responses. Only report fixed operation labels
     // and known error types: never expose AWS messages, credentials or chart data.
     if (operation && !(error instanceof ApiError)) {
-      const knownErrors = ['AccessDeniedException', 'ForbiddenException', 'UnauthorizedClientException', 'BadRequestException', 'NotFoundException', 'ResourceNotFoundException', 'ThrottledClientException', 'ThrottlingException', 'LimitExceededException', 'ServiceFailureException', 'ServiceUnavailableException', 'UnrecognizedClientException', 'CredentialsProviderError', 'ValidationException', 'ProvisionedThroughputExceededException', 'InternalServerError', 'TimeoutError'];
+      const knownErrors = ['AccessDeniedException', 'ForbiddenException', 'UnauthorizedClientException', 'BadRequestException', 'NotFoundException', 'ResourceNotFoundException', 'ThrottledClientException', 'ThrottlingException', 'LimitExceededException', 'ServiceFailureException', 'ServiceUnavailableException', 'UnrecognizedClientException', 'CredentialsProviderError', 'ValidationException', 'ProvisionedThroughputExceededException', 'InternalServerError', 'TimeoutError', 'ConditionalCheckFailedException'];
       const errorType = knownErrors.includes(error?.name) ? error.name : 'UnexpectedError';
       return NextResponse.json({
         error: `AWS live captions could not ${stopping ? 'stop' : 'start'}: ${operation} failed (${errorType}). Diagnostic: caption-aws-v1.`,
