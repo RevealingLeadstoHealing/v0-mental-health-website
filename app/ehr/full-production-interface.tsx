@@ -3584,6 +3584,15 @@ ${sessionForm.recordingVerbiage}`);
               <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>
               <p className="text-sm">Current client: {activeClient?.profile?.fullName || "None selected"}. {selectedAppointment ? `Appointment: ${selectedAppointment.date || ""} · ${selectedAppointment.status}` : "No appointment selected."}</p>
             {isProvider && (
+              <div className="space-y-1">
+                <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={appointmentId} onValueChange={id => { const item = appointments.find(appt => appt.id === id); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setSupportedSections({}); setScribeSeconds(0); setScribeMeta(current => ({ ...current, manualMinutes: "" })); setAppointmentId(id); setStatusDraft(item?.status || "Scheduled"); setRescheduleDate(item?.date || ""); setRescheduleTime(item?.time || ""); }}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Choose the appointment" /></SelectTrigger>
+                  <SelectContent>{appointments.map(item => <SelectItem key={item.id} value={item.id}>{item.date} {item.time} — {item.purpose} ({item.status})</SelectItem>)}</SelectContent>
+                </Select>
+                {!appointments.length && <p className="text-sm">No appointments scheduled for this client.</p>}
+              </div>
+            )}
+            {isProvider && (
               <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent>
