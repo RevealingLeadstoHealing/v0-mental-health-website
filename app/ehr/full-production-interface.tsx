@@ -3605,11 +3605,11 @@ ${sessionForm.recordingVerbiage}`);
             )}
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
               <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, recordingConsent: v })); }} />
-              Recording and AI transcription consent on file (signed at intake) — confirmed for this session
+              Recording and AI transcription consent obtained (signed / verbal) — confirmed for this session
             </label>
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
               <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, consentObtained: v })); }} />
-              Telehealth consent on file (signed at intake) — confirmed for this session
+              Telehealth consent obtained (signed / verbal) — confirmed for this session
             </label>
 <details><summary className="cursor-pointer text-sm">Review or edit consent wording</summary>
             <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
