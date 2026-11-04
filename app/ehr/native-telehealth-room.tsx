@@ -281,7 +281,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   // silent no-op. The room is its own capture path and is intentionally NOT gated
   // on the standalone microphone scribe (externalRecording), so the top mic
   // recorder running or its transcription still processing does not disable Join.
-  const joinDisabled = externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active);
+  const joinDisabled = busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active);
   const joinDisabledReason = !joinDisabled ? ''
     : busy ? 'Working on the previous action. The button re-enables in a moment.'
     : !status?.configured ? 'In-EHR calling is not activated yet, so the room cannot be joined.'
