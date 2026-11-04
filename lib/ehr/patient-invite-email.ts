@@ -1,9 +1,9 @@
-import { createHash, createHmac } from "node:crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { sendSesV2 } from "./ses-send";
 
 // Sends the patient's portal-invitation email ourselves via the AWS SES v2 REST
 // API (same hand-signed-fetch technique as booking-alert-email.ts and the
-// Cognito admin calls in clients/route.ts — no new AWS SDK client dependency).
+// Cognito admin calls in clients/route.ts — shared via lib/ehr/ses-send.ts; no
+// new AWS SDK client dependency).
 //
 // Why this exists: Cognito's own AdminCreateUser "welcome message" only ever
 // contains a username and a temporary password with no formatting, branding,
@@ -18,7 +18,6 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 // callers should not fail patient creation if this returns anything other
 // than "sent".
 
-const SES_REGION = "us-east-1";
 const FROM_ADDRESS = process.env.EHR_SES_FROM_ADDRESS || "connect@rlth.org";
 
 // Every production origin the patient portal is reachable from. The custom
@@ -29,17 +28,6 @@ const PORTAL_ORIGINS = [
   "https://ehr.revealing-leads-to-healing-wellness-services.org",
   "https://aws-ehr-production.d1mwc7x488m8xn.amplifyapp.com",
 ];
-
-function sha256Hex(value: string) {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function signingKey(secret: string, date: string, region: string, service: string) {
-  const dateKey = createHmac("sha256", `AWS4${secret}`).update(date).digest();
-  const regionKey = createHmac("sha256", dateKey).update(region).digest();
-  const serviceKey = createHmac("sha256", regionKey).update(service).digest();
-  return createHmac("sha256", serviceKey).update("aws4_request").digest();
-}
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] as string));
@@ -57,13 +45,6 @@ export interface PatientInviteEmailInput {
  */
 export async function sendPatientInviteEmail(input: PatientInviteEmailInput): Promise<string> {
   try {
-    const region = SES_REGION;
-    const service = "ses";
-    const host = `email.${region}.amazonaws.com`;
-
-    const credentials = await new DynamoDBClient({ region }).config.credentials();
-    if (!credentials?.accessKeyId) return "not-configured";
-
     const [primaryOrigin, ...backupOrigins] = PORTAL_ORIGINS;
     const loginUrl = `${primaryOrigin}/login?returnTo=/ehr`;
 
@@ -142,58 +123,17 @@ export async function sendPatientInviteEmail(input: PatientInviteEmailInput): Pr
   </body>
 </html>`;
 
-    const payload = JSON.stringify({
-      FromEmailAddress: FROM_ADDRESS,
-      Destination: { ToAddresses: [input.email] },
-      Content: {
-        Simple: {
-          Subject: { Data: subject, Charset: "UTF-8" },
-          Body: {
-            Text: { Data: textBody, Charset: "UTF-8" },
-            Html: { Data: htmlBody, Charset: "UTF-8" },
-          },
-        },
-      },
+    const result = await sendSesV2({
+      from: FROM_ADDRESS,
+      to: [input.email],
+      subject,
+      text: textBody,
+      html: htmlBody,
     });
 
-    const canonicalUri = "/v2/email/outbound-emails";
-    const endpoint = `https://${host}${canonicalUri}`;
-    const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
-    const date = timestamp.slice(0, 8);
-
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      host,
-      "x-amz-date": timestamp,
-    };
-    if (credentials.sessionToken) headers["x-amz-security-token"] = credentials.sessionToken;
-
-    const names = Object.keys(headers).sort();
-    const signedHeaders = names.join(";");
-    const canonicalHeaders = names.map((name) => `${name}:${headers[name].trim()}\n`).join("");
-    const canonicalRequest = [
-      "POST",
-      canonicalUri,
-      "",
-      canonicalHeaders,
-      signedHeaders,
-      sha256Hex(payload),
-    ].join("\n");
-    const scope = `${date}/${region}/${service}/aws4_request`;
-    const stringToSign = ["AWS4-HMAC-SHA256", timestamp, scope, sha256Hex(canonicalRequest)].join("\n");
-    const signature = createHmac("sha256", signingKey(credentials.secretAccessKey, date, region, service))
-      .update(stringToSign)
-      .digest("hex");
-    const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { ...headers, authorization },
-      body: payload,
-      cache: "no-store",
-    });
-
-    if (response.ok) return "sent";
+    if (result.status === "not-configured") return "not-configured";
+    if (result.ok) return "sent";
+    const response = result.response!;
 
     // Surface WHY SES refused (permissions, unverified identity, sandbox, etc.)
     // so it shows up in the audit log instead of a generic "pending" label.
