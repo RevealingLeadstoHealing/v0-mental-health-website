@@ -10,8 +10,18 @@ export default function LiveCaptionPanel({ captions, captionNotice, provider, co
     <section aria-label="Live session captions" className="rounded-xl border p-3 space-y-2">
       <h3 className="font-semibold">Live session captions</h3>
       <p role="status" className="text-sm">{captionNotice}</p>
-      {connected && clientId && sessionId ? <InterpreterCaptions key={`${clientId}:${sessionId}`} clientId={clientId} sessionId={sessionId} captions={captions} active={recordingActive === true} /> : <div ref={captionLog} role="log" aria-label="Live conversation" aria-live="polite" aria-relevant="additions text" className="max-h-64 overflow-y-auto text-sm space-y-1">
-        {captions.map(line => <p key={line.id}><strong>{line.speaker}:</strong> {line.text}{line.partial ? ' …' : ''}</p>)}
+      {connected && clientId && sessionId ? <InterpreterCaptions key={`${clientId}:${sessionId}`} clientId={clientId} sessionId={sessionId} captions={captions} active={recordingActive === true} /> : <div className="space-y-2">
+        <fieldset className="flex flex-wrap gap-3 text-sm opacity-70" aria-disabled="true">
+          <legend className="font-medium">Translation &amp; interpreter preferences</legend>
+          <label><input type="checkbox" disabled /> Translate captions</label>
+          <label>Translate into <select aria-label="Translation language" disabled><option>English</option></select></label>
+          <label>Show <select disabled><option>Original and translation</option></select></label>
+          <label><input type="checkbox" disabled /> Read the other participant’s translation aloud</label>
+        </fieldset>
+        <p className="text-xs">Translation and interpreter controls activate once you Join the room and start recording. They stay available throughout the session.</p>
+        <div ref={captionLog} role="log" aria-label="Live conversation" aria-live="polite" aria-relevant="additions text" className="max-h-64 overflow-y-auto text-sm space-y-1">
+          {captions.map(line => <p key={line.id}><strong>{line.speaker}:</strong> {line.text}{line.partial ? ' …' : ''}</p>)}
+        </div>
       </div>}
       <p className="text-xs">Captions show the conversation during recording. After stopping, review the completed transcript and clinical draft before merging into the chart.</p>
       {provider && connected && <button type="button" className={button} onClick={async () => {
