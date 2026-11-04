@@ -252,22 +252,27 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     setBusy(true);
     let mix: AudioContext | null = null;
     try {
+      // A solo provider has no remote attendee, so there is no remote audio track.
+      // Require only the local microphone; mix the remote stream only when a client
+      // is actually present, so a provider can record their own session audio alone
+      // while both sides are still captured whenever a client has joined.
+      if (!localStream.current) throw new Error('Your microphone is not connected yet. Rejoin the room and allow the microphone, then start recording.');
       const remote = audio.current?.srcObject;
-      if (!(remote instanceof MediaStream) || !remote.getAudioTracks().length || !localStream.current) throw new Error('Both sides must be connected before recording.');
+      const hasRemote = remote instanceof MediaStream && remote.getAudioTracks().length > 0;
       if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) throw new Error('Use a browser that supports Opus/WebM recording.');
       await api('recording', { active: true, recordingConsent });
       mix = new AudioContext(); await mix.resume(); const context = mix;
       const destination = context.createMediaStreamDestination();
       const gain = context.createGain(); gain.gain.value = muted ? 0 : 1; micGain.current = gain;
       context.createMediaStreamSource(localStream.current).connect(gain).connect(destination);
-      context.createMediaStreamSource(remote).connect(destination);
+      if (hasRemote) context.createMediaStreamSource(remote as MediaStream).connect(destination);
       const capture = new MediaRecorder(destination.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 });
       const chunks: Blob[] = []; let bytes = 0;
       recorder.current = capture;
       capture.ondataavailable = event => { if (event.data.size) { chunks.push(event.data); bytes += event.data.size; if (bytes > 40 * 1024 * 1024) stopRecording(); } };
       capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(error => { if (live.current) setCaptionNotice(`Caption stop could not be confirmed: ${error.message}. Use Stop live captions or end the room.`); }); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
-      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setNotice('Recording both sides of this session for the AI scribe.');
+      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setNotice(hasRemote ? 'Recording both sides of this session for the AI scribe.' : 'Recording this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
       setCaptions([]); setCaptionNotice('Requesting AWS live English captions…');
       try {

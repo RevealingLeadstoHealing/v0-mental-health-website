@@ -189,13 +189,17 @@ export async function POST(request: Request) {
     }
     if (action === 'captions' && manager) {
       if (body.active !== true) { await stopCaptions(); return json({ captions: 'stopped' }); }
-      if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'Both recording consents and an active recording are required for live captions.');
-      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND clientRecordingConsent = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
+      if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'An active recording and your recording-consent confirmation are required for live captions.');
+      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
       try {
         await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' } } }));
-        // Consent may have been withdrawn while AWS was starting transcription.
+        // Recording or the room may have ended while AWS was starting transcription.
+        // Consent is provider-attested (mirroring the recording action), so captions
+        // are torn down only when the room ends, the session rolls, recording stops,
+        // or captions were cleared. A present client who withdraws recording consent
+        // stops recording (recording -> false), which tears captions down here too.
         const { Item: latest } = await db.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }));
-        if (!roomIsActive(latest) || latest?.sessionId !== room.sessionId || !latest.recording || !latest.clientRecordingConsent || !latest.captions) {
+        if (!roomIsActive(latest) || latest?.sessionId !== room.sessionId || !latest.recording || !latest.captions) {
           await chime.send(new StopMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId }));
           throw new ApiError(409, 'Recording or consent ended while captions were starting.');
         }
