@@ -3122,8 +3122,11 @@ function TelehealthPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clientId: activeClientId, contentType, consentConfirmed: true }),
     });
-    const uploadResponse = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.uploadHeaders, body: audio });
-    if (!uploadResponse.ok) throw new Error("Encrypted audio upload failed.");
+    if (!audio.size) throw new Error("No audio was captured, so nothing was uploaded. Check the microphone and record again.");
+    let uploadResponse;
+    try { uploadResponse = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.uploadHeaders, body: audio }); }
+    catch { throw new Error("Encrypted audio upload could not reach storage (network or bucket CORS). Nothing was transcribed."); }
+    if (!uploadResponse.ok) throw new Error(`Encrypted audio upload failed (storage responded ${uploadResponse.status}).`);
     const job = await productionApi("/api/ehr/scribe/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -30,7 +30,7 @@ export default function InterpreterCaptions({ captions, clientId, sessionId, act
   useEffect(() => {
     const controller = new AbortController();
     void request('interpreter-languages', {}, controller.signal).then(result => setLanguages(result.languages || []))
-      .catch(() => { if (!controller.signal.aborted) setNotice('Language choices could not load. Rejoin the room to retry.'); });
+      .catch((error: any) => { if (!controller.signal.aborted) setNotice(`Language choices could not load: ${error?.message || 'unknown error'} Rejoin the room to retry.`); });
     return () => controller.abort();
   }, [clientId, sessionId]);
   useEffect(() => {
@@ -85,8 +85,8 @@ export default function InterpreterCaptions({ captions, clientId, sessionId, act
               void player.play().catch(() => { if (!signal?.aborted) setNotice('Your browser paused spoken translation. Use the audio play control.'); finish(); });
             });
           }
-        } catch {
-          if (current === generation.current && !signal?.aborted) setNotice('Translation unavailable for this caption. Original words remain visible.');
+        } catch (error: any) {
+          if (current === generation.current && !signal?.aborted) setNotice(`Translation unavailable for this caption: ${error?.message || 'unknown error'} Original words remain visible.`);
         } finally { if (current === generation.current) pending.current--; }
       });
     }
