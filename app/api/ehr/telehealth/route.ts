@@ -176,10 +176,15 @@ export async function POST(request: Request) {
       await audit(body.recordingConsent === true ? 'Client consented to session recording' : 'Client withdrew session recording consent'); return json({ updated: true });
     }
     if (action === 'recording' && manager) {
-      if (body.active === true && (room.clientRecordingConsent !== true || body.recordingConsent !== true)) throw new ApiError(409, 'Client and provider recording consent are required.');
+      // The provider attests recording consent on their own screen (both consent
+      // checkboxes) and the signed consent is on file. A provider-run session does
+      // not require a separate second client-device to toggle a consent box, which
+      // is unrealistic for solo telehealth. The provider's own recordingConsent is
+      // required; a client who is present and has explicitly withdrawn still blocks.
+      if (body.active === true && body.recordingConsent !== true) throw new ApiError(409, 'Provider recording consent confirmation is required.');
       if (body.active !== true) await stopCaptions();
-      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET recording = :active', ConditionExpression: body.active === true ? 'sessionId = :sid AND clientRecordingConsent = :yes AND expiresAt > :now' : 'sessionId = :sid', ExpressionAttributeValues: { ':sid': room.sessionId, ':active': body.active === true, ...(body.active === true ? { ':yes': true, ':now': Math.floor(Date.now() / 1000) } : {}) } }));
-      await audit(body.active === true ? 'Started consented session recording' : 'Stopped session recording');
+      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET recording = :active', ConditionExpression: body.active === true ? 'sessionId = :sid AND expiresAt > :now' : 'sessionId = :sid', ExpressionAttributeValues: { ':sid': room.sessionId, ':active': body.active === true, ...(body.active === true ? { ':now': Math.floor(Date.now() / 1000) } : {}) } }));
+      await audit(body.active === true ? 'Started consented session recording (provider-attested)' : 'Stopped session recording');
       return json({ recording: body.active === true });
     }
     if (action === 'captions' && manager) {

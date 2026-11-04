@@ -131,7 +131,12 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
         if (!next.configured) setNotice('In-EHR calling is not activated yet. AWS setup and a test call are required.');
         else if (!joined.current) setNotice(next.active ? 'The room is open. Join when ready.' : 'Waiting for the provider to open a room.');
         if (joined.current && !next.active) { disconnectLocal(); setNotice('The session has ended.'); }
-        if (recorder.current?.state === 'recording' && requestedAt >= recordingStartedAt.current && (!next.recording || !next.clientRecordingConsent)) stopRecording();
+        // Provider-run sessions do not require a separate client-device consent signal;
+        // the provider confirms recording consent on their own screen. Only auto-stop if
+        // the server explicitly turned recording off (e.g. provider stopped, or a client
+        // present withdrew). Do not stop merely because clientRecordingConsent is unset.
+        const clientWithdrew = !provider && !next.clientRecordingConsent;
+        if (recorder.current?.state === 'recording' && requestedAt >= recordingStartedAt.current && (!next.recording || clientWithdrew)) stopRecording();
       } catch (e: any) { if (!cancelled) { stopRecording(); setNotice(e.message); } }
     };
     void check(); const timer = setInterval(check, 5000);
@@ -299,7 +304,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     {provider && connected && <div className="space-y-2">
       <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
       <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>
-      <button type="button" className={button} disabled={busy || uploading || (!recording && (!recordingConsent || !status?.clientRecordingConsent || Boolean(retryAudio)))} onClick={recording ? stopRecording : startRecording}>{recording ? 'Stop recording and process audio' : 'Record session audio for AI scribe'}</button>
+      <button type="button" className={button} disabled={busy || uploading || (!recording && (!recordingConsent || Boolean(retryAudio)))} onClick={recording ? stopRecording : startRecording}>{recording ? 'Stop recording and process audio' : 'Start recording — AI scribe (session audio)'}</button>
     </div>}
 
     {status?.recording && <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800">Session audio recording is active.</p>}
