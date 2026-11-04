@@ -23,6 +23,7 @@ import { psychoeducationLibrary } from "../../lib/ehr/psychoeducation-library";
 import NativeTelehealthRoom from "./native-telehealth-room";
 import { useMicrophoneCaptions } from "./use-microphone-captions";
 import FaxInbox from "./fax-inbox";
+import EmailPage from "./email-inbox";
 import FaxActivity from "./fax-activity";
 import { buildFaxActivity } from "../../lib/ehr/fax-activity";
 import SignedDocuments from "./signed-documents";
@@ -60,6 +61,7 @@ import {
   Download,
   Languages,
   GraduationCap,
+  Mail,
 } from "lucide-react";
 
 function cn(...classes) {
@@ -1365,6 +1367,7 @@ function MainApp() {
     ["assessments", "Assessments", ClipboardList],
     ["telehealth", "Telehealth", Video],
     ["messages", "Messages", MessageSquare],
+    ["email", "Email", Mail],
     ["billing", "Billing", ClipboardList],
     ["audit-log", "Audit Log", Lock],
     ["infrastructure", "Infrastructure", Shield],
@@ -1380,11 +1383,11 @@ function MainApp() {
   const groups = currentUser.role === "provider" ? [
     ["Overview", providerItems.slice(0, 4)],
     ["Clinical documentation", providerItems.slice(4, 9)],
-    ["Communication", providerItems.slice(9, 11)],
-    ["Billing & Review", providerItems.slice(11, 14)],
-    ["Wellness tools", providerItems.slice(14, 18)],
-    ["Practice resources", providerItems.slice(18, 20)],
-    ["Provider training", providerItems.slice(20)],
+    ["Communication", providerItems.slice(9, 12)],
+    ["Billing & Review", providerItems.slice(12, 15)],
+    ["Wellness tools", providerItems.slice(15, 19)],
+    ["Practice resources", providerItems.slice(19, 21)],
+    ["Provider training", providerItems.slice(21)],
   ] : [["Overview", clientItems]];
   const [menuOpen, setMenuOpen] = useState(false);
   const workspaceRef = useRef(null);
@@ -1489,6 +1492,7 @@ function PageRouter() {
   if (page === "psychoeducation") return <PsychoeducationPage />;
   if (page === "homework-client" && currentUser.role === "client") return <ClientHomeworkPage />;
   if (page === "messages") return <MessagingPage />;
+  if (page === "email" && currentUser.role === "provider") return <EmailPage />;
   if (page === "records-request" && currentUser.role === "client") return <ClientRecordRequestPage />;
   if (page === "record-requests" && currentUser.role === "provider") return <ProviderRecordRequestsPage />;
   if (page === "audit-log" && currentUser.role === "provider") return <AuditLogPage />;
