@@ -276,6 +276,20 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     finally { setBusy(false); }
   }
   const button = 'rounded-xl border px-4 py-2 disabled:opacity-50';
+  // Single source of truth for the Join button: the disabled flag and the reason
+  // shown right next to it come from the same expression, so Join can never be a
+  // silent no-op. The room is its own capture path and is intentionally NOT gated
+  // on the standalone microphone scribe (externalRecording), so the top mic
+  // recorder running or its transcription still processing does not disable Join.
+  const joinDisabled = externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active);
+  const joinDisabledReason = !joinDisabled ? ''
+    : busy ? 'Working on the previous action. The button re-enables in a moment.'
+    : !status?.configured ? 'In-EHR calling is not activated yet, so the room cannot be joined.'
+    : provider && !providerConsent ? 'Confirm telehealth consent above before opening the room.'
+    : !provider && !status?.active ? 'Waiting for the provider to open the room before you can join.'
+    : !provider && !consent ? 'Confirm participation above before joining.'
+    : externalRecording ? 'The EHR video room is temporarily unavailable. Try again in a moment.'
+    : 'Join is unavailable right now.';
   return <section className="rounded-2xl border bg-white p-5 space-y-4 mb-4">
     <h2 className="text-xl font-semibold">In-EHR audio and video room</h2>
     <p role="status" className="text-sm">{notice}</p>
@@ -295,13 +309,9 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       <div className="flex gap-2"><button type="button" className={button} disabled={busy || (provider && !providerConsent)} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
-      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
-      <p className="text-sm">Joining turns your camera on and shows your own video. No separate preview step is required.</p>
-      {externalRecording && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">The EHR video room is unavailable while microphone recording or transcription is active, or while this appointment is blocked. Stop the microphone recording first, then join the room.</p>}
-      {!externalRecording && !status?.configured && <p role="status" className="text-sm">In-EHR calling is not activated yet, so the room cannot be joined.</p>}
-      {!externalRecording && provider && !providerConsent && <p className="text-sm">Confirm telehealth consent above before previewing the camera or opening the room.</p>}
-      {!externalRecording && !provider && status?.configured && !status?.active && <p className="text-sm">Waiting for the provider to open the room before you can join.</p>}
-      {!externalRecording && !provider && !consent && <p className="text-sm">Confirm participation above before joining.</p>}
+      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={joinDisabled} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
+      <p className="text-sm">Joining turns your camera on and shows your own video. No separate preview step is required. The separate microphone scribe does not affect this room.</p>
+      {joinDisabled && joinDisabledReason && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{joinDisabledReason}</p>}
     </>}
     {connected && selfViewOn && <div><video ref={bindSelfView} autoPlay playsInline muted className="w-full max-h-56 rounded-xl bg-slate-900" style={{ objectFit: 'contain' }} aria-label="Your camera" /><p className="text-xs">You</p></div>}
     <div className="grid md:grid-cols-2 gap-3">{tiles.filter(tile => !tile.localTile).map(tile => <div key={tile.tileId}><video autoPlay playsInline className="w-full rounded-xl bg-slate-900" aria-label="Other participant camera" ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">Other participant</p></div>)}</div>
