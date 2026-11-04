@@ -3035,7 +3035,7 @@ function TelehealthPage() {
   const [generatedDocs, setGeneratedDocs] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [supportedSections, setSupportedSections] = useState({});
-  const [microphoneTest, setMicrophoneTest] = useState(true);
+  const [microphoneTest, setMicrophoneTest] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const recordingStartRef = useRef(0);
   const [scribeTemplate, setScribeTemplate] = useState("Progress Note - SOAP");
@@ -3103,7 +3103,7 @@ function TelehealthPage() {
     : awsScribeJob.status === "IN_PROGRESS" ? "AWS transcription is still processing. Check its status before starting another test."
     : !activeClientId ? "Select a test client below before recording."
     : !sessionForm.consentObtained ? "Confirm telehealth consent above before using audio or video."
-    : !sessionForm.recordingConsent ? "Check Recording consent obtained above to enable recording."
+    : !sessionForm.recordingConsent ? "Check the recording and AI transcription consent box above to enable recording."
     : "";
   const healthScribeTemplate = (() => {
     if (scribeTemplate.includes("GIRP")) return "GIRPP";
@@ -3583,8 +3583,8 @@ ${sessionForm.recordingVerbiage}`);
 <section aria-label="Client and consent before audio or video" className="mb-4 rounded-2xl border p-4 space-y-3">
 <h2 className="font-semibold">Client and consent — before audio or video</h2>
 <p className="text-sm">Confirm telehealth consent first. Recording and AI transcription require separate recording consent.</p>
-              <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Microphone test — no clinical note or chart merge</label>
-              <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>
+              <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Optional: use microphone test mode (turn on only to practice). Test audio never creates a clinical note or merges into the chart.</label>
+              {microphoneTest && <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>}
               <p className="text-sm">Current client: {activeClient?.profile?.fullName || "None selected"}. {selectedAppointment ? `Appointment: ${selectedAppointment.date || ""} · ${selectedAppointment.status}` : "No appointment selected."}</p>
             {isProvider && (
               <div className="space-y-1">
@@ -3605,11 +3605,11 @@ ${sessionForm.recordingVerbiage}`);
             )}
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
               <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, recordingConsent: v })); }} />
-              Recording consent obtained
+              Recording and AI transcription consent on file (signed at intake) — confirmed for this session
             </label>
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
               <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, consentObtained: v })); }} />
-              Telehealth consent obtained verbally
+              Telehealth consent on file (signed at intake) — confirmed for this session
             </label>
 <details><summary className="cursor-pointer text-sm">Review or edit consent wording</summary>
             <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
@@ -3617,6 +3617,7 @@ ${sessionForm.recordingVerbiage}`);
             <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
 </details>
 </section>
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
       {isProvider && <div className="mb-4">            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-slate-900">Microphone and recording</p>
               <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>
@@ -3645,7 +3646,6 @@ ${sessionForm.recordingVerbiage}`);
               {scribeError && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-900">{scribeError}</p>}
             </div>
 </div>}
-      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
 {isProvider && <section aria-label="Transcript review" className="mb-4">            <p className="text-sm">Live captions appear in the room during consented recording. The completed transcript appears here after AWS processing, ready for clinical draft review and chart merge.</p>
             <h3 className="font-semibold">Recorded words — completed transcript</h3>
             {!transcriptText && <p role="status">{awsScribeJob.status === "IN_PROGRESS" ? "Waiting for AWS to return the recorded words…" : scribeError || "No completed transcript yet. Live captions appear beside the recording controls."}</p>}

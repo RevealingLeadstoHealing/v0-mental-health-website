@@ -6,6 +6,13 @@ import type { DefaultMeetingSession, DefaultDeviceController, VideoTileState } f
 import type { TranscriptEvent } from 'amazon-chime-sdk-js';
 import LiveCaptionPanel from './live-caption-panel';
 import { updateLiveCaptions, type CaptionLine } from '../../lib/ehr/live-captions';
+function cameraProblem(e: any) {
+  const name = e?.name || '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Camera permission is blocked. Click the camera icon in the browser address bar, allow the camera for this site, then try again.';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || e?.message === 'No camera found') return 'No camera was found. Plug in or enable a camera, then try again.';
+  if (name === 'NotReadableError') return 'The camera is in use by another app or tab. Close it there, then try again.';
+  return `Camera unavailable: ${e?.message || 'unknown error'}`;
+}
 type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void };
 export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, externalRecording = false, timerLabel = "00:00:00" }: Props) {
   const [status, setStatus] = useState<any>(null);
@@ -14,6 +21,9 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [busy, setBusy] = useState(false);
   const [video, setVideo] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [cameraNotice, setCameraNotice] = useState('');
+  const startTileOnConnect = useRef(false);
   const [consent, setConsent] = useState(false);
   function readSessionReminder() {
     if (!('speechSynthesis' in window)) { setNotice('Audio reminder is unavailable in this browser. Read the session confirmation below.'); return; }
@@ -57,7 +67,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       ...(action ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId, action, ...extra }) } : {}),
     });
   }
-  function stopPreview() { previewStream.current?.getTracks().forEach(track => track.stop()); previewStream.current = null; if (preview.current) preview.current.srcObject = null; }
+  function stopPreview() { previewStream.current?.getTracks().forEach(track => track.stop()); previewStream.current = null; if (preview.current) preview.current.srcObject = null; setPreviewing(false); }
   function stopRecording() {
     if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
     if (recorder.current?.state === 'recording') recorder.current.stop();
@@ -97,12 +107,18 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   async function cameraPreview() {
     if (provider && !providerConsent) { setNotice('Confirm telehealth consent above before previewing the camera.'); return; }
     setBusy(true);
-    try { stopPreview(); const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); previewStream.current = stream; if (preview.current) preview.current.srcObject = stream; setNotice('Local camera preview only. No one else can see this preview.'); }
-    catch (e: any) { setNotice(`Camera preview unavailable: ${e.message}`); }
+    try {
+      stopPreview(); setCameraNotice('');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); previewStream.current = stream;
+      const element = preview.current;
+      if (element) { element.srcObject = stream; await element.play().catch(() => {}); }
+      setPreviewing(true); setNotice('Local camera preview only. No one else can see this preview.');
+    }
+    catch (e: any) { const message = cameraProblem(e); setCameraNotice(message); setNotice(message); }
     finally { setBusy(false); }
   }
   async function join() {
-    setBusy(true); onConnectionChange?.(true); setNotice('Connecting…');
+    setBusy(true); onConnectionChange?.(true); setNotice('Connecting…'); setCameraNotice(''); startTileOnConnect.current = false;
     try {
       stopPreview();
       if (provider && !status?.active) await api('start', { telehealthConsent: providerConsent });
@@ -131,7 +147,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       transcription?.subscribeToTranscriptEvent(receiveCaption);
       unsubscribeCaptions.current = () => transcription?.unsubscribeFromTranscriptEvent(receiveCaption);
       meeting.audioVideo.addObserver({
-        audioVideoDidStart: () => { if (live.current) { setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
+        audioVideoDidStart: () => { if (startTileOnConnect.current) { startTileOnConnect.current = false; try { meeting.audioVideo.startLocalVideoTile(); } catch (e: any) { setVideo(false); setCameraNotice(cameraProblem(e)); } } if (live.current) { setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
         audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
         videoTileDidUpdate: tile => { if (!tile.tileId || !tile.boundAttendeeId || tile.isContent || !live.current) return; setTiles(current => [...current.filter(item => item.tileId !== tile.tileId), tile.clone()]); },
         videoTileWasRemoved: tileId => { if (live.current) setTiles(current => current.filter(item => item.tileId !== tileId)); },
@@ -141,8 +157,13 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       await meeting.audioVideo.startAudioInput(stream);
       if (audio.current) await meeting.audioVideo.bindAudioElement(audio.current);
       if (video) {
-        try { const cameras = await meeting.audioVideo.listVideoInputDevices(); if (!cameras[0]) throw new Error('No camera found'); await meeting.audioVideo.startVideoInput(cameras[0].deviceId); meeting.audioVideo.startLocalVideoTile(); }
-        catch { setVideo(false); setNotice('Camera unavailable; joining with audio.'); }
+        try {
+          // Ask for camera permission first: browsers hide camera ids until it is granted.
+          const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); probe.getTracks().forEach(track => track.stop());
+          const cameras = await meeting.audioVideo.listVideoInputDevices(); if (!cameras[0]) throw new Error('No camera found');
+          await meeting.audioVideo.startVideoInput(cameras[0].deviceId); startTileOnConnect.current = true;
+        }
+        catch (e: any) { setVideo(false); setCameraNotice(`Joining with audio only. ${cameraProblem(e)}`); }
       }
       meeting.audioVideo.realtimeSubscribeToReceiveDataMessage('rlth-consent', message => { if (message.text() === 'withdrawn') stopRecording(); });
       meeting.audioVideo.realtimeSubscribeToAttendeeIdPresence((id, present) => { if (id !== credentials.attendee.AttendeeId && !present) stopRecording(); });
@@ -160,8 +181,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   async function toggleCamera() {
     try {
       if (video) { session.current?.audioVideo.stopLocalVideoTile(); await session.current?.audioVideo.stopVideoInput(); setVideo(false); }
-      else { const devices = await session.current?.audioVideo.listVideoInputDevices(); if (!devices?.[0]) throw new Error('No camera is available.'); await session.current?.audioVideo.startVideoInput(devices[0].deviceId); session.current?.audioVideo.startLocalVideoTile(); setVideo(true); }
-    } catch (e: any) { setNotice(e.message); }
+      else { setCameraNotice(''); const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); probe.getTracks().forEach(track => track.stop()); const devices = await session.current?.audioVideo.listVideoInputDevices(); if (!devices?.[0]) throw new Error('No camera is available.'); await session.current?.audioVideo.startVideoInput(devices[0].deviceId); session.current?.audioVideo.startLocalVideoTile(); setVideo(true); }
+    } catch (e: any) { const message = cameraProblem(e); setCameraNotice(message); setNotice(message); }
   }
   async function upload(blob: Blob) {
     setUploading(true); setRetryAudio(blob);
@@ -206,6 +227,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     <h2 className="text-xl font-semibold">In-EHR audio and video room</h2>
     <p role="status" className="text-sm">{notice}</p>
     <audio ref={audio} autoPlay />
+    {cameraNotice && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{cameraNotice}</p>}
     <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} clientId={clientId} sessionId={roomSessionId} recordingActive={captionsRunning && (provider ? recording : status?.recording === true)} onStop={async () => { setCaptionsRunning(false); await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} />
     {provider && connected && <div className="space-y-2">
       <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
@@ -216,6 +238,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     {status?.recording && <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800">Session audio recording is active.</p>}
     {!connected && <>
       <video style={{ maxHeight: 180, objectFit: "contain" }} ref={preview} autoPlay muted playsInline className="max-h-56 rounded-xl bg-slate-900 w-full" aria-label="Local camera preview" />
+      {!previewing && <p className="text-sm">The preview box stays dark until you choose Preview my camera. Your camera is not on yet.</p>}
       <div className="flex gap-2"><button type="button" className={button} disabled={busy || (provider && !providerConsent)} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
