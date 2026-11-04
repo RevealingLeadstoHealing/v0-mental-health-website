@@ -3009,6 +3009,7 @@ function TelehealthPage() {
   const isProvider = currentUser.role === "provider";
   const { selectedChartClientId, setSelectedChartClientId, setPage, registerTelehealthLeaveGuard } = usePage();
   const [nativeCallActive, setNativeCallActive] = useState(false);
+  const [nativeUploadActive, setNativeUploadActive] = useState(false);
   const clients = clinicalClientEntries(store);
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || currentClientId);
@@ -3241,11 +3242,12 @@ function TelehealthPage() {
     registerTelehealthLeaveGuard(() => {
       if (isAudioRecording || isScribeTimerRunning) return "A microphone recording is in progress. Leaving Telehealth now stops the recording and loses the live transcription for this session. Stop and transcribe the recording first, or stay on this page.";
       if (nativeCallActive) return "You are connected to the live EHR video room. Leaving Telehealth now disconnects the room and ends live captions. Leave the room first, or stay on this page.";
+      if (nativeUploadActive) return "The session audio is still uploading for AI processing. Leaving Telehealth now unmounts the room and loses the recording before it reaches HealthScribe. Wait for the upload to finish, or stay on this page.";
       if (awsScribeJob.status === "IN_PROGRESS") return "AWS is still transcribing this session. Leaving Telehealth now may interrupt retrieving the completed transcript. Wait for transcription to finish, or stay on this page.";
       return null;
     });
     return () => registerTelehealthLeaveGuard(null);
-  }, [registerTelehealthLeaveGuard, isAudioRecording, isScribeTimerRunning, nativeCallActive, awsScribeJob.status]);
+  }, [registerTelehealthLeaveGuard, isAudioRecording, isScribeTimerRunning, nativeCallActive, nativeUploadActive, awsScribeJob.status]);
   const formattedScribeTimer = `${String(Math.floor(scribeSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((scribeSeconds % 3600) / 60)).padStart(2, "0")}:${String(scribeSeconds % 60).padStart(2, "0")}`;
   const scribeSessionMinutes = scribeMeta.manualMinutes || (scribeSeconds ? String(Math.ceil(scribeSeconds / 60)) : "");
   const scribeMetadataBlock = () => [
@@ -3645,7 +3647,7 @@ ${sessionForm.recordingVerbiage}`);
             <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
 </details>
 </section>
-      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onUploadingChange={setNativeUploadActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
       {isProvider && <div className="mb-4">            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-slate-900">Microphone and recording</p>
               <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>

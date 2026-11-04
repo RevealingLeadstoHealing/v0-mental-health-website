@@ -185,13 +185,51 @@ connected" and `/api/ehr/billing/transmit` returns 503. This was left as-is — 
 **Live-test-only:** nothing in billing can be end-to-end tested until a Stedi account and key
 exist; until then only the local claim-build and the two-stage review are exercisable.
 
-## Summary of code/IaC changes in this run
-- `app/ehr/native-telehealth-room.tsx` — reliable self-view on join; visible failure
-  messages; filtered duplicate local tile; self-view lifecycle in toggle/disconnect.
-- `app/ehr/full-production-interface.tsx` — visible reasons when Join is disabled; in-app
-  navigation guard warning before leaving Telehealth during a live session.
-- `infra/aws/rlth-ehr-live-captions.yaml` — corrected transcription grant to `Resource: "*"`
-  (+`transcribe:StartStreamTranscription`) so IaC matches the working live inline policy.
+## Review round 2 — fixes to the three CHANGES_REQUESTED findings
+
+The first round's self-view did not actually display video and had a camera-contention
+risk; the leave guard missed the upload window. All three were fixed in
+`app/ehr/native-telehealth-room.tsx` and `app/ehr/full-production-interface.tsx`. No AWS
+or IAM change this round — the caption/translation/billing/draft-to-chart sections were
+not flagged by the review and stand as recorded above.
+
+**Finding 1 (blocking) — self-view never bound on join. FIXED.**
+Cause: `startSelfView()` assigned `srcObject` to `selfView.current`, but that `<video>`
+only renders once `connected && selfViewOn`; during `join()` `connected` is still false,
+so the element is unmounted, `selfView.current` is null, and the assignment was dropped.
+Nothing re-bound the stream when the element later mounted on connect, so the provider saw
+a dark box. Fix: replaced the plain ref with a callback ref `bindSelfView` that attaches
+`selfViewStream.current` to the element the moment it mounts (and on connect), so the live
+self-view stream is always displayed. `startSelfView()` still binds directly when the
+element already exists (camera-toggle while connected).
+Verified by: code reading of the render gate and mount order (callback ref fires on mount,
+after `audioVideoDidStart` sets `connected=true`). Live browser confirmation still required.
+
+**Finding 2 (should-fix) — camera opened twice on one device. FIXED.**
+Cause: `startSelfView()` held its own `getUserMedia({video:true})` handle, then the join
+path opened the camera again (probe + `startVideoInput(deviceId)`); on single-open devices
+the second open throws `NotReadableError`, misreported as "the other participant will not
+see your video." Fix: the camera is opened once in `startSelfView()`; its video track is
+cloned and the clone is handed to Chime via `startVideoInput(MediaStream)` (the Chime SDK
+accepts a MediaStream as the device). Cloning means stopping the self-view later does not
+kill Chime's track. Same single-open pattern applied in `toggleCamera`. The probe
+`getUserMedia` and `listVideoInputDevices` second-open were removed.
+Verified by: Chime SDK docs confirm `startVideoInput` accepts a MediaStream device
+(DeviceControllerFacade / migration-to-3.0: start functions accept a media stream).
+Live browser confirmation of two-track behavior still required.
+
+**Finding 3 (possible) — leave guard missed the HealthScribe upload window. FIXED.**
+Confirmed the gap is real: `upload(blob)` runs after recording stops (so `recording` is
+false) and before HealthScribe has the audio (so `awsScribeJob.status` is not yet
+`IN_PROGRESS`); the room may still be connected or already left. During that window the
+page-level leave guard had no signal and would not warn, so navigating away could unmount
+`NativeTelehealthRoom` and drop the recording. Fix: the room now reports its
+upload-pending state (`uploading || retryAudio !== null`) to the page via a new
+`onUploadingChange` prop; the page tracks it as `nativeUploadActive` and the
+leave-Telehealth guard warns ("session audio is still uploading…") while it is true. The
+room clears the signal on unmount.
+Verified by: code reading of the `upload`/`onstop` timing and the guard wiring. Live
+browser confirmation of the dialog still required.
 
 ## Items only a live browser test can confirm
 Caption words rendering in-room (1); translated captions end-to-end (2); camera turning on
