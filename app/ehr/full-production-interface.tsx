@@ -3373,7 +3373,10 @@ ${sessionForm.recordingVerbiage}`);
         appointmentStatus: selectedAppointment?.status || "Not linked",
         noteType: structured.noteType,
         structuredFields: structured.fields,
-        status: "Provider review required",
+        status: "Unsigned draft - provider review required",
+        sessionMinutes: scribeSessionMinutes,
+        codeDraft: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
+        signature: null,
         audioRetentionPolicy,
         createdAt: new Date().toLocaleString(),
       },
@@ -3398,6 +3401,7 @@ ${sessionForm.recordingVerbiage}`);
     });
     setCopyNotice("Generated draft saved into the client chart for provider review/signature. Temporary audio remains governed by overnight/next-business-day deletion policy.");
     setReviewConfirmed(false);
+    if (isProvider && !isIntakeTemplate(scribeTemplate)) setPage("notes", { clientId: activeClientId, noteId: generatedDocs.draftId });
     } catch (error) { setCopyNotice(`Chart save could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
     finally { setSavingDraft(false); }
   };
@@ -3498,6 +3502,7 @@ ${sessionForm.recordingVerbiage}`);
     });
     setCopyNotice("Reviewed draft merged into the selected documentation type in the client chart.");
     setReviewConfirmed(false);
+    if (isProvider && !isIntakeTemplate(scribeTemplate)) setPage("notes", { clientId: activeClientId, noteId: generatedDocs.draftId });
     } catch (error) { setCopyNotice(`Chart merge could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
     finally { setSavingDraft(false); }
   };
@@ -3767,8 +3772,7 @@ ${sessionForm.recordingVerbiage}`);
             </div>
             <div className="flex flex-wrap gap-2">
               <Button className="rounded-2xl" disabled={savingDraft || !transcriptText.trim() || microphoneTest || isScribeTimerRunning} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields (needs diagnosis and CPT)</Button>
             </div>
             {generatedDocs && (
               <div className="space-y-4 pt-2">
@@ -3787,7 +3791,8 @@ ${sessionForm.recordingVerbiage}`);
                     ))}
                     <Textarea aria-label="Clinical note preview" readOnly className="min-h-[260px]" value={generatedDocs.structuredNote.content} />
                     <label className="block text-sm"><input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} /> I reviewed the transcript and note and verified the documented findings.</label>
-                    <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !reviewConfirmed} onClick={saveStructuredDraftToChart}>Save structured draft to chart</Button>
+                    <Button className="rounded-2xl" disabled={savingDraft || !reviewConfirmed || microphoneTest} onClick={saveStructuredDraftToChart}><Save className="mr-2 h-4 w-4" />Save reviewed draft and open in client's progress note</Button>
+                    <p className="text-xs text-slate-500">Saves an unsigned draft to this client's Follow-Up Notes and opens it so you can add the mental status exam, diagnosis and service codes, then sign there.</p>
                   </CardContent>
                 </Card>
                 {isIntakeTemplate(scribeTemplate) && generatedDocs.intakeDraft && (
@@ -4856,7 +4861,10 @@ function ProgressNotesPage() {
   const { store, updateSpecificUserData, appendAuditLog } = useAuth();
   const [aiNotice, setAiNotice] = useState("");
   const clients = clinicalClientEntries(store);
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const { workflowTarget } = usePage();
+  const [selectedClientId, setSelectedClientId] = useState(store.users[workflowTarget?.clientId] ? workflowTarget.clientId : clients[0]?.[0] || "");
+  const [editingNoteId, setEditingNoteId] = useState("");
+  const openedDraftRef = useRef("");
   const notes = selectedClientId ? store.users[selectedClientId]?.notes || [] : [];
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const selectedClientName = selectedClientId ? store.users[selectedClientId]?.profile?.fullName || "Client" : "Client";
@@ -4892,6 +4900,40 @@ function ProgressNotesPage() {
   }, [isTimerRunning]);
   const formattedTimer = `${String(Math.floor(sessionSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((sessionSeconds % 3600) / 60)).padStart(2, "0")}:${String(sessionSeconds % 60).padStart(2, "0")}`;
   const sessionMinutes = codeDraft.manualMinutes || (sessionSeconds ? String(Math.ceil(sessionSeconds / 60)) : "");
+  // Opens a saved unsigned draft (for example from the telehealth AI scribe) in the editor below.
+  // Nothing is signed here; signing happens only when the provider clicks the save/sign button.
+  const openDraftForCompletion = (note, clientId = selectedClientId) => {
+    const noteTypes = ["Medical Record Note", "Psychotherapy Note", "Initial Progress Note", "Follow-up Progress Note", "Biopsychosocial Assessment"];
+    setSelectedClientId(clientId);
+    setEditingNoteId(note.id);
+    setDraft({
+      title: note.title || "",
+      content: String(note.content || "").replace(/^Provider Review Required:[^\n]*\nAudio Retention Policy:[^\n]*\n\n/, ""),
+      modality: note.modality || "CBT",
+      noteType: noteTypes.includes(note.noteType) ? note.noteType : "Medical Record Note",
+      mse: note.mse || {},
+      appointmentId: note.appointmentId || "",
+      appointmentStatus: note.appointmentStatus || "",
+      structuredFields: note.structuredFields || null,
+      audioRetentionPolicy: note.audioRetentionPolicy || "",
+    });
+    setCodeDraft((current) => ({
+      ...current,
+      ...(note.codeDraft || {}),
+      manualMinutes: String(note.sessionMinutes || note.codeDraft?.manualMinutes || ""),
+      providerSignature: note.codeDraft?.providerSignature || current.providerSignature || PRACTITIONER_NAME,
+    }));
+    setAiNotice("AI draft opened and unsigned. Complete the mental status exam, diagnosis and service codes, then sign and save.");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  };
+  useEffect(() => {
+    const noteId = workflowTarget?.noteId;
+    if (!noteId || openedDraftRef.current === noteId) return;
+    const note = (store.users[workflowTarget.clientId]?.notes || []).find((item) => item.id === noteId);
+    if (!note) return;
+    openedDraftRef.current = noteId;
+    openDraftForCompletion(note, workflowTarget.clientId);
+  }, [workflowTarget?.noteId, workflowTarget?.clientId, store.users[workflowTarget?.clientId]?.notes]);
   const save = () => {
     if (!selectedClientId || !draft.title.trim() || !draft.content.trim()) return;
     const requiredMissing = [
@@ -4919,10 +4961,12 @@ function ProgressNotesPage() {
     ].join("\n");
     const mseText = mseToText(draft.mse || {});
     const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}${mseText ? `\n\n${mseText}` : ""}`;
+    const completingNoteId = editingNoteId;
     updateSpecificUserData(selectedClientId, "notes", (prev) => [
       {
-        id: `note-${Date.now()}`,
+        id: completingNoteId || `note-${Date.now()}`,
         ...draft,
+        ...(completingNoteId ? { status: "Signed by provider" } : {}),
         content: noteWithMetadata,
         sessionMinutes,
         codeDraft,
@@ -4935,8 +4979,9 @@ function ProgressNotesPage() {
         },
         createdAt: new Date().toLocaleString(),
       },
-      ...prev,
+      ...(prev || []).filter((item) => item.id !== completingNoteId),
     ]);
+    setEditingNoteId("");
     appendAuditLog({
       action: `Saved ${draft.noteType}`,
       details: `${draft.noteType} saved with ${draft.modality} modality, ${sessionMinutes || "no"} minutes, billing/diagnosis helper fields, and e-signature metadata.`,
@@ -5121,17 +5166,20 @@ ${draft.content}`,
         {aiNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{aiNotice}</div>}
       <Card className="rounded-2xl shadow-sm">
           <CardContent className="p-4 space-y-3">
-            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <Select value={selectedClientId} onValueChange={(value) => { setSelectedClientId(value); setEditingNoteId(""); }}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
+            {editingNoteId && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Completing an unsigned AI draft for {selectedClientName}. It is not signed until you save below.</div>}
             <Input label="Note title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Note title" />
             <label className="block space-y-1"><span className="text-sm font-medium">Treatment approach / clinical focus</span>
             <Select aria-label="Treatment approach / clinical focus" value={draft.modality} onValueChange={(value) => setDraft({ ...draft, modality: value })}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="Telehealth">Telehealth</SelectItem>
+                <SelectItem value="Audio Telehealth">Audio Telehealth</SelectItem>
                 <SelectItem value="CBT">CBT</SelectItem>
                 <SelectItem value="Trauma-Focused">Trauma-Focused</SelectItem>
                 <SelectItem value="EMDR">EMDR</SelectItem>
@@ -5229,7 +5277,7 @@ ${draft.content}`,
               <p className="text-sm font-bold text-slate-700">Mental Status Exam (this session)</p>
               <MentalStatusExam value={draft.mse || {}} onChange={(next) => setDraft({ ...draft, mse: next })} />
             </div>
-            <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />Save note</Button>
+            <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />{editingNoteId ? "Sign and save note" : "Save note"}</Button>
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
@@ -5246,10 +5294,12 @@ ${draft.content}`,
                   <div className="flex gap-2 flex-wrap justify-end">
                     <Badge className="rounded-xl">{note.modality}</Badge>
                     <Badge variant="secondary" className="rounded-xl">{note.noteType || "Medical Record Note"}</Badge>
+                    {!note.signature && <Badge className="rounded-xl bg-amber-100 text-amber-900">Unsigned draft</Badge>}
                   </div>
                 </div>
                 <p className="text-sm text-slate-700 mt-3 whitespace-pre-wrap">{note.content}</p>
                 <p className="text-xs text-slate-400 mt-2">{note.createdAt}</p>
+                {!note.signature && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>Open to complete and sign</Button>}
               </div>
             ))}
           </CardContent>
