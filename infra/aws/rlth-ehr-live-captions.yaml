@@ -15,16 +15,25 @@ Resources:
   LiveCaptionRuntimePolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: rlth-live-captions
+      PolicyName: rlth-live-captions-transcription
       Roles: [!Ref AmplifyComputeRoleName]
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Effect: Allow
+          # chime:StartMeetingTranscription / chime:StopMeetingTranscription and
+          # transcribe:StartStreamTranscription are wildcard-only actions: the IAM
+          # service-authorization reference lists NO resource type for them, so a
+          # statement scoped to a meeting/* ARN never matches and produces an
+          # implicitDeny (verified with iam simulate-principal-policy). They must be
+          # granted on Resource '*'. Scoping is enforced in the app layer, which only
+          # ever calls these against rooms it just created for the signed-in provider.
+          - Sid: LiveCaptionsTranscription
+            Effect: Allow
             Action:
               - chime:StartMeetingTranscription
               - chime:StopMeetingTranscription
-            Resource: !Sub 'arn:${AWS::Partition}:chime:*:${AWS::AccountId}:meeting/*'
+              - transcribe:StartStreamTranscription
+            Resource: '*'
   TranscriptionServiceRole:
     Type: AWS::IAM::ServiceLinkedRole
     Condition: NeedsServiceRole

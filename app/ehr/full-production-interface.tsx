@@ -1149,7 +1149,16 @@ function PageProvider({ children, initialPage = "dashboard" }) {
   const [page, setPageState] = useState(initialPage);
   const [workflowTarget, setWorkflowTarget] = useState(null);
   const [selectedChartClientId, setSelectedChartClientId] = useState("");
+  // Set by the Telehealth page while a recording or a live room is active. Leaving
+  // the Telehealth page unmounts it and stops the recording/room, so navigation
+  // away is confirmed first. A ref keeps this out of render and avoids re-renders.
+  const leaveTelehealthGuard = useRef(null);
+  const registerTelehealthLeaveGuard = (fn) => { leaveTelehealthGuard.current = fn; };
   const setPage = (requestedPage, target = null) => {
+    if (requestedPage !== "telehealth" && leaveTelehealthGuard.current) {
+      const message = leaveTelehealthGuard.current();
+      if (message && typeof window !== "undefined" && !window.confirm(message)) return;
+    }
     setPageState(requestedPage);
     setWorkflowTarget(target);
     if (target?.clientId) setSelectedChartClientId(target.clientId);
@@ -1169,7 +1178,7 @@ function PageProvider({ children, initialPage = "dashboard" }) {
     return () => window.removeEventListener("popstate", syncPageFromPath);
   }, [initialPage]);
   return (
-    <PageContext.Provider value={{ page, setPage, workflowTarget, selectedChartClientId, setSelectedChartClientId }}>
+    <PageContext.Provider value={{ page, setPage, workflowTarget, selectedChartClientId, setSelectedChartClientId, registerTelehealthLeaveGuard }}>
       {children}
     </PageContext.Provider>
   );
@@ -2998,7 +3007,7 @@ function ClientTelehealthPage() {
 function TelehealthPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
   const isProvider = currentUser.role === "provider";
-  const { selectedChartClientId, setSelectedChartClientId, setPage } = usePage();
+  const { selectedChartClientId, setSelectedChartClientId, setPage, registerTelehealthLeaveGuard } = usePage();
   const [nativeCallActive, setNativeCallActive] = useState(false);
   const clients = clinicalClientEntries(store);
   const currentClientId = currentUser.chartClientId || currentUser.id;
@@ -3223,6 +3232,20 @@ function TelehealthPage() {
     const id = window.setInterval(() => setScribeSeconds(Math.floor((Date.now() - recordingStartRef.current) / 1000)), 1000);
     return () => window.clearInterval(id);
   }, [isScribeTimerRunning]);
+  // Warn before leaving Telehealth while a session is live. Navigating to another
+  // page (for example Assessments to give a GAD-7/PHQ-9) unmounts this page, which
+  // stops the microphone recording and the Chime room and loses live transcription.
+  // Returning the message string lets the router confirm; null allows free navigation.
+  useEffect(() => {
+    if (!registerTelehealthLeaveGuard) return;
+    registerTelehealthLeaveGuard(() => {
+      if (isAudioRecording || isScribeTimerRunning) return "A microphone recording is in progress. Leaving Telehealth now stops the recording and loses the live transcription for this session. Stop and transcribe the recording first, or stay on this page.";
+      if (nativeCallActive) return "You are connected to the live EHR video room. Leaving Telehealth now disconnects the room and ends live captions. Leave the room first, or stay on this page.";
+      if (awsScribeJob.status === "IN_PROGRESS") return "AWS is still transcribing this session. Leaving Telehealth now may interrupt retrieving the completed transcript. Wait for transcription to finish, or stay on this page.";
+      return null;
+    });
+    return () => registerTelehealthLeaveGuard(null);
+  }, [registerTelehealthLeaveGuard, isAudioRecording, isScribeTimerRunning, nativeCallActive, awsScribeJob.status]);
   const formattedScribeTimer = `${String(Math.floor(scribeSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((scribeSeconds % 3600) / 60)).padStart(2, "0")}:${String(scribeSeconds % 60).padStart(2, "0")}`;
   const scribeSessionMinutes = scribeMeta.manualMinutes || (scribeSeconds ? String(Math.ceil(scribeSeconds / 60)) : "");
   const scribeMetadataBlock = () => [

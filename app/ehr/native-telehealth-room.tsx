@@ -23,7 +23,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const [muted, setMuted] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [cameraNotice, setCameraNotice] = useState('');
+  const [selfViewOn, setSelfViewOn] = useState(false);
   const startTileOnConnect = useRef(false);
+  const selfView = useRef<HTMLVideoElement>(null);
+  const selfViewStream = useRef<MediaStream | null>(null);
   const [consent, setConsent] = useState(false);
   function readSessionReminder() {
     if (!('speechSynthesis' in window)) { setNotice('Audio reminder is unavailable in this browser. Read the session confirmation below.'); return; }
@@ -68,12 +71,30 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     });
   }
   function stopPreview() { previewStream.current?.getTracks().forEach(track => track.stop()); previewStream.current = null; if (preview.current) preview.current.srcObject = null; setPreviewing(false); }
+  function stopSelfView() { selfViewStream.current?.getTracks().forEach(track => track.stop()); selfViewStream.current = null; if (selfView.current) selfView.current.srcObject = null; setSelfViewOn(false); }
+  // Show the provider her own camera directly, the same proven way the preview box
+  // works (getUserMedia -> <video>.srcObject). This does not depend on the Chime
+  // local video tile pipeline, which has not displayed reliably live. Chime still
+  // gets its own camera input so the other participant sees video.
+  async function startSelfView() {
+    try {
+      stopSelfView();
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      selfViewStream.current = stream;
+      setSelfViewOn(true);
+      const element = selfView.current;
+      if (element) { element.srcObject = stream; await element.play().catch(() => {}); }
+    } catch (e: any) {
+      stopSelfView();
+      setCameraNotice(`Your self-view could not start. ${cameraProblem(e)}`);
+    }
+  }
   function stopRecording() {
     if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
     if (recorder.current?.state === 'recording') recorder.current.stop();
   }
   function disconnectLocal() {
-    stopRecording(); stopPreview();
+    stopRecording(); stopPreview(); stopSelfView();
     unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null;
     const current = session.current; session.current = null;
     current?.audioVideo.stop();
@@ -148,7 +169,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       unsubscribeCaptions.current = () => transcription?.unsubscribeFromTranscriptEvent(receiveCaption);
       meeting.audioVideo.addObserver({
         audioVideoDidStart: () => { if (startTileOnConnect.current) { startTileOnConnect.current = false; try { meeting.audioVideo.startLocalVideoTile(); } catch (e: any) { setVideo(false); setCameraNotice(cameraProblem(e)); } } if (live.current) { setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
-        audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
+        audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); stopSelfView(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
         videoTileDidUpdate: tile => { if (!tile.tileId || !tile.boundAttendeeId || tile.isContent || !live.current) return; setTiles(current => [...current.filter(item => item.tileId !== tile.tileId), tile.clone()]); },
         videoTileWasRemoved: tileId => { if (live.current) setTiles(current => current.filter(item => item.tileId !== tileId)); },
       });
@@ -157,13 +178,18 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       await meeting.audioVideo.startAudioInput(stream);
       if (audio.current) await meeting.audioVideo.bindAudioElement(audio.current);
       if (video) {
+        // Show the provider her own camera right away using the proven preview
+        // method, so joining always turns the camera on and shows self-video with
+        // no separate Preview step. Done before the Chime input so a self-view
+        // appears even if the Chime tile pipeline is slow.
+        await startSelfView();
         try {
           // Ask for camera permission first: browsers hide camera ids until it is granted.
           const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); probe.getTracks().forEach(track => track.stop());
           const cameras = await meeting.audioVideo.listVideoInputDevices(); if (!cameras[0]) throw new Error('No camera found');
           await meeting.audioVideo.startVideoInput(cameras[0].deviceId); startTileOnConnect.current = true;
         }
-        catch (e: any) { setVideo(false); setCameraNotice(`Joining with audio only. ${cameraProblem(e)}`); }
+        catch (e: any) { setCameraNotice(`The other participant will not see your video. ${cameraProblem(e)}`); }
       }
       meeting.audioVideo.realtimeSubscribeToReceiveDataMessage('rlth-consent', message => { if (message.text() === 'withdrawn') stopRecording(); });
       meeting.audioVideo.realtimeSubscribeToAttendeeIdPresence((id, present) => { if (id !== credentials.attendee.AttendeeId && !present) stopRecording(); });
@@ -180,8 +206,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   }
   async function toggleCamera() {
     try {
-      if (video) { session.current?.audioVideo.stopLocalVideoTile(); await session.current?.audioVideo.stopVideoInput(); setVideo(false); }
-      else { setCameraNotice(''); const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); probe.getTracks().forEach(track => track.stop()); const devices = await session.current?.audioVideo.listVideoInputDevices(); if (!devices?.[0]) throw new Error('No camera is available.'); await session.current?.audioVideo.startVideoInput(devices[0].deviceId); session.current?.audioVideo.startLocalVideoTile(); setVideo(true); }
+      if (video) { stopSelfView(); session.current?.audioVideo.stopLocalVideoTile(); await session.current?.audioVideo.stopVideoInput(); setVideo(false); }
+      else { setCameraNotice(''); await startSelfView(); const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); probe.getTracks().forEach(track => track.stop()); const devices = await session.current?.audioVideo.listVideoInputDevices(); if (!devices?.[0]) throw new Error('No camera is available.'); await session.current?.audioVideo.startVideoInput(devices[0].deviceId); session.current?.audioVideo.startLocalVideoTile(); setVideo(true); }
     } catch (e: any) { const message = cameraProblem(e); setCameraNotice(message); setNotice(message); }
   }
   async function upload(blob: Blob) {
@@ -243,9 +269,15 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
       <button type="button" className={`${button} bg-blue-600 text-white`} disabled={externalRecording || busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active)} onClick={join}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
-      {provider && !providerConsent && <p className="text-sm">Confirm telehealth consent above before previewing the camera or opening the room.</p>}
+      <p className="text-sm">Joining turns your camera on and shows your own video. No separate preview step is required.</p>
+      {externalRecording && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">The EHR video room is unavailable while microphone recording or transcription is active, or while this appointment is blocked. Stop the microphone recording first, then join the room.</p>}
+      {!externalRecording && !status?.configured && <p role="status" className="text-sm">In-EHR calling is not activated yet, so the room cannot be joined.</p>}
+      {!externalRecording && provider && !providerConsent && <p className="text-sm">Confirm telehealth consent above before previewing the camera or opening the room.</p>}
+      {!externalRecording && !provider && status?.configured && !status?.active && <p className="text-sm">Waiting for the provider to open the room before you can join.</p>}
+      {!externalRecording && !provider && !consent && <p className="text-sm">Confirm participation above before joining.</p>}
     </>}
-    <div className="grid md:grid-cols-2 gap-3">{tiles.map(tile => <div key={tile.tileId}><video autoPlay playsInline muted={tile.localTile} className="w-full rounded-xl bg-slate-900" aria-label={tile.localTile ? 'Your camera' : 'Other participant camera'} ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">{tile.localTile ? 'You' : 'Other participant'}</p></div>)}</div>
+    {connected && selfViewOn && <div><video ref={selfView} autoPlay playsInline muted className="w-full max-h-56 rounded-xl bg-slate-900" style={{ objectFit: 'contain' }} aria-label="Your camera" /><p className="text-xs">You</p></div>}
+    <div className="grid md:grid-cols-2 gap-3">{tiles.filter(tile => !tile.localTile).map(tile => <div key={tile.tileId}><video autoPlay playsInline className="w-full rounded-xl bg-slate-900" aria-label="Other participant camera" ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">Other participant</p></div>)}</div>
     {connected && <div className="flex flex-wrap gap-2">
       <button type="button" className={button} onClick={() => { const next = !muted; if (next) session.current?.audioVideo.realtimeMuteLocalAudio(); else session.current?.audioVideo.realtimeUnmuteLocalAudio(); if (micGain.current) micGain.current.gain.value = next ? 0 : 1; setMuted(next); }}>{muted ? 'Unmute microphone' : 'Mute microphone'}</button>
       <button type="button" className={button} onClick={toggleCamera}>{video ? 'Turn camera off' : 'Turn camera on'}</button>
