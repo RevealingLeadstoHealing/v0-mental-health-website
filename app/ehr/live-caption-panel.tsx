@@ -11,14 +11,7 @@ export default function LiveCaptionPanel({ captions, captionNotice, provider, co
       <h3 className="font-semibold">Live session captions</h3>
       <p role="status" className="text-sm">{captionNotice}</p>
       {connected && clientId && sessionId ? <InterpreterCaptions key={`${clientId}:${sessionId}`} clientId={clientId} sessionId={sessionId} captions={captions} active={recordingActive === true} /> : <div className="space-y-2">
-        <fieldset className="flex flex-wrap gap-3 text-sm opacity-70" aria-disabled="true">
-          <legend className="font-medium">Translation &amp; interpreter preferences</legend>
-          <label><input type="checkbox" disabled /> Translate captions</label>
-          <label>Translate into <select aria-label="Translation language" disabled><option>English</option></select></label>
-          <label>Show <select disabled><option>Original and translation</option></select></label>
-          <label><input type="checkbox" disabled /> Read the other participant’s translation aloud</label>
-        </fieldset>
-        <p className="text-xs">Translation and interpreter controls activate once you Join the room and start recording. They stay available throughout the session.</p>
+        <p className="text-sm rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900">The live translator and interpreter controls appear here once you Join the room and start recording. Translation works on the live captions while you speak.</p>
         <div ref={captionLog} role="log" aria-label="Live conversation" aria-live="polite" aria-relevant="additions text" className="max-h-64 overflow-y-auto text-sm space-y-1">
           {captions.map(line => <p key={line.id}><strong>{line.speaker}:</strong> {line.text}{line.partial ? ' …' : ''}</p>)}
         </div>
