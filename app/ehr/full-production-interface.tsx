@@ -3115,7 +3115,6 @@ function TelehealthPage() {
     setCopyNotice("New test ready. Timer, transcript, draft and appointment selection cleared. Confirm both consents above. Saved chart history has not changed.");
   };
   const recordingBlockedReason = appointmentBlocked ? `The selected appointment is ${selectedAppointment.status}. Choose Start new test for a fresh test without changing that appointment.`
-    : nativeCallActive ? "End the active call before recording a local microphone test."
     : isAudioBusy ? "Waiting for microphone access or audio processing. Check the browser's microphone permission if recording has not started."
     : awsScribeJob.status === "IN_PROGRESS" ? "AWS transcription is still processing. Check its status before starting another test."
     : !activeClientId ? "Select a test client below before recording."
@@ -3683,10 +3682,10 @@ ${sessionForm.recordingVerbiage}`);
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
                   ? <Button type="button" onClick={stopSecureAudioCapture}>Stop recording and transcribe</Button>
-                  : <Button type="button" disabled={appointmentBlocked || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start recording — microphone</Button>}
+                  : <Button type="button" disabled={appointmentBlocked || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start recording — microphone</Button>}
                 <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
                   Upload an existing audio file
-                  <input disabled={!sessionForm.consentObtained || !sessionForm.recordingConsent || isAudioRecording || isAudioBusy || nativeCallActive || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
+                  <input disabled={!sessionForm.consentObtained || !sessionForm.recordingConsent || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
                 </label>
                 {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy || isScribeTimerRunning} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
               </div>
