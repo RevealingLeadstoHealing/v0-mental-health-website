@@ -150,7 +150,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null;
     void controller.current?.destroy(); controller.current = null; session.current = null;
     joined.current = false; onConnectionChange?.(false);
-    if (live.current) { setConnected(false); setTiles([]); setCaptions([]); setCaptionNotice('Live English captions start with consented session recording.'); setMuted(false); setConsent(false); setClientRecordingConsent(false); }
+    if (live.current) { setConnected(false); setTiles([]); setCaptions([]); setCaptionNotice('Live captions start with consented session recording.'); setMuted(false); setConsent(false); setClientRecordingConsent(false); }
   }
   useEffect(() => {
     live.current = true;
@@ -225,10 +225,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
         if ('results' in event) {
           lastCaptionAt.current = Date.now();
           setCaptions(current => updateLiveCaptions(current, event.results, credentials.attendee.AttendeeId));
-          setCaptionNotice('Receiving live English captions. Words may update as you speak.');
+          setCaptionNotice('Receiving live captions. Words may update as you speak.');
         } else {
           setCaptionsRunning(event.type === 'started' || event.type === 'resumed');
-          const messages: Record<string, string> = { started: 'Live English captions are active.', resumed: 'Live English captions resumed.', interrupted: 'Live captions interrupted. Check the completed transcript after recording.', stopped: 'Live captions stopped. The completed recording will be processed for clinical review.', failed: 'AWS live captions failed. The completed recording can still be processed for clinical review.' };
+          const messages: Record<string, string> = { started: 'Live captions are active.', resumed: 'Live captions resumed.', interrupted: 'Live captions interrupted. Check the completed transcript after recording.', stopped: 'Live captions stopped. The completed recording will be processed for clinical review.', failed: 'AWS live captions failed. The completed recording can still be processed for clinical review.' };
           setCaptionNotice(messages[event.type] || 'Live caption status changed.');
         }
       };
@@ -326,9 +326,13 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
       capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setRecordNotice(''); setNotice(hasRemote ? 'Recording both sides of this session for the AI scribe.' : 'Recording this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
-      setCaptions([]); setCaptionNotice('Requesting AWS live English captions…');
+      setCaptions([]); setCaptionNotice('Requesting AWS live captions…');
       try {
-        await api('captions', { active: true, recordingConsent });
+        // When the interpreter is on with a non-English target, ask the server to
+        // recognize both English and that language (two-way capture). Otherwise send
+        // the English default so capture behavior is unchanged.
+        const interpreterLanguage = initialTranslationEnabled ? initialTranslationLanguage : 'en';
+        await api('captions', { active: true, recordingConsent, interpreterLanguage });
         // Recording could have stopped while the start request was in flight.
         if (recorder.current !== capture || capture.state !== 'recording') await api('captions', { active: false });
       } catch (error: any) {

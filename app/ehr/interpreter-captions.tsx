@@ -58,19 +58,27 @@ export default function InterpreterCaptions({ captions, clientId, sessionId, act
       pending.current++;
       queue.current = queue.current.then(async () => {
         if (current !== generation.current || signal?.aborted) return;
-        // Current room startup is English. Preserve AWS language metadata when present.
+        // Two-way routing: `target` is the OTHER party's language. Each finalized
+        // caption carries its DETECTED source language (from Transcribe language
+        // identification). Translate to the opposite party's language — an English
+        // utterance goes to the other language (spoken aloud to the client); an
+        // other-language utterance comes back to English for the provider.
         const locale = line.languageCode || 'en-US';
         const source = locale === 'zh-TW' ? 'zh-TW' : locale === 'pt-PT' ? 'pt-PT' : locale.split('-')[0];
+        const dest = source === 'en' ? target : 'en';
         try {
-          if (source === target) {
-            setTranslations(previous => ({ ...previous, [line.id]: { text: line.text, original: line.text, language: target } }));
+          if (source === dest) {
+            setTranslations(previous => ({ ...previous, [line.id]: { text: line.text, original: line.text, language: dest } }));
             return;
           }
+          // Speak by direction, not speaker label. With the box on, request spoken
+          // audio for any newer-than-join utterance so the English->other direction is
+          // heard aloud by the client and the other->English return can be heard too.
           const result = await request('translate-caption', { sessionId, captionId: line.id, text: line.text, partial: false,
-            sourceLanguage: source, targetLanguage: target, spoken: spoken && line.speaker === 'Other participant' && line.start > audioAfter.current }, signal);
+            sourceLanguage: source, targetLanguage: dest, spoken: spoken && line.start > audioAfter.current }, signal);
           if (current !== generation.current || signal?.aborted || result.sessionId !== sessionId || result.captionId !== line.id) return;
           setTranslations(previous => {
-            const next = { ...previous, [line.id]: { text: result.translatedText, original: line.text, language: target } };
+            const next = { ...previous, [line.id]: { text: result.translatedText, original: line.text, language: dest } };
             return Object.fromEntries(Object.entries(next).slice(-100));
           });
           setNotice(result.audioNotice || 'Machine translation active. Verify uncertain wording with the speaker.');
@@ -99,7 +107,7 @@ export default function InterpreterCaptions({ captions, clientId, sessionId, act
       <label>Show <select value={display} onChange={e => setDisplay(e.target.value)}><option value="both">Original and translation</option><option value="original">Original only</option><option value="translated">Translation only</option></select></label>
       <label><input type="checkbox" checked={spoken} onChange={e => setSpoken(e.target.checked)} /> Read the other participant’s translation aloud</label>
     </fieldset>
-    <p className="text-xs">Use headphones for spoken translation. Language choices here control translated output; multilingual speech capture is still awaiting activation.</p>
+    <p className="text-xs">Use headphones for spoken translation. During a consented session both English and the selected language are recognized, so each side is translated into the other party’s language.</p>
     {!active && enabled && <p className="text-sm">Translation waits for an active, consented recording.</p>}
     {notice && <p role="status" className="text-sm">{notice}</p>}
     <audio ref={playback} controls hidden={!spoken} aria-label="Translated speech playback" />

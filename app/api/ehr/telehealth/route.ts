@@ -14,6 +14,7 @@ import { stopLiveCaptionCapture } from '../../../../lib/ehr/live-caption-lifecyc
 import { TranslateClient, TranslateTextCommand, ListLanguagesCommand } from '@aws-sdk/client-translate';
 import { PollyClient, DescribeVoicesCommand, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import { translationInput, canTranslateCaption } from '../../../../lib/ehr/interpreter-policy';
+import { captureLanguageOptions } from '../../../../lib/ehr/interpreter-capture';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
@@ -195,7 +196,16 @@ export async function POST(request: Request) {
       if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'An active recording and your recording-consent confirmation are required for live captions.');
       await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
       try {
-        await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' } } }));
+        // Capture both English and the chosen other-party language so the client's
+        // speech is transcribed too (two-way interpreter). When the selected language
+        // has no supported streaming dialect, or is English, fall back to English-only
+        // capture exactly as before. The base code is validated by the capture helper.
+        const other = typeof body.interpreterLanguage === 'string' ? body.interpreterLanguage : 'en';
+        const capture = captureLanguageOptions(other);
+        const engineSettings = capture.identify
+          ? { IdentifyLanguage: true, LanguageOptions: capture.languageOptions, PreferredLanguage: capture.preferred, Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' as const }
+          : { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' as const };
+        await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: engineSettings } }));
         // Recording or the room may have ended while AWS was starting transcription.
         // Consent is provider-attested (mirroring the recording action), so captions
         // are torn down only when the room ends, the session rolls, recording stops,
