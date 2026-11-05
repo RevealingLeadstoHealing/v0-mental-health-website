@@ -16,6 +16,11 @@ function cameraProblem(e: any) {
 type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void; onUploadingChange?: (uploading: boolean) => void; initialTranslationEnabled?: boolean; initialTranslationLanguage?: string; initialTranslationSpoken?: boolean };
 export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, onUploadingChange, externalRecording = false, timerLabel = "00:00:00", initialTranslationEnabled = false, initialTranslationLanguage = 'en', initialTranslationSpoken = false }: Props) {
   const [status, setStatus] = useState<any>(null);
+  // Explicit load lifecycle for the status GET, so a null/pending/failed status is
+  // distinguishable from a server that actually said "not configured". Without this
+  // the button could sit dead forever on a slow or failed poll (see joinDisabled).
+  const [statusState, setStatusState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [statusError, setStatusError] = useState('');
   const [notice, setNotice] = useState('Checking in-EHR calling…');
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,6 +75,13 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const live = useRef(true);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joined = useRef(false);
+  // The status poll runs on a 5s interval whose closure captures state once. These
+  // refs let that closure see the live values so it does not stomp the Connecting/
+  // Joining/own-error notice while a join is in flight or has just failed, and so a
+  // Retry button can re-issue the GET on demand.
+  const busyRef = useRef(false);
+  const joinErrorRef = useRef(false);
+  const refreshStatus = useRef<() => void>(() => {});
   useEffect(() => {
     if (!recording) return;
     lastCaptionAt.current = Date.now();
@@ -147,9 +159,13 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const requestedAt = Date.now();
       try {
         const next = await api(); if (cancelled) return;
-        setStatus(next);
-        if (!next.configured) setNotice('In-EHR calling is not activated yet. AWS setup and a test call are required.');
-        else if (!joined.current) setNotice(next.active ? 'The room is open. Join when ready.' : 'Waiting for the provider to open a room.');
+        setStatus(next); setStatusState('ready'); setStatusError('');
+        // Do not overwrite the Connecting/Joining line or a just-shown join failure
+        // while a join is in flight or has errored; otherwise the 5s poll would
+        // silently replace the real reason and the button would look dead again.
+        const noticeLocked = busyRef.current || joinErrorRef.current || joined.current;
+        if (!next.configured) { if (!noticeLocked) setNotice('In-EHR calling is not activated yet. AWS setup and a test call are required.'); }
+        else if (!noticeLocked) setNotice(next.active ? 'The room is open. Join when ready.' : 'Waiting for the provider to open a room.');
         if (joined.current && !next.active) { disconnectLocal(); setNotice('The session has ended.'); }
         // Provider-run sessions do not require a separate client-device consent signal;
         // the provider confirms recording consent on their own screen. Only auto-stop if
@@ -157,13 +173,23 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
         // present withdrew). Do not stop merely because clientRecordingConsent is unset.
         const clientWithdrew = !provider && !next.clientRecordingConsent;
         if (recorder.current?.state === 'recording' && requestedAt >= recordingStartedAt.current && (!next.recording || clientWithdrew)) stopRecording();
-      } catch (e: any) { if (!cancelled) { stopRecording(); setNotice(e.message); } }
+      } catch (e: any) {
+        if (!cancelled) {
+          stopRecording();
+          setStatusState('error');
+          setStatusError(e?.message || 'The room status could not be loaded.');
+          if (!busyRef.current && !joinErrorRef.current) setNotice(e.message || 'The room status could not be loaded.');
+        }
+      }
     };
+    // Expose the poll so the Retry button can re-run it on demand after a failed GET.
+    refreshStatus.current = () => { if (!cancelled) { setStatusState('loading'); setStatusError(''); void check(); } };
     void check(); const timer = setInterval(check, 5000);
     const warn = (event: BeforeUnloadEvent) => { if (joined.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', warn);
     return () => { cancelled = true; live.current = false; clearInterval(timer); window.removeEventListener('beforeunload', warn); if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); };
   }, [clientId]);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
   useEffect(() => { if (provider && !recordingConsent) stopRecording(); }, [recordingConsent, provider]);
   useEffect(() => { if (provider && !providerConsent) stopPreview(); }, [providerConsent, provider]);
   async function cameraPreview() {
@@ -180,7 +206,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     finally { setBusy(false); }
   }
   async function join() {
-    setBusy(true); onConnectionChange?.(true); setNotice('Connecting…'); setCameraNotice(''); startTileOnConnect.current = false;
+    setBusy(true); busyRef.current = true; joinErrorRef.current = false; onConnectionChange?.(true); setNotice('Connecting…'); setCameraNotice(''); startTileOnConnect.current = false;
     try {
       stopPreview();
       if (provider && !status?.active) await api('start', { telehealthConsent: providerConsent });
@@ -209,7 +235,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       transcription?.subscribeToTranscriptEvent(receiveCaption);
       unsubscribeCaptions.current = () => transcription?.unsubscribeFromTranscriptEvent(receiveCaption);
       meeting.audioVideo.addObserver({
-        audioVideoDidStart: () => { if (startTileOnConnect.current) { startTileOnConnect.current = false; try { meeting.audioVideo.startLocalVideoTile(); } catch (e: any) { setVideo(false); setCameraNotice(cameraProblem(e)); } } if (live.current) { setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
+        audioVideoDidStart: () => { if (startTileOnConnect.current) { startTileOnConnect.current = false; try { meeting.audioVideo.startLocalVideoTile(); } catch (e: any) { setVideo(false); setCameraNotice(cameraProblem(e)); } } if (live.current) { joinErrorRef.current = false; setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
         audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); stopSelfView(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
         videoTileDidUpdate: tile => { if (!tile.tileId || !tile.boundAttendeeId || tile.isContent || !live.current) return; setTiles(current => [...current.filter(item => item.tileId !== tile.tileId), tile.clone()]); },
         videoTileWasRemoved: tileId => { if (live.current) setTiles(current => current.filter(item => item.tileId !== tileId)); },
@@ -241,8 +267,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       meeting.audioVideo.realtimeSubscribeToAttendeeIdPresence((id, present) => { if (id !== credentials.attendee.AttendeeId && !present) stopRecording(); });
       if (!live.current) throw new Error('Call cancelled.');
       meeting.audioVideo.start();
-    } catch (e: any) { if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); const reason = e?.message || 'Unable to join. Check camera and microphone permissions.'; setNotice(reason); setCameraNotice(`Could not join the room: ${reason}`); }
-    finally { setBusy(false); }
+    } catch (e: any) { joinErrorRef.current = true; if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); const reason = e?.message || 'Unable to join. Check camera and microphone permissions.'; setNotice(reason); setCameraNotice(`Could not join the room: ${reason}`); }
+    finally { setBusy(false); busyRef.current = false; }
   }
   async function leave(end = false) {
     setBusy(true); stopRecording();
@@ -326,11 +352,21 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   // silent no-op. The room is its own capture path and is intentionally NOT gated
   // on the standalone microphone scribe (externalRecording), so the top mic
   // recorder running or its transcription still processing does not disable Join.
-  const joinDisabled = busy || !status?.configured || (provider ? !providerConsent : !consent || !status?.active);
+  // Single source of truth for the Join button. A provider with consent is NOT
+  // blocked merely because the status GET is still loading (the key={clientId}
+  // remount resets status to null on every client switch, and the first poll is
+  // async). Only a status that has actually returned configured:false, or a status
+  // GET that errored, blocks the provider — and the error case always surfaces a
+  // visible reason plus a Retry control below, so Join is never a silent dead button.
+  const joinDisabled = provider
+    ? busy || !providerConsent || statusState === 'error' || (statusState === 'ready' && !status?.configured)
+    : busy || statusState === 'error' || !status?.configured || !consent || !status?.active;
   const joinDisabledReason = !joinDisabled ? ''
     : busy ? 'Working on the previous action. The button re-enables in a moment.'
-    : !status?.configured ? 'In-EHR calling is not activated yet, so the room cannot be joined.'
+    : statusState === 'error' ? `The room status could not be loaded: ${statusError || 'unknown error'}. Retry below.`
     : provider && !providerConsent ? 'Confirm telehealth consent above before opening the room.'
+    : !provider && statusState === 'loading' ? 'Checking room…'
+    : !status?.configured ? 'In-EHR calling is not activated yet, so the room cannot be joined.'
     : !provider && !status?.active ? 'Waiting for the provider to open the room before you can join.'
     : !provider && !consent ? 'Confirm participation above before joining.'
     : externalRecording ? 'The EHR video room is temporarily unavailable. Try again in a moment.'
@@ -355,9 +391,14 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       <div className="flex gap-2"><button type="button" className={button} disabled={busy || (provider && !providerConsent)} onClick={cameraPreview}>Preview my camera</button><button type="button" className={button} onClick={stopPreview}>Stop preview</button></div>
       <label className="block"><input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} /> Join with camera on</label>
       {!provider && <div className="space-y-2"><p>Your intake agreement remains available in <a className="underline" href="/ehr/documents#signed-documents">Signed Documents</a>. Confirm participation for this session below.</p><button type="button" className={button} onClick={readSessionReminder}>Read session reminder aloud</button><label className="block"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {SESSION_CONFIRMATION_TEXT}</label></div>}
-      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={joinDisabled} onClick={() => { setCameraNotice('Joining the room…'); void join(); }}>{provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
+      {statusState === 'error' && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+        <p>The room status could not be loaded: {statusError || 'unknown error'}. The room may be temporarily unreachable.</p>
+        <button type="button" className={button} disabled={busy} onClick={() => refreshStatus.current()}>Retry loading the room</button>
+      </div>}
+      <button type="button" className={`${button} bg-blue-600 text-white`} disabled={joinDisabled} onClick={() => { setCameraNotice('Joining the room…'); void join(); }}>{busy && !connected ? 'Joining…' : provider && !status?.active ? 'Open and join EHR room' : 'Join EHR room'}</button>
+      {statusState === 'loading' && !busy && <p role="status" className="text-sm text-slate-600">Checking room…</p>}
       <p className="text-sm">Joining turns your camera on and shows your own video. The separate microphone scribe records and transcribes on its own and does not require the room.</p>
-      {joinDisabled && joinDisabledReason && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{joinDisabledReason}</p>}
+      {joinDisabled && joinDisabledReason && statusState !== 'error' && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{joinDisabledReason}</p>}
     </>}
     {connected && selfViewOn && <div><video ref={bindSelfView} autoPlay playsInline muted className="w-full max-h-56 rounded-xl bg-slate-900" style={{ objectFit: 'contain' }} aria-label="Your camera" /><p className="text-xs">You</p></div>}
     <div className="grid md:grid-cols-2 gap-3">{tiles.filter(tile => !tile.localTile).map(tile => <div key={tile.tileId}><video autoPlay playsInline className="w-full rounded-xl bg-slate-900" aria-label="Other participant camera" ref={element => { if (element && tile.tileId) session.current?.audioVideo.bindVideoElement(tile.tileId, element); }} /><p className="text-xs">Other participant</p></div>)}</div>
