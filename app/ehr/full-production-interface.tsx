@@ -3014,6 +3014,9 @@ function TelehealthPage() {
   const { selectedChartClientId, setSelectedChartClientId, setPage, registerTelehealthLeaveGuard } = usePage();
   const [nativeCallActive, setNativeCallActive] = useState(false);
   const [nativeUploadActive, setNativeUploadActive] = useState(false);
+  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [translationLanguage, setTranslationLanguage] = useState('en');
+  const [translationSpoken, setTranslationSpoken] = useState(false);
   const clients = clinicalClientEntries(store);
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || currentClientId);
@@ -3645,13 +3648,32 @@ ${sessionForm.recordingVerbiage}`);
               <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, consentObtained: v })); }} />
               Telehealth consent obtained (signed / verbal) — confirmed for this session
             </label>
+<div className="rounded-2xl border p-3 space-y-2 text-sm">
+  <p className="font-medium">Interpreter / translation (optional)</p>
+  <p className="text-xs">Choose the target language here before the session. It is applied automatically when live translation runs during recording; you can still change it in the session.</p>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={translationEnabled} onChange={(e) => setTranslationEnabled(e.target.checked)} /> Translate live captions</label>
+  <label className="flex items-center gap-2">Translate into <select value={translationLanguage} onChange={(e) => setTranslationLanguage(e.target.value)}>
+    <option value="en">English</option>
+    <option value="es">Spanish</option>
+    <option value="ht">Haitian Creole</option>
+    <option value="fr">French</option>
+    <option value="pt">Portuguese</option>
+    <option value="zh">Chinese Simplified</option>
+    <option value="zh-TW">Chinese Traditional</option>
+    <option value="ar">Arabic</option>
+    <option value="ru">Russian</option>
+    <option value="vi">Vietnamese</option>
+    <option value="ko">Korean</option>
+  </select></label>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={translationSpoken} onChange={(e) => setTranslationSpoken(e.target.checked)} /> Read translation aloud</label>
+</div>
 <details><summary className="cursor-pointer text-sm">Review or edit consent wording</summary>
             <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
 
             <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
 </details>
 </section>
-      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onUploadingChange={setNativeUploadActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onUploadingChange={setNativeUploadActive} initialTranslationEnabled={translationEnabled} initialTranslationLanguage={translationLanguage} initialTranslationSpoken={translationSpoken} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
       {isProvider && <div className="mb-4">            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-slate-900">Microphone and recording</p>
               <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>

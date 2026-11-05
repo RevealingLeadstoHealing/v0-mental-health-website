@@ -5,13 +5,13 @@ import { telehealthRequest } from '../../lib/ehr/telehealth-request';
 
 type Translation = { text: string; original: string; language: string };
 // Display and audio preferences belong to this participant, never the other participant.
-export default function InterpreterCaptions({ captions, clientId, sessionId, active }: {
-  captions: CaptionLine[]; clientId: string; sessionId: string; active: boolean;
+export default function InterpreterCaptions({ captions, clientId, sessionId, active, initialEnabled, initialTarget, initialSpoken }: {
+  captions: CaptionLine[]; clientId: string; sessionId: string; active: boolean; initialEnabled?: boolean; initialTarget?: string; initialSpoken?: boolean;
 }) {
   const [languages, setLanguages] = useState<{ code: string; name: string }[]>([]);
-  const [target, setTarget] = useState('en');
-  const [enabled, setEnabled] = useState(false);
-  const [spoken, setSpoken] = useState(false);
+  const [target, setTarget] = useState(initialTarget || 'en');
+  const [enabled, setEnabled] = useState(initialEnabled ?? false);
+  const [spoken, setSpoken] = useState(initialSpoken ?? false);
   const [display, setDisplay] = useState('both');
   const [notice, setNotice] = useState('');
   const [translations, setTranslations] = useState<Record<string, Translation>>({});

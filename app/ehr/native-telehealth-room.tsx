@@ -13,8 +13,8 @@ function cameraProblem(e: any) {
   if (name === 'NotReadableError') return 'The camera is in use by another app or tab. Close it there, then try again.';
   return `Camera unavailable: ${e?.message || 'unknown error'}`;
 }
-type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void; onUploadingChange?: (uploading: boolean) => void };
-export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, onUploadingChange, externalRecording = false, timerLabel = "00:00:00" }: Props) {
+type Props = { externalRecording?: boolean; timerLabel?: string; clientId: string; provider: boolean; providerConsent?: boolean; recordingConsent?: boolean; onRecordingReady?: (blob: Blob) => Promise<void>; onRecordingChange?: (recording: boolean) => void; onConnectionChange?: (connected: boolean) => void; onUploadingChange?: (uploading: boolean) => void; initialTranslationEnabled?: boolean; initialTranslationLanguage?: string; initialTranslationSpoken?: boolean };
+export default function NativeTelehealthRoom({ clientId, provider, providerConsent = false, recordingConsent = false, onRecordingReady, onConnectionChange, onRecordingChange, onUploadingChange, externalRecording = false, timerLabel = "00:00:00", initialTranslationEnabled = false, initialTranslationLanguage = 'en', initialTranslationSpoken = false }: Props) {
   const [status, setStatus] = useState<any>(null);
   const [notice, setNotice] = useState('Checking in-EHR calling…');
   const [connected, setConnected] = useState(false);
@@ -305,7 +305,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     <p role="status" className="text-sm">{notice}</p>
     <audio ref={audio} autoPlay />
     {cameraNotice && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{cameraNotice}</p>}
-    <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} clientId={clientId} sessionId={roomSessionId} recordingActive={captionsRunning && (provider ? recording : status?.recording === true)} onStop={async () => { setCaptionsRunning(false); await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} />
+    <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} clientId={clientId} sessionId={roomSessionId} recordingActive={captionsRunning && (provider ? recording : status?.recording === true)} onStop={async () => { setCaptionsRunning(false); await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} initialEnabled={initialTranslationEnabled} initialTarget={initialTranslationLanguage} initialSpoken={initialTranslationSpoken} />
     {provider && connected && <div className="space-y-2">
       <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
       <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>

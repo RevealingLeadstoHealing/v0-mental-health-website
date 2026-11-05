@@ -90,8 +90,11 @@ export async function POST(request: Request) {
     if (!roomIsActive(room)) throw new ApiError(409, 'The provider has not opened an active room.');
     const memberKey = { PK: key.PK, SK: `TELEHEALTH#ATTENDEE#${hash(actor.sub)}` };
     if (action === 'interpreter-languages') {
-      const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
-      if (!member?.attendeeId || member.meetingId !== room.meeting.MeetingId) throw new ApiError(403, 'Join the room to configure translation.');
+      // Provider/owner-only relaxation of the non-PHI language LIST so the target language can be chosen before joining; clients still must be joined. This only lists translate:ListLanguages and is not PHI; the translate-caption action's checks are untouched.
+      if (!manager) {
+        const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
+        if (!member?.attendeeId || member.meetingId !== room.meeting.MeetingId) throw new ApiError(403, 'Join the room to configure translation.');
+      }
       const languages: { code: string; name: string }[] = [];
       let next: string | undefined;
       do {

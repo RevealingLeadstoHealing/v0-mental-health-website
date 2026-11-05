@@ -2,7 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { CaptionLine } from '../../lib/ehr/live-captions';
 import InterpreterCaptions from './interpreter-captions';
-export default function LiveCaptionPanel({ captions, captionNotice, provider, connected, onStop, setCaptionNotice, clientId, sessionId, recordingActive }: { captions: CaptionLine[]; captionNotice: string; provider: boolean; connected: boolean; onStop: () => Promise<void>; setCaptionNotice: (notice: string) => void; clientId?: string; sessionId?: string; recordingActive?: boolean }) {
+export default function LiveCaptionPanel({ captions, captionNotice, provider, connected, onStop, setCaptionNotice, clientId, sessionId, recordingActive, initialEnabled, initialTarget, initialSpoken }: { captions: CaptionLine[]; captionNotice: string; provider: boolean; connected: boolean; onStop: () => Promise<void>; setCaptionNotice: (notice: string) => void; clientId?: string; sessionId?: string; recordingActive?: boolean; initialEnabled?: boolean; initialTarget?: string; initialSpoken?: boolean }) {
   const captionLog = useRef<HTMLDivElement | null>(null);
   useEffect(() => { if (captionLog.current) captionLog.current.scrollTop = captionLog.current.scrollHeight; }, [captions]);
   const button = 'rounded-lg border px-4 py-2 text-sm font-medium';
@@ -10,7 +10,7 @@ export default function LiveCaptionPanel({ captions, captionNotice, provider, co
     <section aria-label="Live session captions" className="rounded-xl border p-3 space-y-2">
       <h3 className="font-semibold">Live session captions</h3>
       <p role="status" className="text-sm">{captionNotice}</p>
-      {connected && clientId && sessionId ? <InterpreterCaptions key={`${clientId}:${sessionId}`} clientId={clientId} sessionId={sessionId} captions={captions} active={recordingActive === true} /> : <div className="space-y-2">
+      {connected && clientId && sessionId ? <InterpreterCaptions key={`${clientId}:${sessionId}`} clientId={clientId} sessionId={sessionId} captions={captions} active={recordingActive === true} initialEnabled={initialEnabled} initialTarget={initialTarget} initialSpoken={initialSpoken} /> : <div className="space-y-2">
         <p className="text-sm rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900">The live translator and interpreter controls appear here once you Join the room and start recording. Translation works on the live captions while you speak.</p>
         <div ref={captionLog} role="log" aria-label="Live conversation" aria-live="polite" aria-relevant="additions text" className="max-h-64 overflow-y-auto text-sm space-y-1">
           {captions.map(line => <p key={line.id}><strong>{line.speaker}:</strong> {line.text}{line.partial ? ' …' : ''}</p>)}
