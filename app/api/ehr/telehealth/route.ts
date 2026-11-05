@@ -202,9 +202,9 @@ export async function POST(request: Request) {
         // capture exactly as before. The base code is validated by the capture helper.
         const other = typeof body.interpreterLanguage === 'string' ? body.interpreterLanguage : 'en';
         const capture = captureLanguageOptions(other);
-        const engineSettings = capture.identify
-          ? { IdentifyLanguage: true, LanguageOptions: capture.languageOptions, PreferredLanguage: capture.preferred, Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' as const }
-          : { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' as const };
+        const engineSettings: any = capture.identify
+          ? { IdentifyLanguage: true, LanguageOptions: capture.languageOptions, PreferredLanguage: capture.preferred, Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' }
+          : { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' };
         await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: engineSettings } }));
         // Recording or the room may have ended while AWS was starting transcription.
         // Consent is provider-attested (mirroring the recording action), so captions
