@@ -46,6 +46,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   }
   const [clientRecordingConsent, setClientRecordingConsent] = useState(false);
   const [recording, setRecording] = useState(false);
+  // A dedicated message shown right at the record button so a failed start is never
+  // silent: it names the stage that failed (microphone, the AWS recording call, or
+  // the browser audio engine) instead of only updating the section-wide status line.
+  const [recordNotice, setRecordNotice] = useState('');
   const [uploading, setUploading] = useState(false);
   const [retryAudio, setRetryAudio] = useState<Blob | null>(null);
   const [tiles, setTiles] = useState<VideoTileState[]>([]);
@@ -75,6 +79,22 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     return () => clearInterval(timer);
   }, [recording]);
   const recordingStartedAt = useRef(0);
+  // The in-room recorder has its own elapsed-time clock. The timerLabel prop is the
+  // parent's SEPARATE top-microphone scribe timer and does not move for this room,
+  // so without this the in-room timer stayed 00:00:00 even while recording ran,
+  // which looked exactly like "the record button did nothing". While this room is
+  // recording we show this local clock; otherwise we keep showing the prop so no
+  // existing behavior changes when not recording.
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  useEffect(() => {
+    if (!recording) return;
+    setRecordingSeconds(Math.max(0, Math.floor((Date.now() - recordingStartedAt.current) / 1000)));
+    const id = window.setInterval(() => setRecordingSeconds(Math.max(0, Math.floor((Date.now() - recordingStartedAt.current) / 1000))), 1000);
+    return () => window.clearInterval(id);
+  }, [recording]);
+  const roomTimerLabel = recording
+    ? `${String(Math.floor(recordingSeconds / 3600)).padStart(2, '0')}:${String(Math.floor((recordingSeconds % 3600) / 60)).padStart(2, '0')}:${String(recordingSeconds % 60).padStart(2, '0')}`
+    : timerLabel;
   async function api(action?: string, extra: any = {}) {
     return telehealthRequest(action ? '/api/ehr/telehealth' : `/api/ehr/telehealth?clientId=${encodeURIComponent(clientId)}`, {
       method: action ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
@@ -249,8 +269,12 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   useEffect(() => { onUploadingChange?.(uploading || retryAudio !== null); }, [uploading, retryAudio]);
   useEffect(() => () => { onUploadingChange?.(false); }, []);
   async function startRecording() {
-    setBusy(true);
+    setBusy(true); setRecordNotice('');
     let mix: AudioContext | null = null;
+    // Track which stage is running so a failure reports the specific cause at the
+    // button (microphone not ready / AWS recording call failed / audio engine failed)
+    // and is never a silent no-op.
+    let stage: 'mic' | 'server' | 'engine' = 'mic';
     try {
       // A solo provider has no remote attendee, so there is no remote audio track.
       // Require only the local microphone; mix the remote stream only when a client
@@ -259,8 +283,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       if (!localStream.current) throw new Error('Your microphone is not connected yet. Rejoin the room and allow the microphone, then start recording.');
       const remote = audio.current?.srcObject;
       const hasRemote = remote instanceof MediaStream && remote.getAudioTracks().length > 0;
-      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) throw new Error('Use a browser that supports Opus/WebM recording.');
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) throw new Error('This browser cannot record Opus/WebM audio. Use Chrome, Edge, or Firefox, then try again.');
+      stage = 'server';
       await api('recording', { active: true, recordingConsent });
+      stage = 'engine';
       mix = new AudioContext(); await mix.resume(); const context = mix;
       const destination = context.createMediaStreamDestination();
       const gain = context.createGain(); gain.gain.value = muted ? 0 : 1; micGain.current = gain;
@@ -272,7 +298,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       capture.ondataavailable = event => { if (event.data.size) { chunks.push(event.data); bytes += event.data.size; if (bytes > 40 * 1024 * 1024) stopRecording(); } };
       capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(error => { if (live.current) setCaptionNotice(`Caption stop could not be confirmed: ${error.message}. Use Stop live captions or end the room.`); }); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
-      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setNotice(hasRemote ? 'Recording both sides of this session for the AI scribe.' : 'Recording this session for the AI scribe.');
+      capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setRecordNotice(''); setNotice(hasRemote ? 'Recording both sides of this session for the AI scribe.' : 'Recording this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
       setCaptions([]); setCaptionNotice('Requesting AWS live English captions…');
       try {
@@ -282,7 +308,16 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       } catch (error: any) {
         if (live.current) setCaptionNotice(error.message || 'Live captions are unavailable. Review the completed transcript after recording.');
       }
-    } catch (e: any) { if (mix) void mix.close(); void api('recording', { active: false }).catch(() => {}); setNotice(e.message); }
+    } catch (e: any) {
+      if (mix) void mix.close();
+      micGain.current = null; recorder.current = null;
+      void api('recording', { active: false }).catch(() => {});
+      const detail = e?.message || 'unknown error';
+      const message = stage === 'mic' ? detail
+        : stage === 'server' ? `AWS recording call failed: ${detail}`
+        : `Audio engine failed to start: ${detail}`;
+      setRecordNotice(message); setNotice(message);
+    }
     finally { setBusy(false); }
   }
   const button = 'rounded-xl border px-4 py-2 disabled:opacity-50';
@@ -307,9 +342,10 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
     {cameraNotice && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{cameraNotice}</p>}
     <LiveCaptionPanel captions={captions} captionNotice={captionNotice} provider={provider} connected={connected} clientId={clientId} sessionId={roomSessionId} recordingActive={captionsRunning && (provider ? recording : status?.recording === true)} onStop={async () => { setCaptionsRunning(false); await api('captions', { active: false }); }} setCaptionNotice={setCaptionNotice} initialEnabled={initialTranslationEnabled} initialTarget={initialTranslationLanguage} initialSpoken={initialTranslationSpoken} />
     {provider && connected && <div className="space-y-2">
-      <p role="timer" className="text-xl font-semibold">{timerLabel} · {recording ? "Recording" : "Not recording"}</p>
+      <p role="timer" className="text-xl font-semibold">{roomTimerLabel} · {recording ? "Recording" : "Not recording"}</p>
       <p className="text-sm">Recording requires your documented consent confirmation and the client’s recording consent. Stop recording to upload the audio for AI processing.</p>
       <button type="button" className={button} disabled={busy || uploading || (!recording && (!recordingConsent || Boolean(retryAudio)))} onClick={recording ? stopRecording : startRecording}>{recording ? 'Stop recording and process audio' : 'Start recording — AI scribe (session audio)'}</button>
+      {recordNotice && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{recordNotice}</p>}
     </div>}
 
     {status?.recording && <p role="alert" className="rounded-xl bg-red-50 p-3 font-semibold text-red-800">Session audio recording is active.</p>}
