@@ -145,6 +145,32 @@ export function validateBillingReview(claim: Partial<BillingClaim>): ValidationR
   return { ok: missing.length === 0, missing };
 }
 
+/**
+ * Composes the two existing review validators into a single named-deficiency
+ * list for a claim. Pure recomposition — introduces NO new rules — so the UI
+ * (review queue, payer worklist, standing alerts) can surface exactly the same
+ * gaps the server enforces on PATCH review and transmit.
+ *
+ * `clinical` / `billing` hold the stage-specific named missing items. `all`
+ * is the de-duplicated union for convenience.
+ */
+export interface ClaimDeficiencies {
+  clinical: string[];
+  billing: string[];
+  all: string[];
+  ok: boolean;
+}
+
+export function claimDeficiencies(claim: Partial<BillingClaim>): ClaimDeficiencies {
+  const clinical = validateClinicalReview(claim).missing;
+  const billing = validateBillingReview(claim).missing;
+  const all: string[] = [];
+  for (const item of [...clinical, ...billing]) {
+    if (!all.includes(item)) all.push(item);
+  }
+  return { clinical, billing, all, ok: all.length === 0 };
+}
+
 // --- State machine -----------------------------------------------------------
 
 /**

@@ -17,7 +17,8 @@ import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
 import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups, MentalStatusExam, mseToText } from "./structured-picker";
 import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatment-goals";
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
-import { payerCatalog } from "../../lib/ehr/payer-catalog";
+import { payerCatalog, payerGroupFor } from "../../lib/ehr/payer-catalog";
+import { claimDeficiencies } from "../../lib/ehr/billing-model";
 import { affirmationLibrary } from "../../lib/ehr/affirmation-library";
 import { chartInformedAffirmations } from "../../lib/ehr/affirmation-suggestions";
 import { psychoeducationLibrary } from "../../lib/ehr/psychoeducation-library";
@@ -1333,11 +1334,78 @@ function playAlertChime() {
     tone(1100, 0.22);
   } catch { /* Web Audio unavailable or blocked — the banner still stands */ }
 }
+// Deficiency worklist for the provider — a sibling of the booking-alerts banner.
+// It NAMES each deficiency and deep-links straight to the note or claim to fix:
+//   (a) incomplete / unsigned progress notes (and AI-scribe drafts), derived
+//       client-side from the already-loaded chart store, and
+//   (b) server claims with a non-empty claimDeficiencies() list, the same
+//       validator the server enforces on review and transmit.
+// Nothing here changes a gate; it only surfaces what is already required.
+function useDeficiencyWorklist(isProvider, store) {
+  const [claimItems, setClaimItems] = useState([]);
+  useEffect(() => {
+    if (!isProvider) return;
+    let active = true;
+    const load = () => {
+      productionApi("/api/ehr/billing")
+        .then((data) => {
+          if (!active) return;
+          const claims = Array.isArray(data.claims) ? data.claims : [];
+          const items = [];
+          claims.forEach((claim) => {
+            const deficiencies = claimDeficiencies(claim);
+            if (deficiencies.ok) return;
+            items.push({
+              kind: "claim",
+              id: `claim-${claim.claimId}`,
+              clientId: claim.clientId,
+              clientName: claim.clientName || "Client",
+              label: `${claim.payerName || "Claim"} · ${claim.dateOfService || "no date of service"}`,
+              missing: deficiencies.all,
+              claimId: claim.claimId,
+            });
+          });
+          setClaimItems(items);
+        })
+        .catch(() => { if (active) setClaimItems([]); });
+    };
+    load();
+    const timer = setInterval(load, 45000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isProvider]);
+  const noteItems = useMemo(() => {
+    if (!isProvider || !store?.users) return [];
+    const items = [];
+    clinicalClientEntries(store).forEach(([clientId, bucket]) => {
+      (bucket.notes || []).forEach((note) => {
+        const signed = Boolean(note.signature && String(note.signature.provider || "").trim());
+        if (signed) return;
+        const missing = [];
+        if (!note.signature || !String(note.signature?.provider || "").trim()) missing.push("Signature missing");
+        if (!String(note.codeDraft?.primaryDiagnosis || "").trim()) missing.push("Primary diagnosis required");
+        if (!String(note.codeDraft?.serviceCode || "").trim()) missing.push("Billing CPT/HCPCS code required");
+        if (!Number(note.sessionMinutes)) missing.push("Session minutes required");
+        items.push({
+          kind: "note",
+          id: `note-${clientId}-${note.id}`,
+          clientId,
+          clientName: bucket.profile?.fullName || "Client",
+          label: `${note.title || note.noteType || "Progress note"}`,
+          missing: missing.length ? missing : ["Signature missing"],
+          noteId: note.id,
+        });
+      });
+    });
+    return items;
+  }, [isProvider, store?.users]);
+  return { items: [...noteItems, ...claimItems] };
+}
 function MainApp() {
-  const { currentUser, logout, saveStatus } = useAuth();
+  const { currentUser, logout, saveStatus, store } = useAuth();
   const { page, setPage } = usePage();
   const isProvider = currentUser.role === "provider";
   const standingAlerts = useStandingAlerts(isProvider);
+  const deficiencyWorklist = useDeficiencyWorklist(isProvider, store);
   useEffect(() => {
     if (!isProvider || standingAlerts.alerts.length === 0) return;
     playAlertChime();
@@ -1470,6 +1538,34 @@ function MainApp() {
                     </div>
                     <button type="button" className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={() => standingAlerts.acknowledge(alert)}>
                       Acknowledge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {isProvider && deficiencyWorklist.items.length > 0 && (
+            <div className="mb-4 rounded-2xl border-2 border-red-300 bg-red-50 p-4">
+              <p className="font-semibold text-red-900">
+                {deficiencyWorklist.items.length} item{deficiencyWorklist.items.length === 1 ? "" : "s"} need{deficiencyWorklist.items.length === 1 ? "s" : ""} to be completed, signed, or corrected
+              </p>
+              <p className="mt-1 text-xs text-red-800">Unsigned or incomplete notes and claims that are not yet clean. Each names exactly what is missing and jumps straight to the note or claim — no searching charts.</p>
+              <div className="mt-3 space-y-2">
+                {deficiencyWorklist.items.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-white p-3">
+                    <div className="text-sm text-slate-800">
+                      <span className="font-medium">{item.clientName}</span>
+                      {" · "}{item.kind === "note" ? "Note" : "Claim"}: {item.label}
+                      <div className="mt-1 text-xs text-red-700"><span className="font-semibold">Missing:</span> {item.missing.join(", ")}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white"
+                      onClick={() => item.kind === "note"
+                        ? setPage("notes", { clientId: item.clientId, noteId: item.noteId })
+                        : setPage("billing", { clientId: item.clientId, claimId: item.claimId })}
+                    >
+                      {item.kind === "note" ? "Open to complete and sign" : "Open to fix"}
                     </button>
                   </div>
                 ))}
@@ -5447,6 +5543,28 @@ function BillingPage() {
       .catch(() => { if (active) setServerClaims([]); });
     return () => { active = false; };
   }, []);
+  // Deep-link focus: when another page routes here with a target claimId,
+  // select that claim's client and scroll its review-queue card into view.
+  // Mirrors the ProgressNotesPage workflowTarget?.noteId effect. Additive —
+  // default behavior is unchanged when no claimId is present.
+  const focusedClaimRef = useRef("");
+  useEffect(() => {
+    const claimId = workflowTarget?.claimId;
+    if (!claimId || focusedClaimRef.current === claimId) return;
+    const target = serverClaims.find((item) => item.claimId === claimId);
+    if (!target) return;
+    focusedClaimRef.current = claimId;
+    if (target.clientId && store.users[target.clientId]?.profile.role === "client") {
+      setSelectedClientId(target.clientId);
+      setSelectedChartClientId(target.clientId);
+    }
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        const card = document.querySelector(`[data-claim-id="${claimId}"]`);
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 60);
+    }
+  }, [workflowTarget?.claimId, serverClaims]);
   const claims = useMemo(() => clients.flatMap(([clientId, bucket]) =>
     (bucket.billingClaims || []).map((claim) => ({
       ...claim,
@@ -5459,6 +5577,26 @@ function BillingPage() {
     (activePayer === "all" || claim.payerId === activePayer) &&
     (statusFilter === "all" || claim.status === statusFilter)
   );
+  // Outstanding billing deficiencies worklist, grouped by payer. Source of
+  // truth is the server claims + the shared claimDeficiencies() validator, so
+  // this names exactly the gaps the server enforces. Grouping key is the
+  // catalog payer group (stored payerGroupId, else resolved from the payer
+  // name), falling back to the ledger payer label so every outstanding item
+  // lands under some payer heading.
+  const deficiencyWorklist = useMemo(() => {
+    const groups = new Map();
+    serverClaims.forEach((claim) => {
+      const deficiencies = claimDeficiencies(claim);
+      if (deficiencies.ok) return;
+      const jurisdiction = claim.billingJurisdiction === "FL" ? "FL" : "NY";
+      const catalogGroup = payerGroupFor(jurisdiction, claim.payerName || "");
+      const key = claim.payerGroupId || catalogGroup?.id || classifyBillingPayer(claim.payerName);
+      const label = catalogGroup?.name || claim.payerName || billingPayerLabel(classifyBillingPayer(claim.payerName));
+      if (!groups.has(key)) groups.set(key, { key, label, claims: [] });
+      groups.get(key).claims.push({ claim, deficiencies });
+    });
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [serverClaims]);
   const totals = filteredClaims.reduce((summary, claim) => ({
     billed: summary.billed + (Number(claim.chargeAmount) || 0),
     paid: summary.paid + (Number(claim.paidAmount) || 0),
@@ -5698,7 +5836,18 @@ function BillingPage() {
             {jurisdictionGroups.map(group => {
               const savedAttentionCount = claims.filter(claim => claim.billingJurisdiction === billingJurisdiction && claim.payerGroupId === group.id && ["Action Required", "Rejected", "Denied"].includes(claim.status || "Draft")).length;
               const currentDraftAttention = intake.billingJurisdiction === billingJurisdiction && intake.payerGroupId === group.id && billingReviewIssues.length ? 1 : 0;
-              const attentionCount = savedAttentionCount + currentDraftAttention;
+              // Route authoritative server-claim deficiencies to this payer
+              // group too: match by stored payerGroupId, else resolve the free-
+              // text payer name through the catalog for this jurisdiction. A
+              // claim counts if it still has named deficiencies or has not yet
+              // reached ready/transmitted.
+              const serverAttentionCount = serverClaims.filter((claim) => {
+                const groupId = claim.payerGroupId || payerGroupFor(billingJurisdiction, claim.payerName || "")?.id || "";
+                if (groupId !== group.id) return false;
+                const outstanding = !claimDeficiencies(claim).ok || !["ready_to_transmit", "transmitted"].includes(claim.status || "");
+                return outstanding;
+              }).length;
+              const attentionCount = savedAttentionCount + currentDraftAttention + serverAttentionCount;
               return (
                 <Button key={group.id} type="button" className="shrink-0 rounded-2xl" size="sm" variant={selectedPayerGroup?.id === group.id ? "default" : "outline"} onClick={() => setSelectedPayerGroupId(group.id)}>
                   {group.name}<span aria-label={`${attentionCount} items need attention`} className={attentionCount ? "ml-2 inline-flex min-w-6 justify-center rounded-full bg-amber-200 px-1.5 text-stone-950" : "ml-2 inline-flex min-w-6 justify-center rounded-full bg-slate-200 px-1.5 text-slate-700"}>{attentionCount}</span>
@@ -5773,6 +5922,45 @@ function BillingPage() {
           )}
         </CardContent>
       </Card>
+      <Card className="mb-4 rounded-2xl border-2 border-amber-300 shadow-sm">
+        <CardHeader>
+          <CardTitle>Outstanding billing deficiencies by payer</CardTitle>
+          <CardDescription>
+            Claims that are not yet clean, grouped by payer. Each row names exactly what is missing for an approvable claim,
+            with a button that jumps straight to the claim (or the note) to fix it — no searching charts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {deficiencyWorklist.length === 0 ? (
+            <p className="text-sm text-slate-600">No outstanding billing deficiencies. Every recorded claim has its required fields.</p>
+          ) : (
+            deficiencyWorklist.map((group) => (
+              <div key={group.key} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="font-semibold text-amber-900">{group.label}<span className="ml-2 inline-flex min-w-6 justify-center rounded-full bg-amber-200 px-1.5 text-stone-950">{group.claims.length}</span></p>
+                <div className="mt-2 space-y-2">
+                  {group.claims.map(({ claim, deficiencies }) => (
+                    <div key={claim.claimId} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                      <div className="text-sm text-slate-800">
+                        <p className="font-medium">{claim.clientName} · {claim.dateOfService || "No date of service"}</p>
+                        <p className="text-xs text-slate-500">{claim.insurancePlanName || claim.payerName || "No plan"} · {billingMoney(claim.chargeAmount)}</p>
+                        <p className="mt-1 text-xs">
+                          <span className="font-semibold text-red-700">Missing:</span> {deficiencies.all.join(", ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button size="sm" className="rounded-xl" onClick={() => setPage("billing", { clientId: claim.clientId, claimId: claim.claimId })}>Open to fix</Button>
+                        {deficiencies.clinical.includes("Authenticated provider signature") && claim.clientId && (
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setPage("notes", { clientId: claim.clientId })}>Open note to sign</Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
       <Card className="mb-4 rounded-2xl border-2 border-slate-300 shadow-sm">
         <CardHeader>
           <CardTitle>Compliance review queue</CardTitle>
@@ -5802,8 +5990,17 @@ function BillingPage() {
                 const billingDone = claim.billingReview?.decision === "passed";
                 const rejected = claim.status === "rejected";
                 const ready = claim.status === "ready_to_transmit";
+                // Named deficiency list from the same validators the server
+                // enforces (lib/ehr/billing-model). Clinical gaps are shown
+                // until clinical review passes; billing gaps until billing
+                // review passes. Display only — the Pass/Reject gates are
+                // unchanged below.
+                const deficiencies = claimDeficiencies(claim);
+                const clinicalGaps = clinicalDone ? [] : deficiencies.clinical;
+                const billingGaps = billingDone ? [] : deficiencies.billing;
+                const stediGaps = claim.transmissions?.length ? (claim.transmissions.slice(-1)[0].errors || []) : [];
                 return (
-                  <div key={claim.claimId} className="rounded-xl border p-4">
+                  <div key={claim.claimId} data-claim-id={claim.claimId} className="rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="font-medium">{claim.clientName} · {claim.dateOfService || "No date of service"}</p>
@@ -5813,6 +6010,29 @@ function BillingPage() {
                         {String(claim.status || "draft").replace(/_/g, " ")}
                       </Badge>
                     </div>
+                    {(clinicalGaps.length > 0 || billingGaps.length > 0 || stediGaps.length > 0) && (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                        <p className="font-medium">Deficient for a clean, approvable claim — fix before it can pass:</p>
+                        {clinicalGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Clinical review</p>
+                            <ul className="list-disc pl-5">{clinicalGaps.map((item) => <li key={`cl-${item}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                        {billingGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Billing review</p>
+                            <ul className="list-disc pl-5">{billingGaps.map((item) => <li key={`bl-${item}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                        {stediGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Payer (Stedi) edits</p>
+                            <ul className="list-disc pl-5">{stediGaps.map((item, index) => <li key={`st-${index}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-lg border p-3">
                         <p className="text-sm font-semibold">1. Clinical review {clinicalDone && <span className="text-emerald-700">✓</span>}</p>

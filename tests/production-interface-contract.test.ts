@@ -54,6 +54,25 @@ test("client document view includes authorized templates and client uploads", ()
   assert.match(source, /doc\.clientVisible === true \|\| doc\.uploadedByRole === "client" \|\| clientAuthorizedDocumentTitles\.has\(doc\.title\)/);
 });
 
+test("billing surfaces the per-claim deficiency list and a per-payer outstanding worklist", () => {
+  // Reuses the shared validator as the single source of the deficiency list.
+  assert.match(source, /import \{ claimDeficiencies \} from "\.\.\/\.\.\/lib\/ehr\/billing-model"/);
+  // Per-claim named deficiencies in the review queue.
+  assert.match(source, /Deficient for a clean, approvable claim/);
+  // Per-payer outstanding-deficiency worklist that deep-links to the claim.
+  assert.match(source, /Outstanding billing deficiencies by payer/);
+  assert.match(source, /setPage\("billing", \{ clientId: claim\.clientId, claimId: claim\.claimId \}\)/);
+});
+
+test("a standing provider worklist names incomplete notes and deficient claims and deep-links to each", () => {
+  const worklist = source.slice(source.indexOf("function useDeficiencyWorklist"), source.indexOf("function MainApp"));
+  assert.match(worklist, /Signature missing/);
+  assert.match(worklist, /claimDeficiencies\(claim\)/);
+  const banner = source.slice(source.indexOf("deficiencyWorklist.items.length > 0"), source.indexOf("<motion.div initial"));
+  assert.match(banner, /setPage\("notes", \{ clientId: item\.clientId, noteId: item\.noteId \}\)/);
+  assert.match(banner, /setPage\("billing", \{ clientId: item\.clientId, claimId: item\.claimId \}\)/);
+});
+
 test("signature choices match the authenticated provider or client role", () => {
   const signaturePanel = source.slice(source.indexOf('<Card id="document-signatures"'), source.indexOf('<Card id="document-upload"'));
   assert.match(signaturePanel, /Provider signature/);
