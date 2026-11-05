@@ -2,35 +2,111 @@
 
 import { useEffect, useState } from "react";
 
-/** Provider-only inbox. Rehearsal state never leaves this component. */
-export default function FaxInbox() {
-  const [inbox, setInbox] = useState<any>(null);
+type SpruceInboxItem = {
+  itemId: string;
+  kind: "fax" | "call";
+  fromNumber: string;
+  createdAt: string;
+  status: string;
+  linkedClientId: string;
+  hasFile: boolean;
+};
+
+type ChartClient = { id: string; label: string };
+
+/**
+ * Provider-only inbox. Reads the Spruce-captured store (faxes and call
+ * recordings the Spruce webhook already saved under the spruce-inbox/ prefix),
+ * lets the provider open the stored document, and files a fax into a selected
+ * client's chart. The optional synthetic rehearsal stays on this page and never
+ * sends a fax or changes a real chart.
+ */
+export default function FaxInbox({ clients = [] }: { clients?: ChartClient[] }) {
+  const [items, setItems] = useState<SpruceInboxItem[] | null>(null);
   const [inboxError, setInboxError] = useState("");
   const [refresh, setRefresh] = useState(0);
-  const [cursor, setCursor] = useState("");
   const [opening, setOpening] = useState("");
+  const [attachTarget, setAttachTarget] = useState("");
+  const [attachClient, setAttachClient] = useState("");
+  const [attachBusy, setAttachBusy] = useState("");
+  const [attachNotice, setAttachNotice] = useState("");
+
   useEffect(() => {
     const controller = new AbortController();
-    setInbox(null); setInboxError("");
-    fetch(`/api/ehr/fax/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { credentials: "same-origin", cache: "no-store", signal: controller.signal })
-      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Could not load the fax inbox."); return body; })
-      .then(body => { if (!controller.signal.aborted) setInbox(body); })
-      .catch(error => { if (!controller.signal.aborted) setInboxError(error.message); });
+    setItems(null);
+    setInboxError("");
+    fetch("/api/ehr/spruce-inbox", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Could not load the Spruce inbox.");
+        return body;
+      })
+      .then((body) => {
+        if (!controller.signal.aborted) setItems(Array.isArray(body.items) ? body.items : []);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setInboxError(error.message);
+      });
     return () => controller.abort();
-  }, [refresh, cursor]);
-  async function openFax(id: string) {
-    setOpening(id); setInboxError("");
+  }, [refresh]);
+
+  async function openItem(item: SpruceInboxItem) {
+    setOpening(item.itemId);
+    setInboxError("");
     const fileWindow = window.open("about:blank", "_blank");
     if (fileWindow) fileWindow.opener = null;
     try {
-      const response = await fetch(`/api/ehr/fax/inbox?id=${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
+      const response = await fetch(
+        `/api/ehr/spruce-inbox?id=${encodeURIComponent(item.itemId)}&createdAt=${encodeURIComponent(item.createdAt)}`,
+        { credentials: "same-origin", cache: "no-store" }
+      );
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Could not open the fax.");
+      if (!response.ok) throw new Error(body.error || "Could not open the item.");
       if (!fileWindow) throw new Error("Allow this EHR to open a new tab, then try again.");
-      fileWindow.location.href = body.downloadUrl;
-    } catch (error: any) { fileWindow?.close(); setInboxError(error.message); }
-    finally { setOpening(""); }
+      fileWindow.location.href = body.viewUrl;
+    } catch (error: any) {
+      fileWindow?.close();
+      setInboxError(error.message);
+    } finally {
+      setOpening("");
+    }
   }
+
+  async function attachToChart(item: SpruceInboxItem) {
+    if (!attachClient) {
+      setAttachNotice("Choose a client chart first.");
+      return;
+    }
+    setAttachBusy(item.itemId);
+    setAttachNotice("");
+    setInboxError("");
+    try {
+      const response = await fetch("/api/ehr/spruce-inbox/attach", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ itemId: item.itemId, createdAt: item.createdAt, clientId: attachClient }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not attach this item to the chart.");
+      setAttachNotice("Filed to the selected chart.");
+      setAttachTarget("");
+      setAttachClient("");
+      setRefresh((value) => value + 1);
+    } catch (error: any) {
+      setAttachNotice(error.message);
+    } finally {
+      setAttachBusy("");
+    }
+  }
+
+  function formatReceived(value: string) {
+    if (!value) return "Unknown";
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+  }
+
   const [rehearsal, setRehearsal] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [destination, setDestination] = useState("");
@@ -45,36 +121,70 @@ export default function FaxInbox() {
   }
 
   const button = "rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50";
+  const loaded = Array.isArray(items);
 
   return (
     <section aria-labelledby="fax-inbox-heading" className="my-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="fax-inbox-heading" className="text-lg font-semibold">Business fax inbox</h2>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-sm text-amber-900">{inbox?.configured ? "Inbox storage connected · delivery not verified" : "Fax service not connected"}</span>
+        <h2 id="fax-inbox-heading" className="text-lg font-semibold">Spruce inbox</h2>
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-sm text-amber-900">{loaded ? "Spruce inbox connected" : "Loading inbox"}</span>
       </div>
-      <p className="mt-2 text-sm text-slate-600">Review received documents here. Chart assignment and outgoing fax delivery are not activated yet.</p>
+      <p className="mt-2 text-sm text-slate-600">Inbound faxes and call recordings captured from Spruce. Open a document to review it, then file a fax into a client chart.</p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" className={button} disabled>Send fax — not connected</button>
-        <button type="button" className={button} onClick={() => setRefresh(value => value + 1)}>Refresh inbox</button>
+        <button type="button" className={button} onClick={() => setRefresh((value) => value + 1)}>Refresh inbox</button>
         <button type="button" className={button} aria-expanded={rehearsal} onClick={() => { reset(); setRehearsal(!rehearsal); }}>
           {rehearsal ? "Close rehearsal" : "Try a synthetic fax rehearsal"}
         </button>
       </div>
       {inboxError ? <p role="alert" className="mt-3 text-sm text-red-800">{inboxError}</p> : null}
+      {attachNotice ? <p role="status" className="mt-3 text-sm text-slate-700">{attachNotice}</p> : null}
       {!rehearsal ? (
         <div className="mt-4 space-y-3">
-          {!inbox && !inboxError ? <p role="status" className="text-sm">Loading fax inbox…</p> : null}
-          {inbox && !inbox.configured ? <p className="rounded-lg bg-slate-50 p-4 text-sm">No connected fax feed. Incoming faxes cannot be received here yet.</p> : null}
-          {inbox?.configured && !inbox.items?.length ? <p className="text-sm">No received faxes on this page.</p> : null}
-          {(inbox?.items || []).map((fax: any) => <div key={fax.id} className="rounded-lg border p-4">
-            <p className="font-medium">{fax.title}</p>
-            <p className="mt-1 text-sm">Received: {fax.receivedAt} · Awaiting chart assignment</p>
-            <button type="button" className={`${button} mt-2`} disabled={Boolean(opening)} onClick={() => openFax(fax.id)}>{opening === fax.id ? "Opening…" : "Open received PDF"}</button>
-          </div>)}
-          <div className="flex gap-2">
-            {cursor ? <button type="button" className={button} onClick={() => setCursor("")}>First page</button> : null}
-            {inbox?.nextCursor ? <button type="button" className={button} onClick={() => setCursor(inbox.nextCursor)}>Next page</button> : null}
-          </div>
+          {!loaded && !inboxError ? <p role="status" className="text-sm">Loading Spruce inbox…</p> : null}
+          {loaded && items!.length === 0 ? <p className="text-sm">No Spruce items yet. Inbound faxes and call recordings will appear here as they arrive.</p> : null}
+          {(items || []).map((item) => (
+            <div key={`${item.createdAt}:${item.itemId}`} className="rounded-lg border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{item.kind === "fax" ? "Fax" : "Call recording / voicemail"}{item.fromNumber ? ` · from ${item.fromNumber}` : ""}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{item.status}</span>
+              </div>
+              <p className="mt-1 text-sm">Received: {formatReceived(item.createdAt)}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={button} disabled={!item.hasFile || Boolean(opening)} onClick={() => openItem(item)}>
+                  {opening === item.itemId ? "Opening…" : item.kind === "fax" ? "Open PDF" : "Open recording"}
+                </button>
+                {item.kind === "fax" ? (
+                  attachTarget === item.itemId ? (
+                    <button type="button" className={button} onClick={() => { setAttachTarget(""); setAttachClient(""); }}>Cancel</button>
+                  ) : (
+                    <button type="button" className={button} disabled={!item.hasFile} onClick={() => { setAttachTarget(item.itemId); setAttachClient(""); setAttachNotice(""); }}>Attach to chart</button>
+                  )
+                ) : (
+                  <span className="self-center text-xs text-slate-500">Listen-only</span>
+                )}
+              </div>
+              {attachTarget === item.itemId ? (
+                <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
+                  <label className="block text-sm font-medium" htmlFor={`attach-client-${item.itemId}`}>Client chart</label>
+                  <select
+                    id={`attach-client-${item.itemId}`}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2"
+                    value={attachClient}
+                    onChange={(event) => setAttachClient(event.target.value)}
+                  >
+                    <option value="">Choose a client chart</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>{client.label}</option>
+                    ))}
+                  </select>
+                  {clients.length === 0 ? <p className="text-sm text-slate-600">No client charts are available to you.</p> : null}
+                  <button type="button" className={button} disabled={!attachClient || Boolean(attachBusy)} onClick={() => attachToChart(item)}>
+                    {attachBusy === item.itemId ? "Filing…" : "File to this chart"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="mt-4 space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4">

@@ -4029,7 +4029,7 @@ ${generatedDocs.structuredNote.content}`}</div>
             await productionApi("/api/ehr/audit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "Recorded non-billable fax activity", category: "Fax Activity", clientId: activeClientId, entityType: "fax-activity", entityId: document.id, summary: `Provider-entered supporting documentation linked to appointment ${appointmentId}. Delivery not independently verified.` }) });
           } finally { setSavingDraft(false); }
         }} />}
-      {isProvider && <FaxInbox />}
+      {isProvider && <FaxInbox clients={clinicalClientEntries(store).map(([id, bucket]) => ({ id, label: `${bucket?.profile?.fullName || "Client"} — ${id}` }))} />}
     </div>
   );
 }
