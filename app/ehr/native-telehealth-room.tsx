@@ -241,7 +241,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       meeting.audioVideo.realtimeSubscribeToAttendeeIdPresence((id, present) => { if (id !== credentials.attendee.AttendeeId && !present) stopRecording(); });
       if (!live.current) throw new Error('Call cancelled.');
       meeting.audioVideo.start();
-    } catch (e: any) { if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); setNotice(e.message || 'Unable to join. Check camera and microphone permissions.'); }
+    } catch (e: any) { if (joined.current) void api('leave').catch(() => {}); disconnectLocal(); const reason = e?.message || 'Unable to join. Check camera and microphone permissions.'; setNotice(reason); setCameraNotice(`Could not join the room: ${reason}`); }
     finally { setBusy(false); }
   }
   async function leave(end = false) {
