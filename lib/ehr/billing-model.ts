@@ -34,6 +34,11 @@ export interface ClaimServiceLine {
   units: number;
   minutes?: number;
   chargeAmount: number;
+  // Optional telehealth coding. Place of service: "11" in-office (default),
+  // "10" telehealth-home, "02" telehealth-other. Modifiers: "95" audio+video,
+  // "93" audio-only. Absence preserves today's in-office behavior.
+  placeOfService?: string;
+  modifiers?: string[];
 }
 
 export interface ClaimReviewRecord {
@@ -75,6 +80,9 @@ export interface BillingClaim {
   sessionMinutes: number;
   diagnoses: ClaimDiagnosis[];
   serviceLines: ClaimServiceLine[];
+  // Claim-level place-of-service default the UI sets for all lines; optional so
+  // existing claims (no POS) keep today's in-office behavior.
+  placeOfService?: string;
   chargeAmount: number;
   paidAmount: number;
   status: ClaimStatus;

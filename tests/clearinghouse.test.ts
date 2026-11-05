@@ -32,13 +32,45 @@ test("clearinghouse secret parses and normalizes practice billing identity", () 
   assert.equal(config?.billingProvider.phoneNumber, "2125550100");
 });
 
-test("clearinghouse secret reports every missing field", () => {
+test("missing billingProvider fields fall back to the practice billing identity", () => {
+  // A secret that carries only apiKey + mode (the production Stedi secret shape)
+  // must still yield a complete, valid config using the configurable defaults.
+  const { config, missing } = parseClearinghouseConfig(
+    JSON.stringify({ apiKey: "test_key", mode: "test", billingProvider: { phoneNumber: "9145550100" } })
+  );
+  assert.deepEqual(missing, []);
+  assert.equal(config?.mode, "test");
+  assert.equal(config?.billingProvider.organizationName, "REVEALING LEADS TO HEALING WELLNESS SERVICES, LLC");
+  assert.equal(config?.billingProvider.npi, "1417470964");
+  assert.equal(config?.billingProvider.ein, "873646733");
+  assert.equal(config?.billingProvider.taxonomyCode, "1041C0700X");
+  assert.equal(config?.billingProvider.postalCode, "107030000");
+  assert.equal(config?.billingProvider.type2Npi, undefined);
+});
+
+test("clearinghouse secret reports fields that come only from the secret", () => {
+  // apiKey and mode come only from the secret (never from the settings defaults),
+  // so an empty secret still reports those as missing even though the full billing
+  // identity (org/NPI/EIN/taxonomy/address/phone) now fills from the defaults.
   const { config, missing } = parseClearinghouseConfig(JSON.stringify({ apiKey: "", billingProvider: {} }));
   assert.equal(config, undefined);
   assert.ok(missing.includes("Stedi API key"));
-  assert.ok(missing.includes("Billing provider NPI (10 digits)"));
-  assert.ok(missing.includes("Billing provider EIN (9 digits)"));
+  assert.ok(missing.includes('Mode ("test" or "production")'));
+  // These now resolve from PRACTICE_BILLING_IDENTITY, so they are NOT reported.
+  assert.ok(!missing.includes("Billing provider NPI (10 digits)"));
+  assert.ok(!missing.includes("Billing provider EIN (9 digits)"));
+  assert.ok(!missing.includes("Billing provider phone number"));
   assert.deepEqual(parseClearinghouseConfig("not json").missing, ["Clearinghouse secret must be valid JSON"]);
+});
+
+test("a secret with only apiKey + mode is a complete, valid connection (production secret shape)", () => {
+  // This is the exact shape of the production Stedi secret: no billingProvider at
+  // all. With the settings fallback it must parse to a connected test config.
+  const { config, missing } = parseClearinghouseConfig(JSON.stringify({ apiKey: "test_key", mode: "test" }));
+  assert.deepEqual(missing, []);
+  assert.equal(config?.mode, "test");
+  assert.equal(config?.billingProvider.phoneNumber, "9146352687");
+  assert.equal(config?.billingProvider.npi, "1417470964");
 });
 
 test("patient demographics require insurance-card fields before a claim can be sent", () => {
@@ -72,6 +104,35 @@ test("internal claim maps to Stedi professional claim JSON", () => {
   assert.equal(payload.serviceLines[0].procedureCode.code, "90837");
   assert.equal(payload.serviceLines[0].renderingProvider.identifiers.npi, provider.npi);
   assert.deepEqual(payload.serviceLines[0].datesOfService, { start: "2026-09-29", end: "2026-09-29" });
+});
+
+test("in-office claim (no POS/modifier) keeps today's service-line shape", () => {
+  const { claim, patient } = buildConnectionCheckClaim(provider, "2026-09-29");
+  const payload = buildProfessionalClaimSubmission(claim, patient, provider);
+  const line = payload.serviceLines[0] as Record<string, unknown>;
+  assert.equal(line.placeOfService, undefined);
+  assert.deepEqual(line.procedureCode, { code: "90837" });
+});
+
+test("solo billing uses the individual NPI as the billing provider NPI", () => {
+  const { claim, patient } = buildConnectionCheckClaim(provider, "2026-09-29");
+  const payload = buildProfessionalClaimSubmission(claim, patient, provider);
+  assert.equal(payload.billing.billingProvider.identifiers.npi, provider.npi);
+  const orgPayload = buildProfessionalClaimSubmission(claim, patient, { ...provider, type2Npi: "1234567893" });
+  assert.equal(orgPayload.billing.billingProvider.identifiers.npi, "1234567893");
+});
+
+test("telehealth POS and modifier flow onto the service line", () => {
+  const { claim, patient } = buildConnectionCheckClaim(provider, "2026-09-29");
+  const telehealthClaim = {
+    ...claim,
+    placeOfService: "10",
+    serviceLines: [{ ...claim.serviceLines[0], placeOfService: "10", modifiers: ["95"] }],
+  };
+  const payload = buildProfessionalClaimSubmission(telehealthClaim, patient, provider);
+  const line = payload.serviceLines[0] as Record<string, unknown>;
+  assert.equal(line.placeOfService, "10");
+  assert.deepEqual(line.procedureCode, { code: "90837", procedureModifiers: ["95"] });
 });
 
 const jsonResponse = (status: number, body: unknown) =>

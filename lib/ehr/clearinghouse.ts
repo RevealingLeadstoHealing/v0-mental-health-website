@@ -4,6 +4,7 @@
 
 import { createHash } from "node:crypto";
 import type { BillingClaim } from "./billing-model";
+import { PRACTICE_BILLING_IDENTITY } from "./billing-settings";
 
 export const STEDI_CLAIMS_BASE_URL = "https://claims.us.stedi.com/2025-03-07";
 
@@ -20,6 +21,9 @@ export interface BillingProviderConfig {
   state: string;
   postalCode: string;
   phoneNumber: string;
+  // Optional Type 2 (organization) NPI. Empty for a solo / sole-proprietor
+  // practice, where the individual NPI is also the billing-provider NPI.
+  type2Npi?: string;
 }
 
 export interface ClearinghouseConfig {
@@ -62,17 +66,24 @@ export function parseClearinghouseConfig(raw: string): { config?: ClearinghouseC
   const provider = (parsed.billingProvider && typeof parsed.billingProvider === "object"
     ? parsed.billingProvider
     : {}) as Record<string, unknown>;
+  // Each billing-identity field falls back to the configurable practice default
+  // (PRACTICE_BILLING_IDENTITY) when the secret omits or blanks it, so a secret
+  // that carries only apiKey/mode still yields a complete, valid config with the
+  // owner's confirmed solo-individual identity. apiKey and mode come ONLY from
+  // the secret (never from settings/env defaults).
+  const defaults = PRACTICE_BILLING_IDENTITY;
   const billingProvider: BillingProviderConfig = {
-    organizationName: text(provider.organizationName),
-    npi: digits(provider.npi),
-    ein: digits(provider.ein),
-    taxonomyCode: text(provider.taxonomyCode).toUpperCase(),
-    addressLine1: text(provider.addressLine1),
-    addressLine2: text(provider.addressLine2) || undefined,
-    city: text(provider.city),
-    state: text(provider.state).toUpperCase(),
-    postalCode: digits(provider.postalCode),
-    phoneNumber: digits(provider.phoneNumber),
+    organizationName: text(provider.organizationName) || defaults.organizationName,
+    npi: digits(provider.npi) || digits(defaults.npi),
+    ein: digits(provider.ein) || digits(defaults.ein),
+    taxonomyCode: (text(provider.taxonomyCode) || defaults.taxonomyCode).toUpperCase(),
+    addressLine1: text(provider.addressLine1) || defaults.addressLine1,
+    addressLine2: text(provider.addressLine2) || defaults.addressLine2 || undefined,
+    city: text(provider.city) || defaults.city,
+    state: (text(provider.state) || defaults.state).toUpperCase(),
+    postalCode: digits(provider.postalCode) || digits(defaults.postalCode),
+    phoneNumber: digits(provider.phoneNumber) || digits(defaults.phoneNumber),
+    type2Npi: digits(provider.type2Npi) || digits(defaults.type2Npi) || undefined,
   };
   const mode = parsed.mode === "production" ? "production" : parsed.mode === "test" ? "test" : undefined;
   const missing: string[] = [];
@@ -189,25 +200,41 @@ export function buildProfessionalClaimSubmission(
     billing: {
       billingProvider: {
         name: { organization: provider.organizationName },
-        identifiers: { npi: provider.npi, taxonomyCode: provider.taxonomyCode },
+        // Billing-provider NPI is the Type 2 (organization) NPI when present,
+        // else the individual NPI (solo / sole-proprietor billing).
+        identifiers: {
+          npi: provider.type2Npi && provider.type2Npi.trim() ? provider.type2Npi.trim() : provider.npi,
+          taxonomyCode: provider.taxonomyCode,
+        },
         address: address(provider),
       },
       taxId: { ein: provider.ein },
       patientControlNumber: patientControlNumberForClaim(claim.claimId),
       totalCharge: money(claim.chargeAmount),
     },
-    serviceLines: claim.serviceLines.map((line, index) => ({
-      lineItemControlNumber: `${index + 1}`,
-      datesOfService: { start: claim.dateOfService, end: claim.dateOfService },
-      procedureCode: { code: line.code.trim().toUpperCase() },
-      units: String(line.units || 1),
-      lineItemChargeAmount: money(line.chargeAmount),
-      diagnosisCodes: diagnosisCodes.slice(0, 4),
-      renderingProvider: {
-        name: { person: splitProviderName(claim.renderingProviderName) },
-        identifiers: { npi: claim.renderingProviderNpi },
-      },
-    })),
+    serviceLines: claim.serviceLines.map((line, index) => {
+      // Place of service: the line's own value, else the claim-level default.
+      // When neither is set the field is omitted (today's in-office behavior).
+      const placeOfService = text(line.placeOfService) || text(claim.placeOfService);
+      // Telehealth modifiers attach to the service line's procedure code.
+      const modifiers = (line.modifiers || []).map((m) => text(m).toUpperCase()).filter(Boolean);
+      return {
+        lineItemControlNumber: `${index + 1}`,
+        datesOfService: { start: claim.dateOfService, end: claim.dateOfService },
+        procedureCode: {
+          code: line.code.trim().toUpperCase(),
+          ...(modifiers.length ? { procedureModifiers: modifiers } : {}),
+        },
+        ...(placeOfService ? { placeOfService } : {}),
+        units: String(line.units || 1),
+        lineItemChargeAmount: money(line.chargeAmount),
+        diagnosisCodes: diagnosisCodes.slice(0, 4),
+        renderingProvider: {
+          name: { person: splitProviderName(claim.renderingProviderName) },
+          identifiers: { npi: claim.renderingProviderNpi },
+        },
+      };
+    }),
     submitter: {
       name: { organization: provider.organizationName },
       contact: { phoneNumber: provider.phoneNumber },

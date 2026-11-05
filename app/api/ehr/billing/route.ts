@@ -75,17 +75,37 @@ export async function POST(request: Request) {
           }))
       : [];
 
+    // Telehealth claim coding is whitelisted so only valid CMS-1500 values persist.
+    const ALLOWED_POS = ["11", "10", "02"];
+    const ALLOWED_MODIFIERS = ["95", "93"];
+    const sanitizePlaceOfService = (value: unknown) => {
+      const pos = String(value || "").trim();
+      return ALLOWED_POS.includes(pos) ? pos : undefined;
+    };
+    const sanitizeModifiers = (value: unknown) =>
+      Array.isArray(value)
+        ? value.map((m) => String(m || "").trim()).filter((m) => ALLOWED_MODIFIERS.includes(m))
+        : [];
+
     const serviceLines: ClaimServiceLine[] = Array.isArray(body.serviceLines)
       ? body.serviceLines
           .filter((l: unknown) => l && typeof l === "object")
-          .map((l: Record<string, unknown>) => ({
-            code: String(l.code || "").slice(0, 20),
-            label: String(l.label || "").slice(0, 300),
-            units: Math.max(1, Number(l.units) || 1),
-            minutes: l.minutes != null ? Number(l.minutes) : undefined,
-            chargeAmount: Number(l.chargeAmount) || 0,
-          }))
+          .map((l: Record<string, unknown>) => {
+            const placeOfService = sanitizePlaceOfService(l.placeOfService);
+            const modifiers = sanitizeModifiers(l.modifiers);
+            return {
+              code: String(l.code || "").slice(0, 20),
+              label: String(l.label || "").slice(0, 300),
+              units: Math.max(1, Number(l.units) || 1),
+              minutes: l.minutes != null ? Number(l.minutes) : undefined,
+              chargeAmount: Number(l.chargeAmount) || 0,
+              ...(placeOfService ? { placeOfService } : {}),
+              ...(modifiers.length ? { modifiers } : {}),
+            };
+          })
       : [];
+
+    const claimPlaceOfService = sanitizePlaceOfService(body.placeOfService);
 
     const claim = await createBillingClaim(actor, {
       clientId,
@@ -101,6 +121,7 @@ export async function POST(request: Request) {
       sessionMinutes: Number(body.sessionMinutes) || 0,
       diagnoses,
       serviceLines,
+      ...(claimPlaceOfService ? { placeOfService: claimPlaceOfService } : {}),
       chargeAmount: Number(body.chargeAmount) || 0,
       providerSignature: String(body.providerSignature || "").slice(0, 200),
     });

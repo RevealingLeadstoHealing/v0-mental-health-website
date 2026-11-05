@@ -11,6 +11,7 @@ import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSessio
 import ClinicalCodeInput from "./clinical-code-input";
 import DiagnosisBillingPanel from "./diagnosis-billing-panel";
 import { claimDiagnoses, diagnosisPatch, otherDiagnoses, selectedDiagnoses } from "../../lib/ehr/diagnosis-billing";
+import { defaultTelehealthCoding } from "../../lib/ehr/billing-settings";
 import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
 import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups, MentalStatusExam, mseToText } from "./structured-picker";
@@ -5510,12 +5511,18 @@ function BillingPage() {
     setBillingAppointmentId(appointment.id);
     if (!selectedClientId) return;
     const current = store.users[selectedClientId].intake || {};
+    // Pre-fill telehealth place-of-service + modifier from the appointment
+    // format (Telehealth -> POS 10 + 95, Phone -> POS 02 + 93, In Person -> POS
+    // 11 + none). The provider can still override below.
+    const coding = defaultTelehealthCoding(appointment.format);
     updateSpecificUserData(selectedClientId, "intake", {
       ...current,
       dateOfService: appointment.date || current.dateOfService || "",
       sessionMinutes: appointment.sessionMinutes || current.sessionMinutes || "",
+      placeOfService: coding.placeOfService,
+      serviceModifier: coding.modifiers[0] || "",
     });
-    setNotice("Appointment date and documented session minutes were carried into billing for provider review.");
+    setNotice("Appointment date, documented session minutes, and telehealth place of service were carried into billing for provider review.");
   };
   const saveBillingSnapshot = async () => {
     if (!selectedClientId) return;
@@ -5570,9 +5577,11 @@ function BillingPage() {
     // record is the source of truth for review status and submission.
     try {
       const diagnoses = claimDiagnoses(current);
+      const claimPlaceOfService = current.placeOfService || "";
+      const claimModifiers = current.serviceModifier ? [current.serviceModifier] : [];
       const serviceLines = (current.billingCodes || []).map((entry) => {
         const parts = String(entry).split(" | ");
-        return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0 };
+        return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0, placeOfService: claimPlaceOfService, modifiers: claimModifiers };
       });
       // Charge is carried on the first service line so line total matches the claim.
       if (serviceLines.length > 1) serviceLines.slice(1).forEach((line) => { line.chargeAmount = 0; });
@@ -5593,6 +5602,7 @@ function BillingPage() {
           sessionMinutes: Number(current.sessionMinutes) || 0,
           diagnoses,
           serviceLines,
+          placeOfService: claimPlaceOfService,
           chargeAmount: Number(current.chargeAmount) || 0,
           providerSignature: String(current.providerSignature || "").trim(),
         }),
@@ -5891,6 +5901,30 @@ function BillingPage() {
               <Input label="Chief Complaint / Reason for Visit" value={intake.chiefComplaint || ""} onChange={(e) => updateBillingField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" />
               <Input label="Actual Session Minutes" type="number" min="1" step="1" value={intake.sessionMinutes || ""} onChange={(e) => updateBillingField("sessionMinutes", e.target.value)} placeholder="Document actual minutes" />
             </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Place of service</label>
+                <Select value={intake.placeOfService || "11"} onValueChange={(value) => updateBillingField("placeOfService", value)}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Place of service" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="11">In office (11)</SelectItem>
+                    <SelectItem value="10">Telehealth — patient home (10)</SelectItem>
+                    <SelectItem value="02">Telehealth — other than home (02)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Telehealth modifier</label>
+                <Select value={intake.serviceModifier || "none"} onValueChange={(value) => updateBillingField("serviceModifier", value === "none" ? "" : value)}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Modifier" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (in-office)</SelectItem>
+                    <SelectItem value="95">95 — synchronous audio + video</SelectItem>
+                    <SelectItem value="93">93 — audio only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <p className="text-xs text-slate-600">Document actual time and select the service supported by the record and payer rules. Time guidance assists review; it does not select or guarantee a billable code.</p>
             <DiagnosisBillingPanel values={intake} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={updateBillingDiagnosis} onBillingCodesChange={codes => updateBillingField("billingCodes", codes)} otherDiagnoses={otherDiagnoses(intake)} onRemoveOtherDiagnosis={entry => updateBillingField("diagnoses", (intake.diagnoses || []).filter(item => item !== entry))} />
 
@@ -5911,6 +5945,8 @@ function BillingPage() {
             <p><span className="font-medium">Payer:</span> {intake.insurancePayer || "Not entered"} → {billingPayerLabel(classifyBillingPayer(intake.insurancePayer))}</p>
             <p><span className="font-medium">Date of service:</span> {intake.dateOfService || "Not entered"}</p>
             <p><span className="font-medium">Charge:</span> {billingMoney(intake.chargeAmount)}</p>
+            <p><span className="font-medium">Place of service:</span> {intake.placeOfService === "10" ? "Telehealth — patient home (10)" : intake.placeOfService === "02" ? "Telehealth — other than home (02)" : "In office (11)"}</p>
+            <p><span className="font-medium">Telehealth modifier:</span> {intake.serviceModifier === "95" ? "95 — synchronous audio + video" : intake.serviceModifier === "93" ? "93 — audio only" : "None"}</p>
             <p><span className="font-medium">Chief complaint:</span> {intake.chiefComplaint || "Not entered"}</p>
             <p><span className="font-medium">Session minutes:</span> {intake.sessionMinutes || "Not entered"}</p>
             <p><span className="font-medium">Primary:</span> {intake.primaryDiagnosis || "Not selected"}</p>
