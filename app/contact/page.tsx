@@ -97,10 +97,13 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
             <p><strong>Office:</strong> 119 DeHaven Dr, Yonkers, NY 10703</p>
             <p><strong>Phone:</strong> (914) 635-2687</p>
             <p><strong>Fax:</strong> (914) 371-3845</p>
-            <p><strong>Email:</strong> connect@rlth.org &middot; info@revealing-leads-to-healing-wellness-services.org</p>
+<p><strong>Other business contact numbers:</strong> (914) 969-3292 &middot; (410) 965-1234</p>
+            <p><strong>Primary email:</strong> connect@rlth.org</p>
+            {/* Webador mailbox — subscription ends 2026-12-16; remove this address then. */}
+            <p><strong>Secondary email:</strong> info@revealing-leads-to-healing-wellness-services.org</p>
             <p>
               <strong>Availability:</strong> In-Person Sessions in Yonkers &amp; Secure Telehealth
-              Services across New York State.
+              Services for clients in states where Kenseener is licensed.
             </p>
           </article>
 

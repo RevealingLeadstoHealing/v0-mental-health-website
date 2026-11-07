@@ -2,8 +2,12 @@
 // Verification status is tracked per credential: "verified" means Claude or the practice
 // independently confirmed it against the issuing body's own records; "self_reported" means
 // it is provider-entered and has not (yet) been independently confirmed. Update the status
-// and note whenever a credential is actually checked or renewed.
-export type VerificationStatus = "verified" | "self_reported";
+// and note whenever a credential is actually checked or renewed. "document_on_file" means
+// the provider supplied the issuing body's official record (letter, portal record), but it
+// has not been matched against the issuing body's public lookup.
+import { STATE_LICENSURE } from "./licensure.ts";
+
+export type VerificationStatus = "verified" | "self_reported" | "document_on_file";
 
 type ProviderIdentifiers = {
   npi: string; npiVerification: VerificationStatus; npiVerificationNote: string;
@@ -26,15 +30,15 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     npiVerification: "verified",
     npiVerificationNote: "Confirmed active against the federal NPI Registry (NPPES), September 2026.",
     caqhId: "14077537",
-    caqhVerification: "self_reported",
-    caqhVerificationNote: "Provider-reported. CAQH ProView is a private, login-only system — confirm current attestation directly in your CAQH account.",
+    caqhVerification: "document_on_file",
+    caqhVerificationNote: "CAQH ProView is login-only, so it can't be checked publicly. Confirm current attestation directly in your CAQH account.",
     licenseNumber: "103235",
     licenseVerification: "self_reported",
     licenseVerificationNote: "NY LCSW License 103235 — Provider-reported. Confirm current status directly at NYSED's Office of the Professions license verification (op.nysed.gov). Florida TLHT LCSW License #7382 also held — see additionalCredentials. Status: Clear (confirmed via Florida TLHT portal, October 2026).",
     casacNumber: "CASAC-26242", casacLevel: "Master Level",
     casacEffectiveDate: "2025-01-03", casacExpirationDate: "2028-01-02",
-    casacVerification: "self_reported",
-    casacVerificationNote: "Provider-reported. Confirm current status directly with NY OASAS credentialing.",
+    casacVerification: "document_on_file",
+    casacVerificationNote: "Provider supplied the NY OASAS credential record; expiration taken from OASAS.",
     // Unless individually noted otherwise, all pending and future certifications/trainings
     // are issued via PESI/Evergreen, per owner instruction (Sept 13, 2026). None of these
     // are independently verifiable by Claude from outside the provider's own accounts — PESI/
@@ -136,7 +140,7 @@ export function documentSignatureText(signature: {
 export type CredentialAlert = {
   id: string;
   label: string;
-  severity: "expired" | "due_soon";
+  severity: "expired" | "due_soon" | "reminder";
   message: string;
   expirationDate: string;
 };
@@ -147,25 +151,44 @@ export function credentialRenewalAlerts(name: string = "", today: Date = new Dat
   const identifiers = providerIdentifiersForName(name);
   const alerts: CredentialAlert[] = [];
 
-  const checkExpiration = (id: string, label: string, expirationDate: string) => {
+  const checkExpiration = (id: string, label: string, expirationDate: string, estimated = false) => {
     if (!expirationDate) return;
+    const tag = estimated ? " (estimated)" : "";
     const expires = new Date(`${expirationDate}T00:00:00`);
     if (Number.isNaN(expires.getTime())) return;
     const daysRemaining = Math.ceil((expires.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     if (daysRemaining < 0) {
       alerts.push({
         id, label, severity: "expired", expirationDate,
-        message: `${label} expired on ${expirationDate}. Renew immediately and update the expiration date in this record — this alert will keep appearing until it is renewed and the record is updated.`,
+        message: `${label} expired on ${expirationDate}${tag}. Renew immediately and update the expiration date in this record — this alert will keep appearing until it is renewed and the record is updated.`,
       });
     } else if (daysRemaining <= RENEWAL_WINDOW_DAYS) {
       alerts.push({
         id, label, severity: "due_soon", expirationDate,
-        message: `${label} expires ${expirationDate} (in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}). Begin renewal now — this alert will keep appearing until it is renewed and the record is updated with the new date.`,
+        message: `${label} expires ${expirationDate}${tag} (in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}). Begin renewal now — this alert will keep appearing until it is renewed and the record is updated with the new date.`,
       });
     }
   };
 
   checkExpiration("casac", `${identifiers.casacLevel ? `${identifiers.casacLevel} ` : ""}CASAC credential (${identifiers.casacNumber || "unnumbered"})`, identifiers.casacExpirationDate);
+
+  // State licenses are the practice owner's, so they only apply to a provider with identifiers on file.
+  if (identifiers.npi) {
+    for (const row of STATE_LICENSURE) {
+      if (row.status !== "Licensed") continue;
+      const label = `${row.state} license${row.licenseNumber ? ` (${row.licenseNumber})` : ""}`;
+      if (row.expires) {
+        checkExpiration(`license-${row.code.toLowerCase()}`, label, row.expires, row.expiresEstimated === true);
+      } else {
+        const noun = row.code === "FL" ? `${row.state} telehealth registration` : label;
+        alerts.push({
+          id: `license-${row.code.toLowerCase()}-no-expiration`,
+          label, severity: "reminder", expirationDate: "",
+          message: `${noun} expiration date not on file — look it up and record it`,
+        });
+      }
+    }
+  }
 
   return alerts;
 }

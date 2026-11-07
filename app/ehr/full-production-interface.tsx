@@ -5,7 +5,8 @@ import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTa
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText, credentialRenewalAlerts } from "../../lib/ehr/provider-signature";
-import { STATE_LICENSURE, licensureLicenseText } from "../../lib/ehr/licensure";
+import { STATE_LICENSURE, licensureLicenseText, licensureDatesText } from "../../lib/ehr/licensure";
+import { webadorReminderActive, WEBADOR_REMINDER_TEXT } from "../../lib/ehr/webador-reminder";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
@@ -1407,6 +1408,17 @@ function MainApp() {
   const isProvider = currentUser.role === "provider";
   const standingAlerts = useStandingAlerts(isProvider);
   const deficiencyWorklist = useDeficiencyWorklist(isProvider, store);
+  // Provider-only Dec 9-16 reminder; dismissible for the current browser session only.
+  const [showWebadorReminder, setShowWebadorReminder] = useState(false);
+  useEffect(() => {
+    let dismissed = false;
+    try { dismissed = window.sessionStorage.getItem("webador-reminder-dismissed") === "1"; } catch { /* storage unavailable */ }
+    setShowWebadorReminder(isProvider && !dismissed && webadorReminderActive());
+  }, [isProvider]);
+  const dismissWebadorReminder = () => {
+    try { window.sessionStorage.setItem("webador-reminder-dismissed", "1"); } catch { /* storage unavailable */ }
+    setShowWebadorReminder(false);
+  };
   useEffect(() => {
     if (!isProvider || standingAlerts.alerts.length === 0) return;
     playAlertChime();
@@ -1519,6 +1531,12 @@ function MainApp() {
         </aside>
         <main className="ehr-workspace-content" ref={workspaceRef} tabIndex={-1} aria-label={navItems.find(([id]) => id === page)?.[1] || "EHR workspace"}>
           {saveStatus && <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-medium ${saveStatus.includes("failed") || saveStatus.includes("not saved") ? "border-red-200 bg-red-50 text-red-800" : saveStatus.includes("Saving") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{saveStatus}</div>}
+          {showWebadorReminder && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-900">{WEBADOR_REMINDER_TEXT}</p>
+              <button type="button" className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={dismissWebadorReminder}>Dismiss for this session</button>
+            </div>
+          )}
                     {isProvider && standingAlerts.alerts.length > 0 && (
             <div className="mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
               <p className="font-semibold text-amber-900">
@@ -6990,12 +7008,13 @@ function AssessmentsPage() {
   );
 }
 function VerificationTag({ status }) {
-  const verified = status === "verified";
+  const style = status === "verified" ? "bg-emerald-100 text-emerald-800" : status === "document_on_file" ? "bg-sky-100 text-sky-800" : "bg-amber-100 text-amber-800";
+  const text = status === "verified" ? "Verified" : status === "document_on_file" ? "Document on file" : "Self-reported";
   return (
     <span
-      className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle ${verified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
+      className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle ${style}`}
     >
-      {verified ? "Verified" : "Self-reported"}
+      {text}
     </span>
   );
 }
@@ -7011,8 +7030,8 @@ function InfrastructurePage() {
           <CardHeader><CardTitle>Credential renewal alert{renewalAlerts.length > 1 ? "s" : ""}</CardTitle><CardDescription>Stays visible until the credential is renewed and its date is updated in this record — uploading a scanned copy to the Document Library alone will not clear it.</CardDescription></CardHeader>
           <CardContent className="space-y-2 text-sm">
             {renewalAlerts.map(alert => (
-              <p key={alert.id} className={alert.severity === "expired" ? "font-medium text-red-700" : "font-medium text-amber-800"}>
-                {alert.severity === "expired" ? "Expired: " : "Renewal due soon: "}{alert.message}
+              <p key={alert.id} className={alert.severity === "expired" ? "font-medium text-red-700" : alert.severity === "reminder" ? "text-slate-700" : "font-medium text-amber-800"}>
+                {alert.severity === "expired" ? "Expired: " : alert.severity === "reminder" ? "Reminder: " : "Renewal due soon: "}{alert.message}
               </p>
             ))}
           </CardContent>
@@ -7021,7 +7040,7 @@ function InfrastructurePage() {
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardHeader><CardTitle>Provider identification</CardTitle><CardDescription>{currentUser?.fullName}</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3 text-sm">
-          <p className="md:col-span-3 text-xs text-slate-500">Items marked <VerificationTag status="verified" /> above have been independently confirmed against the issuing body's own records. Everything else on this card — including all entries under additional credentials, education, completed training, and training in progress — is self-reported by the provider and has not been independently verified.</p>
+          <p className="md:col-span-3 text-xs text-slate-500"><VerificationTag status="verified" /> means the credential was confirmed on the issuing body's own public lookup. <VerificationTag status="document_on_file" /> means the provider supplied the issuing body's official record (letter or portal record), but it has not been matched against a public lookup. <VerificationTag status="self_reported" /> means it is provider-entered and not independently confirmed. Entries under additional credentials, education, completed training, and training in progress are self-reported unless noted otherwise.</p>
           <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}{identifiers.npi && <VerificationTag status={identifiers.npiVerification} />}</p>
           <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}{identifiers.caqhId && <VerificationTag status={identifiers.caqhVerification} />}</p>
           <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}{identifiers.licenseNumber && <VerificationTag status={identifiers.licenseVerification} />}</p>
@@ -7057,7 +7076,7 @@ function InfrastructurePage() {
               <p className="font-medium">{status === "Planned" ? "Planned (application not yet submitted)" : status}</p>
               <ul className="list-disc pl-5">
                 {STATE_LICENSURE.filter(row => row.status === status).map(row => (
-                  <li key={row.code}>{row.state} ({row.code}) — {status}. {licensureLicenseText(row)}{row.note ? `. ${row.note}` : ""}</li>
+                  <li key={row.code}>{row.state} ({row.code}) — {status}. {licensureLicenseText(row)}{row.note ? `. ${row.note}` : ""}{licensureDatesText(row) ? `. ${licensureDatesText(row)}` : ""}{row.verification === "document_on_file" && <VerificationTag status="document_on_file" />}</li>
                 ))}
               </ul>
             </div>

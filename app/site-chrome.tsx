@@ -51,8 +51,10 @@ export function SiteFooter() {
         <p className="footer-title">Revealing Leads to Healing Wellness Services, LLC</p>
         <p>Office Location: 119 DeHaven Dr, Yonkers, NY 10703</p>
         <p>Phone: (914) 635-2687 &middot; Fax: (914) 371-3845</p>
-        <p>Email: connect@rlth.org &middot; Info@revealing-leads-to-healing-wellness-services.org</p>
-        <p>Availability: In-Person Sessions in Yonkers &amp; Secure Telehealth Services across New York State.</p>
+        <p>Other business contact numbers: (914) 969-3292 &middot; (410) 965-1234</p>
+        {/* Webador mailbox — subscription ends 2026-12-16; remove this address then. */}
+        <p>Primary email: connect@rlth.org &middot; Secondary email: info@revealing-leads-to-healing-wellness-services.org</p>
+        <p>Availability: In-Person Sessions in Yonkers &amp; Secure Telehealth Services for clients in states where Kenseener is licensed.</p>
         <p className="footer-copyright">&copy; 2024&ndash;2026 Revealing Leads to Healing Wellness Services, LLC</p>
       </div>
     </footer>
