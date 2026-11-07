@@ -2,6 +2,7 @@ import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
 import { ApiError } from "./auth";
+import { MODULE_SNAPSHOT_SK_PREFIX, latestModuleRecordId } from "./module-snapshots";
 import { normalizeEmail } from "./supervision";
 import type { SupervisedNoteRecord, SuperviseeEntry } from "./supervision";
 
@@ -12,7 +13,7 @@ import type { SupervisedNoteRecord, SuperviseeEntry } from "./supervision";
 
 const TableName = () => rlthAwsFoundation.clinicalRecordsTableName;
 const partitionKey = (practiceId: string) => `PRACTICE#${practiceId}#SUPERVISION`;
-const MAX_NOTE_RECORDS = 500;
+const MAX_NOTE_RECORDS = 5000;
 
 export async function getSupervisee(practiceId: string, email: string): Promise<SuperviseeEntry | null> {
   const dynamo = getDynamoDocumentClient();
@@ -92,8 +93,28 @@ export async function listSupervisedNotes(
     );
     items.push(...((response.Items || []) as SupervisedNoteRecord[]));
     startKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && items.length < MAX_NOTE_RECORDS);
-  return items.slice(0, MAX_NOTE_RECORDS);
+    // Fail closed: a truncated list would silently drop unsigned notes from the billing gate.
+    if (items.length > MAX_NOTE_RECORDS) {
+      throw new ApiError(500, "Supervised note list is too large to evaluate safely. Contact support.");
+    }
+  } while (startKey);
+  return items;
+}
+
+/** The notes already stored in the client's latest chart snapshot (empty when none). */
+export async function getStoredNotesSnapshot(clientId: string): Promise<unknown[]> {
+  const dynamo = getDynamoDocumentClient();
+  const result = await dynamo.send(
+    new GetCommand({
+      TableName: TableName(),
+      Key: {
+        PK: `CLIENT#${clientId}`,
+        SK: `${MODULE_SNAPSHOT_SK_PREFIX}${latestModuleRecordId("notes")}`,
+      },
+    })
+  );
+  const value = (result.Item as { payload?: { value?: unknown } } | undefined)?.payload?.value;
+  return Array.isArray(value) ? value : [];
 }
 
 /**

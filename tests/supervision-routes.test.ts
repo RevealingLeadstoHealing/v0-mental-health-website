@@ -43,7 +43,10 @@ test("submit, cosign and return enforce who may act", () => {
 
 test("the records guard exempts the owner and blocks supervisee finalization", () => {
   const records = read("../app/api/ehr/records/route.ts");
-  assert.match(records, /actor\.role !== "owner" && supervisee && supervisee\.active/);
+  // Any registry entry (including a deactivated one) keeps the guard; the owner is exempt.
+  assert.match(records, /actor\.role !== "owner" && supervisee \?/);
+  assert.doesNotMatch(records, /supervisee\.active \? supervisee/);
+  assert.match(records, /getStoredNotesSnapshot/);
   assert.match(records, /Supervisee notes are finalized only through supervisor review/);
 });
 

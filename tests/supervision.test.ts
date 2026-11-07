@@ -208,11 +208,34 @@ test("reconcile strips an intern's forged signature and keeps the owner's notes"
     { id: "owner-note", status: "Signed by provider", signature: { provider: "Kenseener Carpenter" } },
   ];
   const writer = { email: "intern@example.com", kind: "intern" as SuperviseeKind };
-  assert.deepEqual(findIllegalFinalization(incoming, [], writer.email), ["forged"]);
+  // The owner's already-stored signed note is legal while unchanged.
+  assert.deepEqual(findIllegalFinalization(incoming, [], writer.email, [incoming[1]]), ["forged"]);
   const result = reconcileSupervisedNotes(incoming, [], writer);
   assert.equal(result[0].signature, null);
   assert.equal(result[0].status, "Draft - not submitted");
   assert.equal(result[1].signature.provider, "Kenseener Carpenter");
+});
+
+test("a signed note is illegal from a supervisee even when authorEmail is omitted or spoofed", () => {
+  const signed = { status: "Signed by provider", signature: { provider: "Kenseener Carpenter", signedAt: "t" } };
+  const incoming = [
+    { id: "no-author", ...signed },
+    { id: "other-author", authorEmail: "someone@example.com", ...signed },
+    { id: "final-no-sig", status: "Final", signature: null },
+  ];
+  assert.deepEqual(
+    findIllegalFinalization(incoming, [], "intern@example.com", []),
+    ["no-author", "other-author", "final-no-sig"]
+  );
+});
+
+test("an existing stored signed note stays legal only while unchanged", () => {
+  const stored = { id: "old", status: "Signed by provider", content: "a", signature: { provider: "K", signedAt: "t" } };
+  assert.deepEqual(findIllegalFinalization([stored], [], "intern@example.com", [stored]), []);
+  assert.deepEqual(
+    findIllegalFinalization([{ ...stored, content: "edited" }], [], "intern@example.com", [stored]),
+    ["old"]
+  );
 });
 
 test("reconcile does not overwrite a returned note's in-progress edits but drops signatures", () => {

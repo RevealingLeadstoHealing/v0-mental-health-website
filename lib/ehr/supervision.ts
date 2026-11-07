@@ -463,23 +463,53 @@ export function reconcileSupervisedNotes(
   return result;
 }
 
-/** Ids of the writer's own notes in an incoming snapshot that claim to be signed/final without a finalized record. */
+function isSignedOrFinalNote(note: LooseNote): boolean {
+  const signed = Boolean(note.signature && String(note.signature.provider || "").trim());
+  const final = /^(final|signed)/i.test(String(note.status || ""));
+  return signed || final;
+}
+
+function sameSignedNote(a: LooseNote, b: LooseNote): boolean {
+  return (
+    String(a.id || "") === String(b.id || "") &&
+    String(a.status || "") === String(b.status || "") &&
+    String(a.content || "") === String(b.content || "") &&
+    String(a.signature?.provider || "") === String(b.signature?.provider || "") &&
+    String(a.signature?.signedAt || "") === String(b.signature?.signedAt || "")
+  );
+}
+
+/**
+ * Ids of notes in an incoming snapshot, written by a supervisee, that are signed/final
+ * but are neither a finalized supervised record nor unchanged from the stored snapshot.
+ * Deliberately ignores the client-supplied `authorEmail`, so omitting or changing it
+ * cannot hide a forged signature. `storedNotes` is the notes snapshot already on file
+ * (the owner's existing signed notes stay legal only while unchanged).
+ * `_writerEmail` is kept for call-site compatibility and is not used to filter.
+ */
 export function findIllegalFinalization(
   incoming: unknown[],
   records: SupervisedNoteRecord[],
-  writerEmail: string
+  _writerEmail?: string,
+  storedNotes: unknown[] = []
 ): string[] {
   const finalIds = new Set(
     (records || []).filter((record) => record.status === "finalized").map((record) => record.noteId)
   );
+  const stored = new Map<string, LooseNote>();
+  for (const raw of Array.isArray(storedNotes) ? storedNotes : []) {
+    const item: LooseNote = raw && typeof raw === "object" ? (raw as LooseNote) : {};
+    if (isSignedOrFinalNote(item)) stored.set(String(item.id || ""), item);
+  }
   const ids: string[] = [];
   for (const raw of Array.isArray(incoming) ? incoming : []) {
     const note: LooseNote = raw && typeof raw === "object" ? (raw as LooseNote) : {};
-    if (normalizeEmail(note.authorEmail) !== normalizeEmail(writerEmail)) continue;
-    if (finalIds.has(String(note.id || ""))) continue;
-    const signed = Boolean(note.signature && String(note.signature.provider || "").trim());
-    const final = /^(final|signed)/i.test(String(note.status || ""));
-    if (signed || final) ids.push(String(note.id || ""));
+    const id = String(note.id || "");
+    if (finalIds.has(id)) continue;
+    if (!isSignedOrFinalNote(note)) continue;
+    const existing = stored.get(id);
+    if (existing && sameSignedNote(existing, note)) continue;
+    ids.push(id);
   }
   return ids;
 }

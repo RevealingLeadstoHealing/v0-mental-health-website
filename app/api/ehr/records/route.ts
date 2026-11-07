@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
 import { appendAuditEvent, listClientChartRecords, putClinicalRecord, putLatestModuleSnapshot, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
 import { MODULE_SNAPSHOT_TYPE, isValidModuleKey } from "../../../../lib/ehr/module-snapshots";
-import { getSupervisee, listSupervisedNotes } from "../../../../lib/ehr/supervision-store";
+import { getStoredNotesSnapshot, getSupervisee, listSupervisedNotes } from "../../../../lib/ehr/supervision-store";
 import { findIllegalFinalization, reconcileSupervisedNotes } from "../../../../lib/ehr/supervision";
 
 export async function GET(request: Request) {
@@ -73,7 +73,8 @@ export async function POST(request: Request) {
       const guard = async () => {
         const supervisee = await getSupervisee(actor.practiceId, actor.email);
         // The owner is never under the supervisee guard, even if a stale registry entry exists.
-        const activeSupervisee = actor.role !== "owner" && supervisee && supervisee.active ? supervisee : null;
+        // A deactivated supervisee stays guarded: any registry entry keeps the guard.
+        const activeSupervisee = actor.role !== "owner" && supervisee ? supervisee : null;
         if (recordType === "clinical-note") {
           if (activeSupervisee && status !== "draft") {
             throw new ApiError(403, "Supervisee notes are finalized only through supervisor review.");
@@ -82,7 +83,8 @@ export async function POST(request: Request) {
         }
         const supervised = await listSupervisedNotes(actor.practiceId, { clientId });
         if (activeSupervisee) {
-          const illegal = findIllegalFinalization(payload.value, supervised, actor.email);
+          const storedNotes = await getStoredNotesSnapshot(clientId);
+          const illegal = findIllegalFinalization(payload.value, supervised, actor.email, storedNotes);
           if (illegal.length) {
             throw new ApiError(403, "Supervisee notes are finalized only through supervisor review.");
           }
