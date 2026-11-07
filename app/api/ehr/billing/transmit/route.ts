@@ -10,6 +10,8 @@ import {
   type BillingClaim,
   type ClaimTransmissionRecord,
 } from "../../../../../lib/ehr/billing-model";
+import { listSupervisedNotes } from "../../../../../lib/ehr/supervision-store";
+import { withSupervisionStatus } from "../../../../../lib/ehr/supervision";
 import {
   buildConnectionCheckClaim,
   buildProfessionalClaimSubmission,
@@ -99,9 +101,11 @@ export async function POST(request: Request) {
     const dateOfService = typeof body.dateOfService === "string" ? body.dateOfService : "";
     if (!claimId || !dateOfService) throw new ApiError(400, "claimId and dateOfService are required.");
 
-    const claim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
-    if (!claim) throw new ApiError(404, "Claim was not found.");
-    await requireClientAccess(actor, claim.clientId);
+    const storedClaim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
+    if (!storedClaim) throw new ApiError(404, "Claim was not found.");
+    await requireClientAccess(actor, storedClaim.clientId);
+    // A claim covered by an unsigned supervisee note can never be sent, even if reviewed earlier.
+    const claim = withSupervisionStatus(storedClaim, await listSupervisedNotes(actor.practiceId));
 
     if (claim.status !== "ready_to_transmit") {
       throw new ApiError(409, "Only a claim that passed both clinical and billing review can be sent.");

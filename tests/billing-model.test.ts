@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { claimDeficiencies } from "../lib/ehr/billing-model.ts";
+import { claimDeficiencies, validateClinicalReview } from "../lib/ehr/billing-model.ts";
 import type { BillingClaim } from "../lib/ehr/billing-model.ts";
 
 function completeClaim(): Partial<BillingClaim> {
@@ -57,4 +57,23 @@ test("all de-duplicates items that appear in both stages", () => {
   assert.equal(new Set(result.all).size, result.all.length);
   assert.ok(result.clinical.includes("At least one service (CPT/HCPCS) line"));
   assert.ok(result.billing.includes("Service line coding"));
+});
+
+test("a supervisee-note claim without co-sign is blocked and named", () => {
+  const claim = { ...completeClaim(), supervisorCosignRequired: true };
+  const result = claimDeficiencies(claim);
+  assert.equal(result.ok, false);
+  assert.ok(result.clinical.includes("Supervisor co-sign required"));
+  assert.ok(result.all.includes("Supervisor co-sign required"));
+  assert.equal(validateClinicalReview(claim).ok, false);
+});
+
+test("a supervisee-note claim passes once the supervisor has signed", () => {
+  const claim = { ...completeClaim(), supervisorCosignRequired: true, supervisorCosignedAt: "2025-01-16T15:00:00.000Z" };
+  assert.equal(claimDeficiencies(claim).ok, true);
+  assert.equal(validateClinicalReview(claim).ok, true);
+});
+
+test("claims without supervision flags are unchanged", () => {
+  assert.equal(validateClinicalReview(completeClaim()).ok, true);
 });

@@ -79,3 +79,19 @@ test("signature choices match the authenticated provider or client role", () => 
   assert.match(signaturePanel, /Client \/ patient signature/);
   assert.doesNotMatch(signaturePanel, /Guardian/);
 });
+
+test("supervisor co-sign worklist and note flows are wired", () => {
+  const worklist = source.slice(source.indexOf("function useDeficiencyWorklist"), source.indexOf("function MainApp"));
+  assert.match(worklist, /Co-sign needed:/);
+  assert.match(worklist, /\/api\/ehr\/supervision\?scope=feed/);
+  assert.match(worklist, /Signature missing/);
+  const notes = source.slice(source.indexOf("function ProgressNotesPage"), source.indexOf("const billingPayerDefinitions"));
+  assert.match(notes, /Submit for supervisor review/);
+  assert.match(notes, /Returned for revision/);
+  assert.match(notes, /Sign and finalize note/);
+  assert.match(notes, /Sign and save note/);
+  // The supervisor's typed-name signature is never prefilled with the owner's name.
+  const panel = notes.slice(notes.indexOf("Supervisor review:"), notes.indexOf("displayNotes.length === 0"));
+  assert.doesNotMatch(panel, /PRACTITIONER_NAME/);
+  assert.match(panel, /value=\{reviewSignature\}/);
+});

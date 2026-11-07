@@ -21,6 +21,7 @@ import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatm
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
 import { payerCatalog, payerGroupFor } from "../../lib/ehr/payer-catalog";
 import { claimDeficiencies } from "../../lib/ehr/billing-model";
+import { supervisedNoteView, supervisionStatusLabel, formatSupervisionTimestamp } from "../../lib/ehr/supervision";
 import { affirmationLibrary } from "../../lib/ehr/affirmation-library";
 import { chartInformedAffirmations } from "../../lib/ehr/affirmation-suggestions";
 import { psychoeducationLibrary } from "../../lib/ehr/psychoeducation-library";
@@ -802,7 +803,15 @@ function AuthProvider({ children }) {
         const chartClientId = sessionUser.role === "client" ? (clients[0]?.clientId || sessionUser.id) : "";
         const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests, users };
         setStore(nextStore);
-        setCurrentUser({ id: sessionUser.id, chartClientId, ...(users[chartClientId || sessionUser.id]?.profile || users[sessionUser.id].profile) });
+        setCurrentUser({
+          id: sessionUser.id,
+          chartClientId,
+          ...(users[chartClientId || sessionUser.id]?.profile || users[sessionUser.id].profile),
+          // Cognito role and supervisee registry entry (null for the owner / unflagged users).
+          ehrRole: sessionUser.role,
+          supervision: sessionUser.supervision || null,
+          supervisionLookupFailed: Boolean(sessionUser.supervisionLookupFailed),
+        });
       } catch (error) {
         if (active) setLoadError(error instanceof Error ? error.message : "Unable to open the production EHR.");
       } finally {
@@ -1345,6 +1354,54 @@ function playAlertChime() {
 // Nothing here changes a gate; it only surfaces what is already required.
 function useDeficiencyWorklist(isProvider, store) {
   const [claimItems, setClaimItems] = useState([]);
+  // Supervisor co-sign worklist: notes awaiting the owner's review, and the signed-in
+  // supervisee's own notes that were returned for revision.
+  const [supervisionFeed, setSupervisionFeed] = useState({ queue: [], mine: [] });
+  useEffect(() => {
+    if (!isProvider) return;
+    let active = true;
+    const load = () => {
+      productionApi("/api/ehr/supervision?scope=feed")
+        .then((data) => {
+          if (!active) return;
+          setSupervisionFeed({
+            queue: Array.isArray(data.queue) ? data.queue : [],
+            mine: Array.isArray(data.mine) ? data.mine : [],
+          });
+        })
+        .catch(() => { if (active) setSupervisionFeed({ queue: [], mine: [] }); });
+    };
+    load();
+    const timer = setInterval(load, 45000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isProvider]);
+  const supervisionItems = useMemo(() => {
+    const clientName = (clientId) => store?.users?.[clientId]?.profile?.fullName || "Client";
+    const items = [];
+    supervisionFeed.queue.forEach((entry) => {
+      items.push({
+        kind: "cosign",
+        id: `cosign-${entry.clientId}-${entry.noteId}`,
+        clientId: entry.clientId,
+        clientName: clientName(entry.clientId),
+        label: `Co-sign needed: progress note by ${entry.superviseeName} for ${clientName(entry.clientId)}, ${entry.dateOfService || "no date of service"}`,
+        missing: ["Awaiting your review and signature"],
+        noteId: entry.noteId,
+      });
+    });
+    supervisionFeed.mine.filter((entry) => entry.status === "returned").forEach((entry) => {
+      items.push({
+        kind: "returned",
+        id: `returned-${entry.clientId}-${entry.noteId}`,
+        clientId: entry.clientId,
+        clientName: clientName(entry.clientId),
+        label: `Returned for revision: progress note for ${clientName(entry.clientId)}, ${entry.dateOfService || "no date of service"}`,
+        missing: [entry.returnComment ? `Supervisor comment: ${entry.returnComment}` : "Revise and resubmit"],
+        noteId: entry.noteId,
+      });
+    });
+    return items;
+  }, [supervisionFeed, store?.users]);
   useEffect(() => {
     if (!isProvider) return;
     let active = true;
@@ -1382,6 +1439,8 @@ function useDeficiencyWorklist(isProvider, store) {
       (bucket.notes || []).forEach((note) => {
         const signed = Boolean(note.signature && String(note.signature.provider || "").trim());
         if (signed) return;
+        // Supervisee notes are tracked by the co-sign / returned items, never as "sign this" for the owner.
+        if (note.supervision || note.authorEmail) return;
         const missing = [];
         if (!note.signature || !String(note.signature?.provider || "").trim()) missing.push("Signature missing");
         if (!String(note.codeDraft?.primaryDiagnosis || "").trim()) missing.push("Primary diagnosis required");
@@ -1400,7 +1459,7 @@ function useDeficiencyWorklist(isProvider, store) {
     });
     return items;
   }, [isProvider, store?.users]);
-  return { items: [...noteItems, ...claimItems] };
+  return { items: [...supervisionItems, ...noteItems, ...claimItems] };
 }
 function MainApp() {
   const { currentUser, logout, saveStatus, store } = useAuth();
@@ -1574,17 +1633,17 @@ function MainApp() {
                   <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-white p-3">
                     <div className="text-sm text-slate-800">
                       <span className="font-medium">{item.clientName}</span>
-                      {" · "}{item.kind === "note" ? "Note" : "Claim"}: {item.label}
-                      <div className="mt-1 text-xs text-red-700"><span className="font-semibold">Missing:</span> {item.missing.join(", ")}</div>
+                      {" · "}{item.kind === "cosign" || item.kind === "returned" ? "" : `${item.kind === "note" ? "Note" : "Claim"}: `}{item.label}
+                      <div className="mt-1 text-xs text-red-700"><span className="font-semibold">{item.kind === "cosign" ? "Action:" : "Missing:"}</span> {item.missing.join(", ")}</div>
                     </div>
                     <button
                       type="button"
                       className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white"
-                      onClick={() => item.kind === "note"
-                        ? setPage("notes", { clientId: item.clientId, noteId: item.noteId })
-                        : setPage("billing", { clientId: item.clientId, claimId: item.claimId })}
+                      onClick={() => item.kind === "claim"
+                        ? setPage("billing", { clientId: item.clientId, claimId: item.claimId })
+                        : setPage("notes", { clientId: item.clientId, noteId: item.noteId })}
                     >
-                      {item.kind === "note" ? "Open to complete and sign" : "Open to fix"}
+                      {item.kind === "claim" ? "Open to fix" : item.kind === "cosign" ? "Open to review and sign" : item.kind === "returned" ? "Open to revise" : "Open to complete and sign"}
                     </button>
                   </div>
                 ))}
@@ -5024,10 +5083,24 @@ function IntakePage() {
   );
 }
 function ProgressNotesPage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { store, updateSpecificUserData, appendAuditLog, currentUser } = useAuth();
   const [aiNotice, setAiNotice] = useState("");
   const clients = clinicalClientEntries(store);
   const { workflowTarget } = usePage();
+  // Supervision. A supervisee drafts here but never finalizes: the note goes to the supervisor,
+  // who returns it or signs it. Everything below is inert for the owner's own notes.
+  const supervisee = currentUser?.supervision?.active ? currentUser.supervision : null;
+  const isIntern = supervisee?.kind === "intern";
+  const supervisionBlocked = Boolean(currentUser?.supervisionLookupFailed) && currentUser?.ehrRole !== "owner";
+  const canReviewNotes = !supervisee && (currentUser?.ehrRole === "owner" || currentUser?.ehrRole === "provider");
+  const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const [serviceDate, setServiceDate] = useState(todayLocal());
+  const [supervisionRecords, setSupervisionRecords] = useState([]);
+  const [reviewNoteId, setReviewNoteId] = useState("");
+  const [reviewSignature, setReviewSignature] = useState("");
+  const [reviewAttested, setReviewAttested] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
+  const [supervisionBusy, setSupervisionBusy] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(store.users[workflowTarget?.clientId] ? workflowTarget.clientId : clients[0]?.[0] || "");
   const [editingNoteId, setEditingNoteId] = useState("");
   const openedDraftRef = useRef("");
@@ -5056,9 +5129,28 @@ function ProgressNotesPage() {
     serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
     interpreterCode: "",
     manualMinutes: "",
-    providerSignature: PRACTITIONER_NAME,
+    providerSignature: supervisee ? (isIntern ? "" : supervisee.displayName) : PRACTITIONER_NAME,
     clientSignature: "",
   });
+  const loadSupervisionRecords = async (clientId = selectedClientId) => {
+    if (!clientId) { setSupervisionRecords([]); return; }
+    try {
+      const data = await productionApi(`/api/ehr/supervision?clientId=${encodeURIComponent(clientId)}`);
+      setSupervisionRecords(Array.isArray(data.records) ? data.records : []);
+    } catch { /* supervision records unavailable; the chart still shows local notes */ }
+  };
+  useEffect(() => { setSupervisionRecords([]); loadSupervisionRecords(selectedClientId); }, [selectedClientId]);
+  const recordFor = (noteId) => supervisionRecords.find((record) => record.noteId === noteId);
+  // Server records are the source of truth for supervised notes; overlay them on the chart copy.
+  const displayNotes = [
+    ...supervisionRecords.filter((record) => !notes.some((note) => note.id === record.noteId)).map((record) => supervisedNoteView(record)),
+    ...notes.map((note) => {
+      const record = recordFor(note.id);
+      if (!record) return note;
+      const view = supervisedNoteView(record);
+      return record.status === "returned" ? { ...note, status: view.status, signature: null, supervision: view.supervision } : view;
+    }),
+  ];
   useEffect(() => {
     if (!isTimerRunning) return;
     const id = window.setInterval(() => setSessionSeconds((prev) => prev + 1), 1000);
@@ -5074,7 +5166,7 @@ function ProgressNotesPage() {
     setEditingNoteId(note.id);
     setDraft({
       title: note.title || "",
-      content: String(note.content || "").replace(/^Provider Review Required:[^\n]*\nAudio Retention Policy:[^\n]*\n\n/, ""),
+      content: typeof note.draftBody === "string" ? note.draftBody : String(note.content || "").replace(/^Provider Review Required:[^\n]*\nAudio Retention Policy:[^\n]*\n\n/, ""),
       modality: note.modality || "CBT",
       noteType: noteTypes.includes(note.noteType) ? note.noteType : "Medical Record Note",
       mse: note.mse || {},
@@ -5087,19 +5179,35 @@ function ProgressNotesPage() {
       ...current,
       ...(note.codeDraft || {}),
       manualMinutes: String(note.sessionMinutes || note.codeDraft?.manualMinutes || ""),
-      providerSignature: note.codeDraft?.providerSignature || current.providerSignature || PRACTITIONER_NAME,
+      providerSignature: supervisee
+        ? (isIntern ? "" : supervisee.displayName)
+        : note.codeDraft?.providerSignature || current.providerSignature || PRACTITIONER_NAME,
     }));
-    setAiNotice("AI draft opened and unsigned. Complete the mental status exam, diagnosis and service codes, then sign and save.");
+    if (supervisee) setServiceDate(note.dateOfService || todayLocal());
+    setAiNotice(supervisee
+      ? (note.supervision?.status === "returned" ? "Returned note opened. Revise it, then resubmit for supervisor review." : "Draft opened. Complete the required fields, then submit for supervisor review.")
+      : "AI draft opened and unsigned. Complete the mental status exam, diagnosis and service codes, then sign and save.");
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
   };
   useEffect(() => {
     const noteId = workflowTarget?.noteId;
     if (!noteId || openedDraftRef.current === noteId) return;
-    const note = (store.users[workflowTarget.clientId]?.notes || []).find((item) => item.id === noteId);
+    const localNote = (store.users[workflowTarget.clientId]?.notes || []).find((item) => item.id === noteId);
+    // A supervisor is routed to the review panel for a supervisee's note, never to the editable form.
+    if (canReviewNotes && (!localNote || localNote.supervision || localNote.authorEmail)) {
+      if (!store.users[workflowTarget.clientId]) return;
+      openedDraftRef.current = noteId;
+      setSelectedClientId(workflowTarget.clientId);
+      setReviewNoteId(noteId);
+      return;
+    }
+    // A supervisee opening a returned note on a device where the chart copy is missing uses the server copy.
+    const serverRecord = supervisionRecords.find((record) => record.noteId === noteId);
+    const note = localNote || (supervisee && serverRecord ? supervisedNoteView(serverRecord) : null);
     if (!note) return;
     openedDraftRef.current = noteId;
     openDraftForCompletion(note, workflowTarget.clientId);
-  }, [workflowTarget?.noteId, workflowTarget?.clientId, store.users[workflowTarget?.clientId]?.notes]);
+  }, [workflowTarget?.noteId, workflowTarget?.clientId, store.users[workflowTarget?.clientId]?.notes, supervisionRecords]);
   const save = () => {
     if (!selectedClientId || !draft.title.trim() || !draft.content.trim()) return;
     const requiredMissing = [
@@ -5156,6 +5264,128 @@ function ProgressNotesPage() {
       category: draft.noteType === "Psychotherapy Note" ? "Psychotherapy Notes" : "Medical Record",
     });
     setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note", mse: {} });
+  };
+  // --- Supervisee flow: save a local draft, or submit it to the supervisor. Never signs or finalizes. ---
+  const resetDraftAfterSupervisee = () => {
+    setEditingNoteId("");
+    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note", mse: {} });
+    setCodeDraft((current) => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", manualMinutes: "", clientSignature: "" }));
+    setSessionSeconds(0);
+    setIsTimerRunning(false);
+    setServiceDate(todayLocal());
+  };
+  const saveSuperviseeDraft = () => {
+    if (!supervisee || supervisionBlocked || !selectedClientId || !draft.title.trim() || !draft.content.trim()) {
+      if (supervisee) setAiNotice("Add a note title and note text before saving a draft.");
+      return;
+    }
+    const noteId = editingNoteId || `note-${Date.now()}`;
+    const existing = notes.find((item) => item.id === noteId);
+    updateSpecificUserData(selectedClientId, "notes", (prev) => [
+      {
+        ...(existing || {}),
+        id: noteId,
+        ...draft,
+        content: draft.content,
+        draftBody: draft.content,
+        sessionMinutes,
+        codeDraft: { ...codeDraft, providerSignature: isIntern ? "" : codeDraft.providerSignature },
+        dateOfService: serviceDate,
+        authorEmail: currentUser.email,
+        status: existing?.supervision?.status === "returned" ? existing.status : "Draft - not submitted",
+        signature: null,
+        createdAt: existing?.createdAt || new Date().toLocaleString(),
+      },
+      ...(prev || []).filter((item) => item.id !== noteId),
+    ]);
+    setEditingNoteId(noteId);
+    setAiNotice("Draft saved. It is not submitted and not final.");
+  };
+  const submitForReview = async () => {
+    if (!supervisee || supervisionBlocked || supervisionBusy || !selectedClientId) return;
+    const missing = [
+      !draft.title.trim() ? "note title" : null,
+      !draft.content.trim() ? "note text" : null,
+      !serviceDate ? "date of service" : null,
+      !codeDraft.chiefComplaint.trim() ? "chief complaint / reason for visit" : null,
+      !sessionMinutes ? "session time" : null,
+      !codeDraft.primaryDiagnosis ? "primary ICD diagnosis" : null,
+      !codeDraft.serviceCode ? "billing CPT/HCPCS code" : null,
+      !isIntern && !String(codeDraft.providerSignature || "").trim() ? "your typed signature" : null,
+    ].filter(Boolean);
+    if (missing.length) {
+      setAiNotice(`Missing required fields before submitting: ${missing.join(", ")}.`);
+      return;
+    }
+    const noteId = editingNoteId || `note-${Date.now()}`;
+    setSupervisionBusy(true);
+    try {
+      const result = await productionApi("/api/ehr/supervision", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "submit",
+          clientId: selectedClientId,
+          noteId,
+          dateOfService: serviceDate,
+          appointmentId: draft.appointmentId || "",
+          signatureName: isIntern ? "" : codeDraft.providerSignature,
+          note: {
+            title: draft.title,
+            noteType: draft.noteType,
+            modality: draft.modality,
+            body: draft.content,
+            mseText: mseToText(draft.mse || {}),
+            mse: draft.mse || {},
+            sessionMinutes: String(sessionMinutes),
+            codeDraft: { ...codeDraft, providerSignature: isIntern ? "" : codeDraft.providerSignature },
+          },
+        }),
+      });
+      updateSpecificUserData(selectedClientId, "notes", (prev) => [
+        result.note,
+        ...(prev || []).filter((item) => item.id !== noteId),
+      ]);
+      resetDraftAfterSupervisee();
+      await loadSupervisionRecords(selectedClientId);
+      setAiNotice(isIntern
+        ? "Submitted for supervisor review. It is not final or billable until your supervisor signs it."
+        : "Signed and submitted for supervisor co-sign. It is not final or billable until your supervisor co-signs.");
+    } catch (error) {
+      setAiNotice(error instanceof Error ? error.message : "The note could not be submitted.");
+    } finally {
+      setSupervisionBusy(false);
+    }
+  };
+  const reviewRecord = canReviewNotes ? supervisionRecords.find((record) => record.noteId === reviewNoteId && record.status === "pending") : null;
+  const supervisorAction = async (action) => {
+    if (!reviewRecord || supervisionBusy) return;
+    setSupervisionBusy(true);
+    try {
+      const result = await productionApi("/api/ehr/supervision", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "cosign"
+          ? { action, clientId: reviewRecord.clientId, noteId: reviewRecord.noteId, signatureName: reviewSignature, attested: reviewAttested }
+          : { action, clientId: reviewRecord.clientId, noteId: reviewRecord.noteId, comment: returnComment }),
+      });
+      if (action === "cosign") {
+        updateSpecificUserData(reviewRecord.clientId, "notes", (prev) => [
+          result.note,
+          ...(prev || []).filter((item) => item.id !== reviewRecord.noteId),
+        ]);
+      }
+      setReviewNoteId("");
+      setReviewSignature("");
+      setReviewAttested(false);
+      setReturnComment("");
+      await loadSupervisionRecords(reviewRecord.clientId);
+      setAiNotice(action === "cosign" ? "Note signed and finalized." : "Note returned to the author with your comment.");
+    } catch (error) {
+      setAiNotice(error instanceof Error ? error.message : "The review action could not be completed.");
+    } finally {
+      setSupervisionBusy(false);
+    }
   };
   const generateStarter = () => {
     setDraft((prev) => ({
@@ -5338,7 +5568,17 @@ ${draft.content}`,
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
-            {editingNoteId && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Completing an unsigned AI draft for {selectedClientName}. It is not signed until you save below.</div>}
+            {editingNoteId && !supervisee && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Completing an unsigned AI draft for {selectedClientName}. It is not signed until you save below.</div>}
+            {supervisee && (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 space-y-1">
+                <p className="font-medium">Supervised documentation</p>
+                <p>{isIntern
+                  ? `Interns do not sign. Your note goes to ${supervisee.supervisorName}, ${supervisee.supervisorCredential} for review. They will return it with a comment or sign it. It is not final or billable until they sign.`
+                  : `Sign your note, then submit it for co-sign. ${supervisee.supervisorName}, ${supervisee.supervisorCredential} reviews and co-signs. It is not final or billable until they co-sign.`}</p>
+                {supervisionBlocked && <p className="font-medium text-red-700">Supervision status could not be confirmed. Reload the page before submitting.</p>}
+              </div>
+            )}
+            {supervisee && <Input type="date" label="Date of service" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />}
             <Input label="Note title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Note title" />
             <label className="block space-y-1"><span className="text-sm font-medium">Treatment approach / clinical focus</span>
             <Select aria-label="Treatment approach / clinical focus" value={draft.modality} onValueChange={(value) => setDraft({ ...draft, modality: value })}>
@@ -5411,10 +5651,14 @@ ${draft.content}`,
                 </div>
                 <DiagnosisBillingPanel values={codeDraft} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={(field, value) => setCodeDraft(current => ({ ...current, [field]: value }))} onServiceCodeChange={value => setCodeDraft(current => ({ ...current, serviceCode: value }))} onInterpreterCodeChange={value => setCodeDraft(current => ({ ...current, interpreterCode: value }))} />
 
+                {isIntern ? (
+                  <p className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">Interns do not sign. Your supervisor reviews and signs the note.</p>
+                ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   <ProviderSignatureInput label="Provider Electronic Signature" value={codeDraft.providerSignature} onChange={(e) => setCodeDraft({ ...codeDraft, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
                   <Input label="Client Electronic Signature" value={codeDraft.clientSignature} onChange={(e) => setCodeDraft({ ...codeDraft, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
                 </div>
+                )}
               </CardContent>
             </Card>
             <Card className="rounded-2xl border border-indigo-200 bg-indigo-50/50 shadow-none">
@@ -5443,7 +5687,15 @@ ${draft.content}`,
               <p className="text-sm font-bold text-slate-700">Mental Status Exam (this session)</p>
               <MentalStatusExam value={draft.mse || {}} onChange={(next) => setDraft({ ...draft, mse: next })} />
             </div>
-            <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />{editingNoteId ? "Sign and save note" : "Save note"}</Button>
+            {supervisee ? (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="rounded-2xl" disabled={supervisionBlocked} onClick={saveSuperviseeDraft}><Save className="mr-2 h-4 w-4" />Save draft</Button>
+                <Button className="rounded-2xl" disabled={supervisionBlocked || supervisionBusy} onClick={submitForReview}>{isIntern ? "Submit for supervisor review" : "Sign and submit for co-sign"}</Button>
+              </div>
+            ) : (
+              <Button className="rounded-2xl" disabled={supervisionBlocked} onClick={save}><Save className="mr-2 h-4 w-4" />{editingNoteId ? "Sign and save note" : "Save note"}</Button>
+            )}
+            {supervisionBlocked && !supervisee && <p className="text-xs text-red-700">Supervision status could not be confirmed. Reload the page before signing.</p>}
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
@@ -5452,22 +5704,85 @@ ${draft.content}`,
             <CardDescription>Most recent first for selected client</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 max-h-[620px] overflow-auto">
-            {notes.length === 0 && <p className="text-sm text-slate-500">No notes saved yet.</p>}
-            {notes.map((note) => (
+            {reviewRecord && (
+              <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-4 space-y-3">
+                <p className="font-semibold text-red-900">Supervisor review: {reviewRecord.note.title}</p>
+                <p className="text-xs text-red-800">Drafted by {reviewRecord.superviseeName}{reviewRecord.superviseeCredential ? `, ${reviewRecord.superviseeCredential}` : ""} for {selectedClientName}. Date of service {reviewRecord.dateOfService}. {reviewRecord.kind === "intern" ? "Interns do not sign. You sign as the only signer." : `Signed by ${reviewRecord.superviseeName}. Your co-signature finalizes it.`}</p>
+                <div className="rounded-xl border bg-white p-3 text-sm whitespace-pre-wrap">{reviewRecord.note.body}{reviewRecord.note.mseText ? `\n\n${reviewRecord.note.mseText}` : ""}</div>
+                <div className="rounded-xl border bg-white p-3 text-xs text-slate-700 space-y-1">
+                  <p>Chief complaint: {reviewRecord.note.codeDraft?.chiefComplaint || "Not entered"}</p>
+                  <p>Primary ICD-10-CM: {reviewRecord.note.codeDraft?.primaryDiagnosis || "Not selected"}</p>
+                  <p>Service / CPT-HCPCS: {reviewRecord.note.codeDraft?.serviceCode || "Not selected"} | Minutes: {reviewRecord.note.sessionMinutes}</p>
+                </div>
+                {reviewRecord.history.length > 1 && (
+                  <details className="rounded-xl border bg-white p-3 text-xs">
+                    <summary className="cursor-pointer font-medium">Revision history ({reviewRecord.history.length})</summary>
+                    <ul className="mt-2 space-y-1">
+                      {reviewRecord.history.map((entry, index) => (
+                        <li key={index}>{formatSupervisionTimestamp(entry.at)}: {entry.event} by {entry.byName}{entry.comment ? ` - ${entry.comment}` : ""}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <div className="space-y-2">
+                  <Textarea label="Return for revision: comment (required)" value={returnComment} onChange={(e) => setReturnComment(e.target.value)} className="min-h-[80px] rounded-2xl" placeholder="What should be revised?" />
+                  <Button type="button" variant="outline" className="rounded-2xl" disabled={supervisionBusy || !returnComment.trim()} onClick={() => supervisorAction("return")}>Return for revision</Button>
+                </div>
+                <div className="space-y-2">
+                  <ProviderSignatureInput label="Review and sign: type your full name" value={reviewSignature} onChange={(e) => setReviewSignature(e.target.value)} placeholder="Type your full name to sign" />
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={reviewAttested} onChange={(e) => setReviewAttested(e.target.checked)} /><span>I reviewed this note and attest it is accurate and complete.</span></label>
+                  <Button type="button" className="rounded-2xl" disabled={supervisionBusy || !reviewSignature.trim() || !reviewAttested} onClick={() => supervisorAction("cosign")}>{reviewRecord.kind === "intern" ? "Sign and finalize note" : "Co-sign and finalize note"}</Button>
+                </div>
+              </div>
+            )}
+            {displayNotes.length === 0 && <p className="text-sm text-slate-500">No notes saved yet.</p>}
+            {displayNotes.map((note) => {
+              const sup = note.supervision;
+              const record = recordFor(note.id);
+              const ownReturned = sup?.status === "returned" && supervisee;
+              return (
               <div key={note.id} className="rounded-2xl border p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="font-medium">{note.title}</p>
                   <div className="flex gap-2 flex-wrap justify-end">
                     <Badge className="rounded-xl">{note.modality}</Badge>
                     <Badge variant="secondary" className="rounded-xl">{note.noteType || "Medical Record Note"}</Badge>
-                    {!note.signature && <Badge className="rounded-xl bg-amber-100 text-amber-900">Unsigned draft</Badge>}
+                    {sup && <Badge className={sup.status === "finalized" ? "rounded-xl bg-emerald-100 text-emerald-900" : "rounded-xl bg-amber-100 text-amber-900"}>{supervisionStatusLabel(sup.kind, sup.status)}</Badge>}
+                    {!note.signature && !sup && <Badge className="rounded-xl bg-amber-100 text-amber-900">Unsigned draft</Badge>}
                   </div>
                 </div>
+                {sup?.status === "finalized" && (
+                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                    {(sup.attribution || []).map((line, index) => <p key={index}>{line}</p>)}
+                  </div>
+                )}
+                {sup?.status === "returned" && (
+                  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                    <p className="font-semibold">Returned for revision</p>
+                    <p className="whitespace-pre-wrap">{sup.returnComment}</p>
+                  </div>
+                )}
                 <p className="text-sm text-slate-700 mt-3 whitespace-pre-wrap">{note.content}</p>
                 <p className="text-xs text-slate-400 mt-2">{note.createdAt}</p>
-                {!note.signature && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>Open to complete and sign</Button>}
+                {record && record.history.length > 0 && (
+                  <details className="mt-2 text-xs text-slate-600">
+                    <summary className="cursor-pointer font-medium">Revision history ({record.history.length})</summary>
+                    <ul className="mt-1 space-y-1">
+                      {record.history.map((entry, index) => (
+                        <li key={index}>
+                          {formatSupervisionTimestamp(entry.at)}: {entry.event} by {entry.byName}{entry.comment ? ` - ${entry.comment}` : ""}
+                          {entry.snapshot ? <div className="mt-1 whitespace-pre-wrap rounded-lg bg-slate-50 p-2">{entry.snapshot.body}</div> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {!note.signature && !sup && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>{supervisee ? "Open to continue draft" : "Open to complete and sign"}</Button>}
+                {ownReturned && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>Open to revise</Button>}
+                {canReviewNotes && sup?.status === "pending" && <Button type="button" size="sm" className="rounded-2xl mt-2" onClick={() => setReviewNoteId(note.id)}>Open to review and sign</Button>}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
@@ -7018,6 +7333,81 @@ function VerificationTag({ status }) {
     </span>
   );
 }
+// Minimal user-management control (no user-admin UI exists): the owner/provider flags a
+// teammate (by sign-in email) as a supervisee. The signed-in user becomes the supervisor.
+function SupervisionAdminCard() {
+  const { currentUser } = useAuth();
+  const [supervisees, setSupervisees] = useState([]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ email: "", displayName: "", credentialChoice: "MSW intern" });
+  const [supervisorName, setSupervisorName] = useState(currentUser?.fullName || "");
+  const [supervisorCredential, setSupervisorCredential] = useState("LCSW");
+  const load = () => productionApi("/api/ehr/supervision/supervisees")
+    .then((data) => setSupervisees(Array.isArray(data.supervisees) ? data.supervisees : []))
+    .catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load supervisees."));
+  useEffect(() => { load(); }, []);
+  const post = async (payload, doneMessage) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const data = await productionApi("/api/ehr/supervision/supervisees", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setSupervisees(Array.isArray(data.supervisees) ? data.supervisees : []);
+      setMessage(doneMessage);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The change could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const save = () => post({
+    action: "save",
+    email: form.email,
+    displayName: form.displayName,
+    credential: form.credentialChoice,
+    kind: form.credentialChoice === "LMSW" ? "supervised_clinician" : "intern",
+    supervisorName,
+    supervisorCredential,
+  }, "Supervisee saved. They will be asked to submit notes for your review.");
+  return (
+    <Card className="rounded-2xl shadow-sm mb-4">
+      <CardHeader><CardTitle>Supervision</CardTitle><CardDescription>Mark a teammate as a supervisee and assign yourself as their supervisor.</CardDescription></CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-xs text-slate-600">Supervisees can draft notes but never finalize them. Interns (BSW or MSW students) never sign. They submit to you, and you sign as the only signer. An LMSW signs their own note and you co-sign. Billing stays blocked until you sign. The teammate must already have a sign-in account, and the email must match it.</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input label="Teammate sign-in email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
+          <Input label="Teammate display name" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="First Last" />
+          <label className="block space-y-1"><span className="block text-xs font-bold">Role / credential</span>
+            <select className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm" value={form.credentialChoice} onChange={(e) => setForm({ ...form, credentialChoice: e.target.value })}>
+              <option value="BSW intern">BSW intern</option>
+              <option value="MSW intern">MSW intern</option>
+              <option value="LMSW">LMSW (supervised)</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Supervisor name" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} />
+            <Input label="Supervisor credential" value={supervisorCredential} onChange={(e) => setSupervisorCredential(e.target.value)} />
+          </div>
+        </div>
+        <Button type="button" className="rounded-2xl" disabled={busy || !form.email.trim() || !form.displayName.trim() || !supervisorName.trim()} onClick={save}>Save supervisee</Button>
+        {message && <p role="status" className="text-sm text-slate-700">{message}</p>}
+        <ul className="space-y-2">
+          {supervisees.length === 0 && <li className="text-slate-500">No supervisees yet.</li>}
+          {supervisees.map((entry) => (
+            <li key={entry.email} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
+              <span>{entry.displayName} ({entry.credential}) · {entry.email} · {entry.active ? "Active" : "Removed"}</span>
+              {entry.active && <Button type="button" size="sm" variant="outline" className="rounded-2xl" disabled={busy} onClick={() => post({ action: "deactivate", email: entry.email }, "Supervisee status removed.")}>Remove supervisee status</Button>}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
 function InfrastructurePage() {
   const { currentUser } = useAuth();
   const identifiers = providerIdentifiersForName(currentUser?.fullName || "");
@@ -7083,6 +7473,7 @@ function InfrastructurePage() {
           ))}
         </CardContent>
       </Card>
+      {(currentUser?.ehrRole === "owner" || currentUser?.ehrRole === "provider") && !currentUser?.supervision?.active && <SupervisionAdminCard />}
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authentication and access</CardTitle><CardDescription>AWS Cognito and server-enforced authorization</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>MFA-enabled Cognito accounts identify providers and clients.</p><p>Clients are linked to one authorized chart and cannot retrieve provider-only notes or records.</p><p>Secure HttpOnly session cookies protect authenticated browser sessions.</p></CardContent></Card>
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Encrypted clinical records</CardTitle><CardDescription>AWS DynamoDB, S3, and KMS</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Clinical module snapshots and document metadata persist in encrypted AWS data stores.</p><p>Private chart files use encrypted S3 storage and time-limited authorized access links.</p><p>DynamoDB point-in-time recovery and deletion protection are defined in the foundation stack.</p></CardContent></Card>

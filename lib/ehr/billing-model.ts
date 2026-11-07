@@ -90,6 +90,11 @@ export interface BillingClaim {
   billingReview?: ClaimReviewRecord;
   reviews: ClaimReviewRecord[];
   providerSignature?: string;
+  // Derived server-side from the supervised-note records (never trusted from a client).
+  // A claim covered by a supervisee's note is blocked until the supervisor signs it.
+  supervisorCosignRequired?: boolean;
+  supervisorCosignedAt?: string;
+  supervisedNoteId?: string;
   transmissions?: ClaimTransmissionRecord[];
   createdAt: string;
   updatedAt: string;
@@ -117,6 +122,7 @@ export function validateClinicalReview(claim: Partial<BillingClaim>): Validation
   if (!claim.serviceLines?.length) missing.push("At least one service (CPT/HCPCS) line");
   if (!claim.providerSignature) missing.push("Authenticated provider signature");
   if (!claim.renderingProviderNpi) missing.push("Rendering provider NPI");
+  if (claim.supervisorCosignRequired && !claim.supervisorCosignedAt) missing.push("Supervisor co-sign required");
   return { ok: missing.length === 0, missing };
 }
 

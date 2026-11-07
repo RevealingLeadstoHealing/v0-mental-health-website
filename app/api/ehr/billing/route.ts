@@ -19,6 +19,8 @@ import {
   type ClaimServiceLine,
   type ReviewStage,
 } from "../../../../lib/ehr/billing-model";
+import { listSupervisedNotes } from "../../../../lib/ehr/supervision-store";
+import { withSupervisionStatus } from "../../../../lib/ehr/supervision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,11 +40,17 @@ export async function GET(request: Request) {
     if (claimId && dateOfService) {
       const claim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
       if (!claim) throw new ApiError(404, "Claim was not found.");
-      return NextResponse.json({ claim }, { headers: { "Cache-Control": "no-store" } });
+      // Supervisor co-sign state is derived fresh from the supervised-note records.
+      const supervised = await listSupervisedNotes(actor.practiceId);
+      return NextResponse.json({ claim: withSupervisionStatus(claim, supervised) }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const claims = await listBillingClaims(actor.practiceId);
-    return NextResponse.json({ claims }, { headers: { "Cache-Control": "no-store" } });
+    const supervisedNotes = await listSupervisedNotes(actor.practiceId);
+    return NextResponse.json(
+      { claims: claims.map((item) => withSupervisionStatus(item, supervisedNotes)) },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -173,10 +181,14 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, "A reason is required when rejecting a claim.");
     }
 
-    const claim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
-    if (!claim) throw new ApiError(404, "Claim was not found.");
+    const storedClaim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
+    if (!storedClaim) throw new ApiError(404, "Claim was not found.");
 
-    await requireClientAccess(actor, claim.clientId);
+    await requireClientAccess(actor, storedClaim.clientId);
+
+    // A claim covered by a supervisee's note cannot pass clinical review until the
+    // supervisor has signed that note. Derived server-side on every request.
+    const claim = withSupervisionStatus(storedClaim, await listSupervisedNotes(actor.practiceId));
 
     if (claim.status === "transmitted") {
       throw new ApiError(409, "A transmitted claim can no longer be reviewed.");
