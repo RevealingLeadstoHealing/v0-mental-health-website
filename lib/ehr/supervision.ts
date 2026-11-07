@@ -213,9 +213,30 @@ export function canSupervise(
   );
 }
 
-/** Only an owner or provider who is not themselves a registered supervisee may assign supervisees. */
+/** Only the practice owner (who is not a registered supervisee) may assign supervisees. */
 export function canAdministerSupervision(role: string, isRegisteredSupervisee: boolean): boolean {
-  return (role === "owner" || role === "provider") && !isRegisteredSupervisee;
+  return role === "owner" && !isRegisteredSupervisee;
+}
+
+/** Credential shown for the supervisor of record; the supervisor is always the authenticated owner. */
+export const SUPERVISOR_CREDENTIAL = "LCSW";
+
+/**
+ * Returns a reason when `email` may not be registered as a supervisee: the owner themselves,
+ * or anyone who is already the supervisor of record for another supervisee.
+ */
+export function superviseeTargetProblem(
+  email: string,
+  actorEmail: string,
+  entries: Array<{ supervisorEmail: string }>
+): string {
+  const target = normalizeEmail(email);
+  if (!target) return "Enter the teammate's sign-in email address.";
+  if (target === normalizeEmail(actorEmail)) return "The practice owner cannot be registered as a supervisee.";
+  if ((entries || []).some((entry) => normalizeEmail(entry.supervisorEmail) === target)) {
+    return "A supervisor cannot be registered as a supervisee.";
+  }
+  return "";
 }
 
 export function formatSupervisionTimestamp(iso: string | undefined): string {
@@ -309,16 +330,18 @@ export function claimSupervisionState(
   claim: ClaimLike,
   records: SupervisedNoteRecord[]
 ): ClaimSupervisionState {
-  const matches = (records || []).filter(
+  const forClient = (records || []).filter((record) => record.clientId === claim.clientId);
+  // Fail closed: the date and appointment on a note are supervisee-supplied, so any note
+  // for this client that the supervisor has not signed yet blocks the client's claims.
+  const openNotes = forClient.filter((record) => record.status !== "finalized");
+  if (openNotes.length > 0) return { required: true, noteIds: openNotes.map((record) => record.noteId) };
+  const matches = forClient.filter(
     (record) =>
-      record.clientId === claim.clientId &&
-      ((!!claim.appointmentId && !!record.appointmentId && claim.appointmentId === record.appointmentId) ||
-        sameDay(claim.dateOfService, record.dateOfService))
+      (!!claim.appointmentId && !!record.appointmentId && claim.appointmentId === record.appointmentId) ||
+      sameDay(claim.dateOfService, record.dateOfService)
   );
   if (matches.length === 0) return { required: false, noteIds: [] };
-  const open = matches.some((record) => record.status !== "finalized");
   const noteIds = matches.map((record) => record.noteId);
-  if (open) return { required: true, noteIds };
   const latest = matches
     .map((record) => record.finalizedAt || "")
     .sort()

@@ -5,6 +5,8 @@ import { getSupervisee, listSupervisees, putSupervisee } from "../../../../../li
 import {
   canAdministerSupervision,
   normalizeEmail,
+  superviseeTargetProblem,
+  SUPERVISOR_CREDENTIAL,
   type SuperviseeEntry,
   type SuperviseeKind,
 } from "../../../../../lib/ehr/supervision";
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
     const actor = await requireEhrActor(request);
     requireRole(actor, ["owner", "provider", "clinical_staff"]);
     const own = await getSupervisee(actor.practiceId, actor.email);
-    if (actor.role === "owner" || actor.role === "provider") {
+    if (actor.role === "owner") {
       const supervisees = await listSupervisees(actor.practiceId);
       return NextResponse.json({ supervisees, own }, { headers: noStore });
     }
@@ -34,17 +36,17 @@ export async function GET(request: Request) {
 }
 
 // ---------------------------------------------------------------------------
-// POST { action: "save", email, displayName, credential, kind, supervisorName?, supervisorCredential? }
+// POST { action: "save", email, displayName, credential, kind }
 //      { action: "deactivate", email }
-// The signed-in owner/provider becomes the supervisor of record.
+// Owner only. The signed-in owner becomes the supervisor of record.
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
   try {
     const actor = await requireEhrActor(request);
-    requireRole(actor, ["owner", "provider"]);
+    requireRole(actor, ["owner"]);
     const own = await getSupervisee(actor.practiceId, actor.email);
     if (!canAdministerSupervision(actor.role, !!own && own.active)) {
-      throw new ApiError(403, "Supervisees cannot change supervision assignments.");
+      throw new ApiError(403, "Only the practice owner can change supervision assignments.");
     }
 
     const body = await request.json();
@@ -52,9 +54,8 @@ export async function POST(request: Request) {
     if (!EMAIL_PATTERN.test(email) || email.length > 200) {
       throw new ApiError(400, "Enter the teammate's sign-in email address.");
     }
-    if (email === normalizeEmail(actor.email)) {
-      throw new ApiError(400, "You cannot make yourself your own supervisee.");
-    }
+    const problem = superviseeTargetProblem(email, actor.email, await listSupervisees(actor.practiceId));
+    if (problem) throw new ApiError(400, problem);
     const existing = await getSupervisee(actor.practiceId, email);
     const now = new Date().toISOString();
 
@@ -69,10 +70,10 @@ export async function POST(request: Request) {
       if (!kind) throw new ApiError(400, "kind must be 'intern' or 'supervised_clinician'.");
       if (!displayName) throw new ApiError(400, "A display name is required.");
       if (!credential) throw new ApiError(400, "A credential is required.");
-      const supervisorName =
-        (typeof body.supervisorName === "string" ? body.supervisorName.trim().slice(0, 120) : "") || actor.name;
-      const supervisorCredential =
-        (typeof body.supervisorCredential === "string" ? body.supervisorCredential.trim().slice(0, 40) : "") || "LCSW";
+      // Supervisor identity comes from the authenticated owner, never from the request body.
+      const supervisorName = String(actor.name || "").trim().slice(0, 120);
+      if (!supervisorName) throw new ApiError(400, "Your account has no display name on file.");
+      const supervisorCredential = SUPERVISOR_CREDENTIAL;
       const entry: SuperviseeEntry = {
         email,
         displayName,

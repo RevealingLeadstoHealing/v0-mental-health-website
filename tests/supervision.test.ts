@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canAdministerSupervision,
+  superviseeTargetProblem,
   canSupervise,
   claimSupervisionState,
   findIllegalFinalization,
@@ -163,14 +165,32 @@ test("claim overlay blocks the clinical review until the note is finalized", () 
   assert.equal(open.ok, true);
 });
 
-test("claim overlay ignores other clients and dates, and matches by appointment", () => {
-  const records = [record("intern", "pending")];
+test("claim overlay ignores other clients and unrelated finalized notes", () => {
   const other = { clientId: "client-2", dateOfService: "2025-01-15" };
-  assert.equal(withSupervisionStatus(other, records), other);
+  assert.equal(withSupervisionStatus(other, [record("intern", "pending")]), other);
   const otherDay = { clientId: "client-1", dateOfService: "2025-02-01" };
-  assert.equal(withSupervisionStatus(otherDay, records), otherDay);
+  assert.equal(withSupervisionStatus(otherDay, [record("intern", "finalized")]), otherDay);
   const byAppt = { clientId: "client-1", dateOfService: "2025-02-01", appointmentId: "appt-1" };
-  assert.equal(claimSupervisionState(byAppt, records).required, true);
+  assert.equal(claimSupervisionState(byAppt, [record("intern", "finalized")]).required, true);
+});
+
+test("an unsigned supervisee note blocks the client's claims even when the supplied date does not match", () => {
+  const mismatched = { clientId: "client-1", dateOfService: "2025-02-01", appointmentId: "" };
+  for (const status of ["pending", "returned"] as const) {
+    const overlaid = withSupervisionStatus(mismatched, [record("intern", status)]);
+    assert.equal((overlaid as any).supervisorCosignRequired, true);
+    assert.ok(!(overlaid as any).supervisorCosignedAt);
+  }
+});
+
+test("only the owner may administer supervision, and owners or supervisors cannot be supervisees", () => {
+  assert.equal(canAdministerSupervision("owner", false), true);
+  assert.equal(canAdministerSupervision("provider", false), false);
+  assert.equal(canAdministerSupervision("clinical_staff", false), false);
+  assert.equal(canAdministerSupervision("owner", true), false);
+  assert.ok(superviseeTargetProblem("Owner@Example.com", "owner@example.com", []));
+  assert.ok(superviseeTargetProblem("boss@example.com", "owner@example.com", [{ supervisorEmail: "BOSS@example.com" }]));
+  assert.equal(superviseeTargetProblem("intern@example.com", "owner@example.com", [{ supervisorEmail: "owner@example.com" }]), "");
 });
 
 test("reconcile restores a finalized note over a stale pending copy", () => {

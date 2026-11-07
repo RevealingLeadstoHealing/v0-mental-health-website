@@ -72,7 +72,8 @@ export async function POST(request: Request) {
     if (isNotesSnapshot || recordType === "clinical-note") {
       const guard = async () => {
         const supervisee = await getSupervisee(actor.practiceId, actor.email);
-        const activeSupervisee = supervisee && supervisee.active ? supervisee : null;
+        // The owner is never under the supervisee guard, even if a stale registry entry exists.
+        const activeSupervisee = actor.role !== "owner" && supervisee && supervisee.active ? supervisee : null;
         if (recordType === "clinical-note") {
           if (activeSupervisee && status !== "draft") {
             throw new ApiError(403, "Supervisee notes are finalized only through supervisor review.");

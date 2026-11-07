@@ -19,6 +19,34 @@ test("the records route reconciles supervised notes", () => {
   assert.match(records, /findIllegalFinalization/);
 });
 
+test("supervisee administration is owner-only and takes supervisor identity from the session", () => {
+  const route = read("../app/api/ehr/supervision/supervisees/route.ts");
+  assert.match(route, /requireRole\(actor, \["owner"\]\)/);
+  assert.doesNotMatch(route, /body\??\.supervisorName/);
+  assert.doesNotMatch(route, /body\??\.supervisorCredential/);
+  assert.match(route, /superviseeTargetProblem/);
+  assert.match(route, /actor\.name/);
+});
+
+test("submit, cosign and return enforce who may act", () => {
+  const route = read("../app/api/ehr/supervision/route.ts");
+  // The owner never submits for co-sign; only a registered supervisee may.
+  assert.match(route, /actor\.role === "owner"[\s\S]{0,80}throw new ApiError\(403/);
+  assert.match(route, /not set up as a supervisee/);
+  // Cosign and return both pass through canSupervise before any change.
+  const gate = route.indexOf("canSupervise(actor, existing)");
+  assert.ok(gate > 0);
+  assert.ok(gate < route.indexOf("transition(existing.status, \"cosign\")"));
+  assert.ok(gate < route.indexOf("transition(existing.status, \"return\")"));
+  assert.match(route, /body\.attested !== true/);
+});
+
+test("the records guard exempts the owner and blocks supervisee finalization", () => {
+  const records = read("../app/api/ehr/records/route.ts");
+  assert.match(records, /actor\.role !== "owner" && supervisee && supervisee\.active/);
+  assert.match(records, /Supervisee notes are finalized only through supervisor review/);
+});
+
 test("supervision audit summaries carry no PHI fields", () => {
   const route = read("../app/api/ehr/supervision/route.ts");
   const summaries = [...route.matchAll(/summary: "([^"]*)"/g)].map((match) => match[1]);

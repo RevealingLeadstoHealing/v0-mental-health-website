@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     // failure never breaks sign-in; the UI fails closed for non-owners instead.
     let supervision: SuperviseeEntry | null = null;
     let supervisionLookupFailed = false;
-    if (actor.role !== "client") {
+    if (actor.role !== "client" && actor.role !== "owner") {
       try {
         supervision = await getSupervisee(actor.practiceId, actor.email);
       } catch {

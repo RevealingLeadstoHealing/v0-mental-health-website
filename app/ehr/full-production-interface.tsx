@@ -7333,16 +7333,14 @@ function VerificationTag({ status }) {
     </span>
   );
 }
-// Minimal user-management control (no user-admin UI exists): the owner/provider flags a
-// teammate (by sign-in email) as a supervisee. The signed-in user becomes the supervisor.
+// Minimal user-management control (no user-admin UI exists): the owner flags a
+// teammate (by sign-in email) as a supervisee. The signed-in owner becomes the supervisor.
 function SupervisionAdminCard() {
   const { currentUser } = useAuth();
   const [supervisees, setSupervisees] = useState([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ email: "", displayName: "", credentialChoice: "MSW intern" });
-  const [supervisorName, setSupervisorName] = useState(currentUser?.fullName || "");
-  const [supervisorCredential, setSupervisorCredential] = useState("LCSW");
   const load = () => productionApi("/api/ehr/supervision/supervisees")
     .then((data) => setSupervisees(Array.isArray(data.supervisees) ? data.supervisees : []))
     .catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load supervisees."));
@@ -7370,8 +7368,6 @@ function SupervisionAdminCard() {
     displayName: form.displayName,
     credential: form.credentialChoice,
     kind: form.credentialChoice === "LMSW" ? "supervised_clinician" : "intern",
-    supervisorName,
-    supervisorCredential,
   }, "Supervisee saved. They will be asked to submit notes for your review.");
   return (
     <Card className="rounded-2xl shadow-sm mb-4">
@@ -7388,12 +7384,9 @@ function SupervisionAdminCard() {
               <option value="LMSW">LMSW (supervised)</option>
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Supervisor name" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} />
-            <Input label="Supervisor credential" value={supervisorCredential} onChange={(e) => setSupervisorCredential(e.target.value)} />
-          </div>
+          <p className="text-xs text-slate-600 self-end">Supervisor of record: you ({currentUser?.fullName || "signed-in owner"}, LCSW). This comes from your signed-in account.</p>
         </div>
-        <Button type="button" className="rounded-2xl" disabled={busy || !form.email.trim() || !form.displayName.trim() || !supervisorName.trim()} onClick={save}>Save supervisee</Button>
+        <Button type="button" className="rounded-2xl" disabled={busy || !form.email.trim() || !form.displayName.trim()} onClick={save}>Save supervisee</Button>
         {message && <p role="status" className="text-sm text-slate-700">{message}</p>}
         <ul className="space-y-2">
           {supervisees.length === 0 && <li className="text-slate-500">No supervisees yet.</li>}
@@ -7473,7 +7466,7 @@ function InfrastructurePage() {
           ))}
         </CardContent>
       </Card>
-      {(currentUser?.ehrRole === "owner" || currentUser?.ehrRole === "provider") && !currentUser?.supervision?.active && <SupervisionAdminCard />}
+      {currentUser?.ehrRole === "owner" && <SupervisionAdminCard />}
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authentication and access</CardTitle><CardDescription>AWS Cognito and server-enforced authorization</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>MFA-enabled Cognito accounts identify providers and clients.</p><p>Clients are linked to one authorized chart and cannot retrieve provider-only notes or records.</p><p>Secure HttpOnly session cookies protect authenticated browser sessions.</p></CardContent></Card>
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Encrypted clinical records</CardTitle><CardDescription>AWS DynamoDB, S3, and KMS</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Clinical module snapshots and document metadata persist in encrypted AWS data stores.</p><p>Private chart files use encrypted S3 storage and time-limited authorized access links.</p><p>DynamoDB point-in-time recovery and deletion protection are defined in the foundation stack.</p></CardContent></Card>

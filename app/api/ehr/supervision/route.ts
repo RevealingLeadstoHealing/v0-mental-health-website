@@ -106,6 +106,9 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
 
     if (action === "submit") {
+      if (actor.role === "owner") {
+        throw new ApiError(403, "The practice owner signs notes directly and does not submit for co-sign.");
+      }
       const entry = await getSupervisee(actor.practiceId, actor.email);
       if (!entry || !entry.active) {
         throw new ApiError(403, "Your account is not set up as a supervisee. Ask the practice owner to add you.");
