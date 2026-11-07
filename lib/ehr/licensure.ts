@@ -21,9 +21,11 @@ export type StateLicensure = {
 export const STATE_LICENSURE: StateLicensure[] = [
   {
     state: "New York", code: "NY", status: "Licensed", licenseNumber: "103235", note: "",
-    issued: "2026-05-31",
-    expires: "2029-05-31", expiresEstimated: true,
-    expiresNote: "Estimated — verify the registered-through date on NYSED (op.nysed.gov)",
+    issued: "2026-06-04", // Date of licensure per NYSED public verification, checked 2026-11-07
+    expires: "2029-05-31",
+    expiresNote: "Registered through May 31, 2029 (NYSED, checked 2026-11-07). Status: Registered. Also holds NY LMSW #097027.",
+    licenseType: "Licensed Clinical Social Work (073)",
+    verification: "verified",
   },
   {
     state: "Florida", code: "FL", status: "Licensed", licenseNumber: "7382", note: "Telehealth registration, status Clear",

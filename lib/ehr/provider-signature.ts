@@ -33,12 +33,12 @@ const providers: Record<string, Readonly<ProviderIdentifiers>> = {
     caqhVerification: "document_on_file",
     caqhVerificationNote: "CAQH ProView is login-only, so it can't be checked publicly. Confirm current attestation directly in your CAQH account.",
     licenseNumber: "103235",
-    licenseVerification: "self_reported",
-    licenseVerificationNote: "NY LCSW License 103235 — Provider-reported. Confirm current status directly at NYSED's Office of the Professions license verification (op.nysed.gov). Florida TLHT LCSW License #7382 also held — see additionalCredentials. Status: Clear (confirmed via Florida TLHT portal, October 2026).",
+    licenseVerification: "verified",
+    licenseVerificationNote: "NY LCSW License 103235 — Verified on NYSED Office of the Professions public license verification (op.nysed.gov) on 2026-11-07: CARPENTER KENSEENER O, Licensed Clinical Social Work (073), Yonkers NY, date of licensure June 4, 2026. Florida TLHT LCSW License #7382 also held — see additionalCredentials. Status: Clear (confirmed via Florida TLHT portal, October 2026).",
     casacNumber: "CASAC-26242", casacLevel: "Master Level",
     casacEffectiveDate: "2025-01-03", casacExpirationDate: "2028-01-02",
-    casacVerification: "document_on_file",
-    casacVerificationNote: "Provider supplied the NY OASAS credential record; expiration taken from OASAS.",
+    casacVerification: "verified",
+    casacVerificationNote: "Verified on the NY OASAS public credential lookup on 2026-11-07: Carpenter, Kenseener O, CASAC-26242, Master Level, effective 1/3/2025, expires 1/2/2028, status Credentialed, Yonkers NY, no complaints.",
     // Unless individually noted otherwise, all pending and future certifications/trainings
     // are issued via PESI/Evergreen, per owner instruction (Sept 13, 2026). None of these
     // are independently verifiable by Claude from outside the provider's own accounts — PESI/

@@ -11,9 +11,9 @@ test("CASAC renewal alert still fires inside the 90-day window", () => {
   assert.ok(!credentialRenewalAlerts(OWNER, new Date("2026-11-06T12:00:00")).some(a => a.id === "casac"));
 });
 
-test("state license alerts: estimated NY, Idaho window, expired, and Florida standing reminder", () => {
+test("state license alerts: NY registered-through window, Idaho window, expired, and Florida standing reminder", () => {
   const ny = credentialRenewalAlerts(OWNER, new Date("2029-04-01T12:00:00")).find(a => a.id === "license-ny");
-  assert.ok(ny && ny.severity === "due_soon" && ny.message.includes("(estimated)"));
+  assert.ok(ny && ny.severity === "due_soon" && !ny.message.includes("(estimated)"));
   const id = credentialRenewalAlerts(OWNER, new Date("2028-10-01T12:00:00")).find(a => a.id === "license-id");
   assert.ok(id && id.severity === "due_soon" && !id.message.includes("(estimated)"));
   const expired = credentialRenewalAlerts(OWNER, new Date("2029-01-01T12:00:00")).find(a => a.id === "license-id");
