@@ -5,6 +5,7 @@ import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTa
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
 import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText, credentialRenewalAlerts } from "../../lib/ehr/provider-signature";
+import { STATE_LICENSURE, licensureLicenseText } from "../../lib/ehr/licensure";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
@@ -7046,6 +7047,21 @@ function InfrastructurePage() {
               ? <ul className="list-disc pl-5">{identifiers.publications.map(publication => <li key={publication}>{publication}</li>)}</ul>
               : <p className="text-slate-600">{identifiers.publicationsStatus || "Not configured"}</p>}
           </div>
+        </CardContent>
+      </Card>
+      <Card className="rounded-2xl shadow-sm mb-4">
+        <CardHeader><CardTitle>State licensure</CardTitle><CardDescription>Owner-reported status. Only states marked Licensed are licensed; Pending and Planned states are not.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 text-sm">
+          {(["Licensed", "Pending", "Planned"] as const).map(status => (
+            <div key={status}>
+              <p className="font-medium">{status === "Planned" ? "Planned (application not yet submitted)" : status}</p>
+              <ul className="list-disc pl-5">
+                {STATE_LICENSURE.filter(row => row.status === status).map(row => (
+                  <li key={row.code}>{row.state} ({row.code}) — {status}. {licensureLicenseText(row)}{row.note ? `. ${row.note}` : ""}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </CardContent>
       </Card>
       <div className="grid md:grid-cols-2 gap-4">

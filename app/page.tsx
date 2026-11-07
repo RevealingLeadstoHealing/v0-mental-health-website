@@ -48,7 +48,7 @@ export default function Home() {
           <article>
             <h2>Meet Kenseener Carpenter, MA, LCSW, CCTP. CGP, CASAC-M, IFSP, CIMHP</h2>
             <p>
-              Kenseener is a highly skilled and compassionate Licensed Social Worker based in
+              Kenseener is a highly skilled and compassionate Licensed Clinical Social Worker with multi-state licensure, based in
               Yonkers, New York, offering individual, marital, family, and group therapy for adults
               and teenagers. With advanced training in trauma, group process, substance use, family
               systems, and integrative mental health care, Kay creates a safe, personalized space
