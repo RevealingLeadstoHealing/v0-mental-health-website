@@ -13,11 +13,10 @@ import { sendSesV2 } from "./ses-send";
 
 const FROM_ADDRESS = process.env.EHR_SES_FROM_ADDRESS || "connect@rlth.org";
 
-// All three provider inboxes get every booking alert.
+// Both provider inboxes get every booking alert.
 const ALERT_RECIPIENTS = [
   "connect@rlth.org",
   "info@revealing-leads-to-healing-wellness-services.org",
-  "revealtohealllc@gmail.com",
 ];
 
 export interface BookingAlertEmailInput {

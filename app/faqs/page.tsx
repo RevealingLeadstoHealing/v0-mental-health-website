@@ -19,7 +19,7 @@ export default function Faqs() {
             </p>
             <p><strong>Do you offer telehealth services?</strong></p>
             <p>
-              Yes. Telehealth services are available for eligible clients throughout New York State.
+              Yes. Telehealth services are available for eligible clients in states where Kenseener is licensed.
               In-person availability may be limited and discussed during consultation.
             </p>
           </article>

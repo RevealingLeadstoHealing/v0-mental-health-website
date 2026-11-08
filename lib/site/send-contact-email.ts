@@ -12,12 +12,11 @@ import { sendSesV2 } from "../ehr/ses-send";
 
 const FROM_ADDRESS = process.env.EHR_SES_FROM_ADDRESS || "connect@rlth.org";
 
-// Every contact-form inquiry goes to all three practice inboxes, same as
+// Every contact-form inquiry goes to both practice inboxes, same as
 // booking alerts, so nothing depends on a single inbox being checked.
 const CONTACT_RECIPIENTS = [
   "connect@rlth.org",
   "info@revealing-leads-to-healing-wellness-services.org",
-  "revealtohealllc@gmail.com",
 ];
 
 export interface ContactFormInput {

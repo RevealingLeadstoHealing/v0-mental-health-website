@@ -13,7 +13,7 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
           <div>
             <h1>Contact Us</h1>
             <p>
-              In-person sessions in Yonkers and secure telehealth services across New York State.
+              In-person sessions in Yonkers and secure telehealth services in states where Kenseener is licensed.
               Responses are typically returned within 24&ndash;48 business hours.
             </p>
           </div>

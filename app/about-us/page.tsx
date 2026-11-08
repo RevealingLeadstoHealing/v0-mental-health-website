@@ -10,7 +10,7 @@ export default function AboutUs() {
       <section className="section-shell intro">
         <h1>Therapy Approaches Tailored for Everyone</h1>
         <p>
-          At Revealing Leads to Healing Wellness Servicces, we believe in providing compassionate and
+          At Revealing Leads to Healing Wellness Services, we believe in providing compassionate and
           personalized care for individuals from all walks of life. Our therapy approaches are
           highly adaptable, designed to meet the unique needs of people across all ages, whether
           you&rsquo;re a child, teenager, adult, or senior. We are proud to support members of the

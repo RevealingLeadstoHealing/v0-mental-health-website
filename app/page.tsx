@@ -24,7 +24,7 @@ export default function Home() {
         <p>
           To ensure your care fits seamlessly into your life, I provide flexible options tailored to
           your comfort. You can choose to meet with me for dedicated, face-to-face sessions at my
-          Yonkers office, or connect securely from anywhere across New York State through our premier
+          Yonkers office, or connect securely from any state where I am licensed through our premier
           Telehealth platform.
         </p>
         <p>
