@@ -75,6 +75,13 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const live = useRef(true);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joined = useRef(false);
+  const joinedAt = useRef(0);
+  // Latest-value refs so callbacks created at record start (capture.onstop) see the
+  // current consent and upload handler instead of the values from that earlier render.
+  const recordingConsentRef = useRef(recordingConsent);
+  const providerConsentRef = useRef(providerConsent);
+  const onRecordingReadyRef = useRef(onRecordingReady);
+  recordingConsentRef.current = recordingConsent; providerConsentRef.current = providerConsent; onRecordingReadyRef.current = onRecordingReady;
   // The status poll runs on a 5s interval whose closure captures state once. These
   // refs let that closure see the live values so it does not stomp the Connecting/
   // Joining/own-error notice while a join is in flight or has just failed, and so a
@@ -166,7 +173,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
         const noticeLocked = busyRef.current || joinErrorRef.current || joined.current;
         if (!next.configured) { if (!noticeLocked) setNotice('In-EHR calling is not activated yet. AWS setup and a test call are required.'); }
         else if (!noticeLocked) setNotice(next.active ? 'The room is open. Join when ready.' : 'Waiting for the provider to open a room.');
-        if (joined.current && !next.active) { disconnectLocal(); setNotice('The session has ended.'); }
+        if (joined.current && !next.active && requestedAt >= joinedAt.current) { disconnectLocal(); setNotice('The session has ended.'); }
         // Provider-run sessions do not require a separate client-device consent signal;
         // the provider confirms recording consent on their own screen. Only auto-stop if
         // the server explicitly turned recording off (e.g. provider stopped, or a client
@@ -212,7 +219,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       if (provider && !status?.active) await api('start', { telehealthConsent: providerConsent });
       const credentials = await api('join', { telehealthConsent: provider ? providerConsent : consent, recordingConsent: clientRecordingConsent, confirmationVersion: SESSION_CONFIRMATION_VERSION });
       if (!live.current) { await api('leave').catch(() => {}); throw new Error('Call cancelled.'); }
-      joined.current = true;
+      joined.current = true; joinedAt.current = Date.now();
       setCaptionsRunning(false);
       setRoomSessionId(credentials.sessionId || '');
       const sdk = await import('amazon-chime-sdk-js');
@@ -236,7 +243,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       unsubscribeCaptions.current = () => transcription?.unsubscribeFromTranscriptEvent(receiveCaption);
       meeting.audioVideo.addObserver({
         audioVideoDidStart: () => { if (startTileOnConnect.current) { startTileOnConnect.current = false; try { meeting.audioVideo.startLocalVideoTile(); } catch (e: any) { setVideo(false); setCameraNotice(cameraProblem(e)); } } if (live.current) { joinErrorRef.current = false; setConnected(true); onConnectionChange?.(true); setNotice('Connected to the EHR room.'); } },
-        audioVideoDidStop: () => { if (session.current !== meeting) return; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); stopSelfView(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice('Call disconnected. You can join again.'); } },
+        audioVideoDidStop: sessionStatus => { if (session.current !== meeting) return; let stopCode = ''; try { stopCode = String(sessionStatus?.statusCode?.() ?? ''); } catch { stopCode = ''; } const stopReason = `Call disconnected${stopCode ? ` (status ${stopCode})` : ''}. You can join again.`; joinErrorRef.current = true; unsubscribeCaptions.current?.(); unsubscribeCaptions.current = null; stopRecording(); stopSelfView(); localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null; session.current = null; controller.current = null; void devices.destroy(); joined.current = false; onConnectionChange?.(false); if (live.current) { setConnected(false); setCaptions([]); setCaptionNotice('Disconnected. Live captions are unavailable.'); setNotice(stopReason); setCameraNotice(stopReason); } },
         videoTileDidUpdate: tile => { if (!tile.tileId || !tile.boundAttendeeId || tile.isContent || !live.current) return; setTiles(current => [...current.filter(item => item.tileId !== tile.tileId), tile.clone()]); },
         videoTileWasRemoved: tileId => { if (live.current) setTiles(current => current.filter(item => item.tileId !== tileId)); },
       });
@@ -284,7 +291,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   }
   async function upload(blob: Blob) {
     setUploading(true); setRetryAudio(blob);
-    try { if (!onRecordingReady) throw new Error('AI upload is not connected.'); await onRecordingReady(blob); setRetryAudio(null); setNotice('Session audio uploaded for AI processing. Review the draft before signing.'); }
+    try { const ready = onRecordingReadyRef.current; if (!ready) throw new Error('AI upload is not connected.'); await ready(blob); setRetryAudio(null); setNotice('Session audio uploaded for AI processing. Review the draft before signing.'); }
     catch (e: any) { setNotice(`Audio upload failed: ${e.message}. Keep this page open and retry.`); }
     finally { setUploading(false); }
   }
@@ -322,7 +329,7 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
       const chunks: Blob[] = []; let bytes = 0;
       recorder.current = capture;
       capture.ondataavailable = event => { if (event.data.size) { chunks.push(event.data); bytes += event.data.size; if (bytes > 40 * 1024 * 1024) stopRecording(); } };
-      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(error => { if (live.current) setCaptionNotice(`Caption stop could not be confirmed: ${error.message}. Use Stop live captions or end the room.`); }); const blob = new Blob(chunks, { type: capture.mimeType }); if (blob.size) void upload(blob); };
+      capture.onstop = () => { recorder.current = null; micGain.current = null; void context.close(); destination.stream.getTracks().forEach(track => track.stop()); if (live.current) setRecording(false); onRecordingChange?.(false); void api('recording', { active: false }).catch(error => { if (live.current) setCaptionNotice(`Caption stop could not be confirmed: ${error.message}. Use Stop live captions or end the room.`); }); const blob = new Blob(chunks, { type: capture.mimeType }); if (provider && (!recordingConsentRef.current || !providerConsentRef.current)) { if (live.current) setNotice('Recording stopped and discarded because consent was withdrawn. Nothing was uploaded.'); return; } if (blob.size) void upload(blob); };
       capture.onerror = () => { stopRecording(); setNotice('Recording encountered an error. Verify the saved audio before relying on the transcript.'); };
       capture.start(1000); recordingStartedAt.current = Date.now(); setRecording(true); onRecordingChange?.(true); setRecordNotice(''); setNotice(hasRemote ? 'Recording both sides of this session for the AI scribe.' : 'Recording this session for the AI scribe.');
       recordingTimeout.current = setTimeout(stopRecording, 90 * 60 * 1000);
