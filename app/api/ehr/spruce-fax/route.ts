@@ -260,6 +260,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ faxId, status: "dry-run", mode });
     }
 
+    let acceptedRequestId: string | undefined;
     try {
       const endpointId = await resolveSpruceFaxEndpointId();
       const attachmentId = await uploadSpruceMedia(pdf.bytes, pdf.title);
@@ -271,17 +272,7 @@ export async function POST(request: Request) {
         attachmentTitle: pdf.title,
         idempotencyKey: spruceIdempotencyKey(actor.practiceId, faxId),
       });
-      console.info(JSON.stringify({ event: "spruce-fax-send", mode, status: "accepted", source, bytes: pdf.bytes.length, faxId }));
-      await finish("accepted", result.requestId);
-      await appendAuditEvent(actor, {
-        action: "Fax send accepted by Spruce",
-        category: "Fax",
-        clientId: auditClientId,
-        entityType: "spruce-outbound-fax",
-        entityId: faxId,
-        summary: "Spruce accepted the outbound fax for delivery. Final delivery is not confirmed by Spruce's API.",
-      });
-      return NextResponse.json({ faxId, status: "accepted", mode });
+      acceptedRequestId = result.requestId || "";
     } catch (error) {
       console.error(JSON.stringify({ event: "spruce-fax-send", mode, status: "failed", faxId, reason: error instanceof Error ? error.message : "unknown" }));
       await finish("failed");
@@ -295,6 +286,32 @@ export async function POST(request: Request) {
       });
       throw new ApiError(502, "Spruce could not send the fax. Nothing was delivered. Try again later or send it from Spruce.");
     }
+
+    // Spruce has accepted the fax. Bookkeeping below must never downgrade the
+    // status to failed or turn the response into an error (that would prompt a
+    // duplicate send); a bookkeeping failure is logged without PHI instead.
+    console.info(JSON.stringify({ event: "spruce-fax-send", mode, status: "accepted", source, bytes: pdf.bytes.length, faxId }));
+    let recordUpdated = true;
+    try {
+      await finish("accepted", acceptedRequestId || "");
+    } catch (error) {
+      recordUpdated = false;
+      console.error(JSON.stringify({ event: "spruce-fax-send", status: "accepted-record-update-failed", faxId, reason: error instanceof Error ? error.name : "unknown" }));
+    }
+    try {
+      await appendAuditEvent(actor, {
+        action: "Fax send accepted by Spruce",
+        category: "Fax",
+        clientId: auditClientId,
+        entityType: "spruce-outbound-fax",
+        entityId: faxId,
+        summary: "Spruce accepted the outbound fax for delivery. Final delivery is not confirmed by Spruce's API.",
+      });
+    } catch (error) {
+      recordUpdated = false;
+      console.error(JSON.stringify({ event: "spruce-fax-send", status: "accepted-audit-failed", faxId, reason: error instanceof Error ? error.name : "unknown" }));
+    }
+    return NextResponse.json({ faxId, status: "accepted", mode, ...(recordUpdated ? {} : { recordWarning: "Spruce accepted the fax, but the sent-history record could not be fully updated. Do not resend." }) });
   } catch (error) {
     return apiErrorResponse(error);
   }
