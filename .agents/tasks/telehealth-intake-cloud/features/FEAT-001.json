@@ -1,0 +1,24 @@
+{
+ "id": "FEAT-001",
+ "type": "fix",
+ "status": "completed",
+ "description": "Intake-packet email: the server returns inviteEmailStatus (e.g. 'email-failed: SES 403 ...', 'not-configured', 'email-error: ...') from POST /api/ehr/clients action=resendInvitation, but resendPatientInvitation in full-production-interface.tsx (~L4272) ignores it and marks invitationStatus 'Sent' and shows a green 'Intake package sent' for ANY 200 response. A failed SES send is therefore invisible. Also review the existing-account branch (Cognito MessageAction RESEND fails for users no longer in FORCE_CHANGE_PASSWORD, e.g. UnsupportedUserStateException) so the cause is surfaced rather than a generic error.",
+ "steps": [
+  "In app/api/ehr/clients/route.ts resendInvitation: keep behavior, but add emailDelivered: inviteEmailStatus === 'sent' to the JSON response (keep invitationSent and inviteEmailStatus for compatibility). If the Cognito RESEND call throws, wrap/surface a clear plain-language ApiError message (what happened and what to do) without changing successful paths.",
+  "In app/ehr/full-production-interface.tsx resendPatientInvitation: read the response; only mark 'Sent' and setPatientNotice success when response.emailDelivered === true (or inviteEmailStatus === 'sent'); otherwise mark 'Failed' and show the real reason from inviteEmailStatus in setPatientError in plain language (not-configured => AWS credentials missing at runtime; email-failed: SES nnn => include SES detail). Update the red 'failed to send' text near L4491 to say to see the message above rather than only 'check the patient email'.",
+  "Check lib/ehr/ses-send.ts and patient-invite-email.ts for real defects (SigV4 signing, payload shape, region, from address, sandbox/verified identity assumptions) and also confirm the Amplify/IAM requirement (ses:SendEmail on the compute role) is documented in docs/. Fix only genuine defects; do not refactor.",
+  "Add a node:test in tests/ (e.g. tests/intake-invite-status.test.ts) that fails if the UI marks Sent without checking the email status, and a behavioral test for any pure helper you add (e.g. a function mapping inviteEmailStatus to plain-language text, placed in lib/ehr/).",
+  "Do not change telehealth files in this feature."
+ ],
+ "acceptance_criteria": [
+  "A non-'sent' inviteEmailStatus yields a visible red message with the reason and invitationStatus 'Failed'",
+  "'sent' still yields green success",
+  "New tests pass with node --test where runnable offline"
+ ],
+ "verification": [
+  "node --test on the new/related tests in tests/",
+  "Static review that all other callers of resendInvitation/createClient are unaffected"
+ ],
+ "blocked_reason": null,
+ "findings": "Added lib/ehr/invite-email-status.ts, emailDelivered in resendInvitation response, plain-language Cognito RESEND error, UI now marks Failed with reason unless delivered. ses-send.ts SigV4/payload reviewed: no defects found (region fixed us-east-1; needs ses:SendEmail on Amplify compute role and verified sender). Documented in docs/aws-production-checklist.md. tests/intake-invite-status.test.ts passes (2). tsc/next build not runnable offline."
+}

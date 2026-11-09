@@ -1,0 +1,16 @@
+{
+ "project_type":"Next.js 15.5 app router EHR (React 19, TS, Tailwind), AWS SDK v3, Chime SDK",
+ "language":"TypeScript",
+ "build_system":"pnpm 9.15.9 (pinned via corepack); sandbox has NO network so pnpm install/next build/tsc cannot run; node 22 present",
+ "test_framework":"node:test files in tests/ (*.test.ts, *.test.mjs); many are source-string assertions via fs.readFileSync",
+ "build_command":"pnpm build (not runnable offline)",
+ "test_command":"node --test tests/<file> (try --experimental-strip-types for .ts)",
+ "verification_instructions":"Run any node:test files that can run offline; otherwise careful static review. Amplify build is authoritative.",
+ "snapshot_or_generated_files":null,
+ "setup_instructions":"none possible offline",
+ "environment_constraints":"No AWS credentials, no network, no node_modules. Cannot push. Live Chime/SES/Transcribe verification impossible.",
+ "contribution_requirements":"Do not move/remove existing features; trace regressions to known-good commits via git history; honest evidence only.",
+ "key_patterns":"Hand-signed SES v2 REST in lib/ehr/ses-send.ts; patient invite in lib/ehr/patient-invite-email.ts; clients API app/api/ehr/clients/route.ts (resendInvitation action); UI in app/ehr/full-production-interface.tsx (resendPatientInvitation ~L4272, Send Intake Package button ~L4470); telehealth in app/ehr/native-telehealth-room.tsx and app/api/ehr/telehealth/route.ts",
+ "relevant_files":["app/api/ehr/clients/route.ts","lib/ehr/patient-invite-email.ts","lib/ehr/ses-send.ts","app/ehr/full-production-interface.tsx","app/ehr/native-telehealth-room.tsx","app/api/ehr/telehealth/route.ts",".agents/tasks/telehealth-whole-chain/reconciliation.md","docs/native-telehealth-activation.md"],
+ "directory_structure":"app/ (routes, ehr UI), lib/ehr (server helpers), tests/, docs/, .agents/tasks/ (history)"
+}
