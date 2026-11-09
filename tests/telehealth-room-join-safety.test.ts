@@ -27,7 +27,7 @@ test("every failed join path clears busy, reports connection false and shows a r
 });
 
 test("in-room recording is discarded, not uploaded, when provider consent is withdrawn", () => {
-  assert.match(room, /recordingConsentRef\.current = recordingConsent; providerConsentRef\.current = providerConsent; onRecordingReadyRef\.current = onRecordingReady;/);
+  assert.match(room, /onRecordingReadyRef\.current = onRecordingReady;/);
   assert.match(room, /const discard = shouldDiscardRecording\(provider, discardOnStop\.current\);[^]*if \(discard\) \{[^}]*return; \}/);
   assert.match(room, /const ready = onRecordingReadyRef\.current;/);
 });

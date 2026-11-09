@@ -80,10 +80,8 @@ export default function NativeTelehealthRoom({ clientId, provider, providerConse
   const discardOnStop = useRef(false);
   // Latest-value refs so callbacks created at record start (capture.onstop) see the
   // current consent and upload handler instead of the values from that earlier render.
-  const recordingConsentRef = useRef(recordingConsent);
-  const providerConsentRef = useRef(providerConsent);
   const onRecordingReadyRef = useRef(onRecordingReady);
-  recordingConsentRef.current = recordingConsent; providerConsentRef.current = providerConsent; onRecordingReadyRef.current = onRecordingReady;
+  onRecordingReadyRef.current = onRecordingReady;
   // The status poll runs on a 5s interval whose closure captures state once. These
   // refs let that closure see the live values so it does not stomp the Connecting/
   // Joining/own-error notice while a join is in flight or has just failed, and so a

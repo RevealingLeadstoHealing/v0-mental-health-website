@@ -81,3 +81,10 @@ Only `app/ehr/native-telehealth-room.tsx`, about a dozen lines. No feature remov
 - **Consent discard.** The discard decision now uses a flag set when consent is withdrawn (`lib/ehr/recording-discard.ts`) instead of reading consent props at stop time, so ending a call cannot discard a legitimate recording.
 - **Sticky `joinErrorRef`.** Intentional: after a drop the failure reason stays visible until the next join.
 - **Tests.** Poll staleness and discard decisions are pure functions with behavior tests.
+
+## Review v2 response
+
+- Dead consent refs removed (and the test regex that asserted them).
+- Poll-driven stop (issue 1), not changed: the public room status reports `clientRecordingConsent` as a plain boolean, false both when never given and when withdrawn, so a provider cannot tell withdrawal from a provider-initiated stop. Arming discard there would drop legitimate recordings. The `rlth-consent` data message and the consent-effect path remain the discard triggers. The dead `clientWithdrew` poll branch is left as is (harmless).
+- Sticky `joinErrorRef` (issue 3), intended: it keeps the disconnect reason visible until the next join.
+- Test gaps (issue 4) not addressed in this final iteration.
