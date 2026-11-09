@@ -4,7 +4,8 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, getS3Client } from "../../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../../lib/rlth-aws-foundation";
 import { verifySpruceSignature } from "../../../../lib/spruce/verify-webhook";
-import { fetchSpruceConversationItem } from "../../../../lib/spruce/api-client";
+import { fetchSpruceConversationItem, PRACTICE_FAX_E164 } from "../../../../lib/spruce/api-client";
+import { isOutboundSpruceItem } from "../../../../lib/spruce/outbound-detect";
 
 // ---------------------------------------------------------------------------
 // Incoming Spruce webhook: picks up faxes and call/voicemail recordings the
@@ -68,8 +69,9 @@ type SpruceConversationItem = {
     attachments?: SpruceAttachment[];
     event?: SpruceCallEvent;
     conversation?: { type?: string };
-    author?: { phoneNumber?: string; name?: string; entityId?: string };
-    source?: { value?: string };
+    author?: { phoneNumber?: string; name?: string; entityId?: string; type?: string };
+    source?: { value?: string; type?: string };
+    internal?: boolean;
     type?: string;
     signedUrl?: SpruceSignedUrl;
     recordings?: SpruceRecording[];
@@ -84,10 +86,9 @@ type SpruceConversationItem = {
 // memory of Spruce's conversationItem schema and has NOT been confirmed against
 // a captured payload; see isOutboundItem's fail-safe handling.
 function isOutboundItem(item: SpruceConversationItem) {
-    const direction = String(item.direction || "").toLowerCase();
-    if (direction === "outbound" || direction === "out" || direction === "internal") return true;
-    if (item.outbound === true) return true;
-    return false;
+    // Several independent signals (direction, author/source is the practice fax
+    // line, staff/API/internal author type); see lib/spruce/outbound-detect.ts.
+    return isOutboundSpruceItem(item, PRACTICE_FAX_E164);
 }
 
 function resolveUrl(value: SpruceSignedUrl | undefined): string {

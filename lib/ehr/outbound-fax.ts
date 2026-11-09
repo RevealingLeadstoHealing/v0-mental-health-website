@@ -5,8 +5,8 @@ export type FaxSendMode = "off" | "dry-run" | "live";
 
 /** Anything other than an exact "dry-run" or "live" is treated as off. */
 export function parseFaxSendMode(value: unknown): FaxSendMode {
-  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (raw === "dry-run" || raw === "live") return raw;
+  // Exact match only: no trimming or case folding, so " LIVE " or "Live" stays off.
+  if (value === "dry-run" || value === "live") return value;
   return "off";
 }
 
