@@ -4,14 +4,16 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../app/ehr/full-production-interface.tsx", import.meta.url), "utf8");
 
-test("telehealth presents consent before media, transcript after media, and fax last", () => {
+test("telehealth presents consent before media and transcript after media", () => {
   const consent = source.indexOf('aria-label="Client and consent before audio or video"');
   const microphone = source.indexOf('Microphone and recording', consent);
   const room = source.indexOf('<NativeTelehealthRoom', microphone);
   const transcript = source.indexOf('aria-label="Transcript review"', room);
   const history = source.indexOf('Previously saved telehealth chart history', transcript);
-  const fax = source.indexOf('<FaxInbox', history);
-  assert.ok(consent >= 0 && microphone > consent && room > microphone && transcript > room && history > transcript && fax > history);
+  assert.ok(consent >= 0 && microphone > consent && room > microphone && transcript > room && history > transcript);
+  // The fax inbox moved to the Fax page; the telehealth page no longer renders it.
+  const telehealth = source.slice(source.indexOf("function TelehealthPage"), source.indexOf("function ClientManagementPage"));
+  assert.ok(!telehealth.includes("<FaxInbox"));
   assert.ok(source.indexOf('checked={sessionForm.consentObtained}', consent) < microphone);
   assert.ok(source.indexOf('checked={sessionForm.recordingConsent}', consent) < microphone);
   assert.ok(!source.includes('label="Callback number (documentation only)"'));
@@ -34,6 +36,15 @@ test("provider and client navigation contain every agreed production label", () 
   const mainApp = source.slice(source.indexOf("function MainApp"), source.indexOf("function PageRouter"));
   for (const label of providerLabels) assert.match(mainApp, new RegExp(`"${label.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}"`));
   for (const label of clientLabels) assert.match(mainApp, new RegExp(`"${label.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}"`));
+});
+
+test("Fax is a provider-only Communication item that renders the send form and the inbox", () => {
+  assert.match(source, /\["email", "Email", Mail\],\s*\["fax", "Fax", Printer\],\s*\["billing"/);
+  assert.match(source, /\["Communication", providerItems\.slice\(9, 13\)\]/);
+  assert.match(source, /\["Provider training", providerItems\.slice\(22\)\]/);
+  assert.match(source, /page === "fax" && currentUser\.role === "provider"\) return <FaxPage \/>/);
+  const faxPage = source.slice(source.indexOf("function FaxPage"), source.indexOf("function SectionHeader"));
+  assert.ok(faxPage.includes("<FaxSend") && faxPage.includes("<FaxInbox"));
 });
 
 test("every role-specific production route resolves to a page", () => {

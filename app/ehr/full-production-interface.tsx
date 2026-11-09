@@ -28,6 +28,7 @@ import { psychoeducationLibrary } from "../../lib/ehr/psychoeducation-library";
 import NativeTelehealthRoom from "./native-telehealth-room";
 import { useMicrophoneCaptions } from "./use-microphone-captions";
 import FaxInbox from "./fax-inbox";
+import FaxSend from "./fax-send";
 import EmailPage from "./email-inbox";
 import FaxActivity from "./fax-activity";
 import { buildFaxActivity } from "../../lib/ehr/fax-activity";
@@ -67,6 +68,7 @@ import {
   Languages,
   GraduationCap,
   Mail,
+  Printer,
 } from "lucide-react";
 
 function cn(...classes) {
@@ -1509,6 +1511,7 @@ function MainApp() {
     ["telehealth", "Telehealth", Video],
     ["messages", "Messages", MessageSquare],
     ["email", "Email", Mail],
+    ["fax", "Fax", Printer],
     ["billing", "Billing", ClipboardList],
     ["audit-log", "Audit Log", Lock],
     ["infrastructure", "Infrastructure", Shield],
@@ -1524,11 +1527,11 @@ function MainApp() {
   const groups = currentUser.role === "provider" ? [
     ["Overview", providerItems.slice(0, 4)],
     ["Clinical documentation", providerItems.slice(4, 9)],
-    ["Communication", providerItems.slice(9, 12)],
-    ["Billing & Review", providerItems.slice(12, 15)],
-    ["Wellness tools", providerItems.slice(15, 19)],
-    ["Practice resources", providerItems.slice(19, 21)],
-    ["Provider training", providerItems.slice(21)],
+    ["Communication", providerItems.slice(9, 13)],
+    ["Billing & Review", providerItems.slice(13, 16)],
+    ["Wellness tools", providerItems.slice(16, 20)],
+    ["Practice resources", providerItems.slice(20, 22)],
+    ["Provider training", providerItems.slice(22)],
   ] : [["Overview", clientItems]];
   const [menuOpen, setMenuOpen] = useState(false);
   const workspaceRef = useRef(null);
@@ -1668,6 +1671,7 @@ function PageRouter() {
   if (page === "homework-client" && currentUser.role === "client") return <ClientHomeworkPage />;
   if (page === "messages") return <MessagingPage />;
   if (page === "email" && currentUser.role === "provider") return <EmailPage />;
+  if (page === "fax" && currentUser.role === "provider") return <FaxPage />;
   if (page === "records-request" && currentUser.role === "client") return <ClientRecordRequestPage />;
   if (page === "record-requests" && currentUser.role === "provider") return <ProviderRecordRequestsPage />;
   if (page === "audit-log" && currentUser.role === "provider") return <AuditLogPage />;
@@ -1687,6 +1691,17 @@ function PageRouter() {
   if (page === "infrastructure" && currentUser.role === "provider") return <InfrastructurePage />;
   if (page === "trainings" && currentUser.role === "provider") return <ProviderTrainingsPage />;
   return <DashboardPage />;
+}
+function FaxPage() {
+  const { store } = useAuth();
+  const chartClients = clinicalClientEntries(store).map(([id, bucket]) => ({ id, label: `${bucket?.profile?.fullName || "Client"} — ${id}` }));
+  return (
+    <div>
+      <SectionHeader title="Fax" description="Send faxes from the practice fax line and review faxes and call recordings captured from Spruce." />
+      <FaxSend clients={chartClients} />
+      <FaxInbox clients={chartClients} />
+    </div>
+  );
 }
 function SectionHeader({ title, description, right }) {
   return (
@@ -4107,7 +4122,6 @@ ${generatedDocs.structuredNote.content}`}</div>
             await productionApi("/api/ehr/audit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "Recorded non-billable fax activity", category: "Fax Activity", clientId: activeClientId, entityType: "fax-activity", entityId: document.id, summary: `Provider-entered supporting documentation linked to appointment ${appointmentId}. Delivery not independently verified.` }) });
           } finally { setSavingDraft(false); }
         }} />}
-      {isProvider && <FaxInbox clients={clinicalClientEntries(store).map(([id, bucket]) => ({ id, label: `${bucket?.profile?.fullName || "Client"} — ${id}` }))} />}
     </div>
   );
 }

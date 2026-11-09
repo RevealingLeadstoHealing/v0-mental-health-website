@@ -73,7 +73,22 @@ type SpruceConversationItem = {
     type?: string;
     signedUrl?: SpruceSignedUrl;
     recordings?: SpruceRecording[];
+    direction?: string;
+    outbound?: boolean;
 };
+
+// Faxes WE send through the API (app/api/ehr/spruce-fax) make Spruce fire
+// conversationItem.created too, with a PDF attachment, which classifyItem would
+// call an incoming fax. Skip items that Spruce marks as outbound. The field
+// name below (conversationItem.direction = "inbound" | "outbound") is from
+// memory of Spruce's conversationItem schema and has NOT been confirmed against
+// a captured payload; see isOutboundItem's fail-safe handling.
+function isOutboundItem(item: SpruceConversationItem) {
+    const direction = String(item.direction || "").toLowerCase();
+    if (direction === "outbound" || direction === "out" || direction === "internal") return true;
+    if (item.outbound === true) return true;
+    return false;
+}
 
 function resolveUrl(value: SpruceSignedUrl | undefined): string {
     if (!value) return "";
@@ -212,6 +227,12 @@ const item: SpruceConversationItem = (event.data.object ?? event.data) as Spruce
     return NextResponse.json({ received: true, handled: false });
   }
 
+if (kind === "fax" && isOutboundItem(item)) {
+    // Our own outbound fax echoing back; never store it as an inbound fax.
+    return NextResponse.json({ received: true, handled: false, skipped: "outbound" });
+  }
+  const directionUnconfirmed = kind === "fax" && !String(item.direction || "").trim() && item.outbound === undefined;
+
 const itemId = item.id || `unknown_${Date.now()}`;
   const fromNumber = extractSourceNumber(item);
 
@@ -246,7 +267,7 @@ try {
     fromNumber,
     storageKey,
     note: kind === "fax"
-    ? `New fax received${fromNumber ? ` from ${fromNumber}` : ""}. Saved securely -- open the Spruce Inbox to view and link it to a client chart.`
+    ? `New fax received${fromNumber ? ` from ${fromNumber}` : ""}. Saved securely -- open the Spruce Inbox to view and link it to a client chart.${directionUnconfirmed ? " Spruce did not say whether this fax is incoming or outgoing; confirm it is not a fax you sent." : ""}`
       : `New call recording / voicemail received${fromNumber ? ` from ${fromNumber}` : ""}. Saved securely -- open the Spruce Inbox to listen and link it to a client chart.`,
   });
   return NextResponse.json({ received: true, handled: true, stored: true });
