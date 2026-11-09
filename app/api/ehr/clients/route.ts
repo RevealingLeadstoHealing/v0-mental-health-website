@@ -77,6 +77,10 @@ async function cognitoAdmin(action: "AdminCreateUser" | "AdminAddUserToGroup" | 
   if (!response.ok) {
     const detail = result.message || result.__type || "Patient invitation could not be created.";
     if (result.__type?.includes("UserNotFound")) throw new ApiError(404, "The patient login account does not exist yet.");
+    if (result.__type?.includes("UnsupportedUserState")) {
+      // Cognito rejects RESEND once the patient has signed in (CONFIRMED state).
+      throw new ApiError(409, "This patient already has a confirmed portal account that cannot be re-invited automatically. Ask them to use Forgot password on the login page.");
+    }
     if (detail.includes("already exists") || result.__type?.includes("UsernameExists")) {
       throw new ApiError(409, "A patient account already exists for this email address.");
     }
@@ -204,16 +208,10 @@ export async function POST(request: Request) {
         // password. So the patient still gets that plain AWS email, but we also send
         // our own branded invite below (same known temp password) so they always have
         // the full instructions, portal links, QR code, and intake-package direction.
-        try {
-          await cognitoAdmin("AdminCreateUser", {
-            UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
-            MessageAction: "RESEND", TemporaryPassword: resendTemporaryPassword, DesiredDeliveryMediums: ["EMAIL"],
-          });
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : "unknown error";
-          throw new ApiError(error instanceof ApiError && error.status >= 400 && error.status < 500 ? error.status : 502,
-            `This patient already has a portal account that cannot be re-invited automatically (${detail}). If they already signed in once, ask them to use Forgot password on the login page.`);
-        }
+        await cognitoAdmin("AdminCreateUser", {
+          UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
+          MessageAction: "RESEND", TemporaryPassword: resendTemporaryPassword, DesiredDeliveryMediums: ["EMAIL"],
+        });
       } else {
         const account = await cognitoAdmin("AdminCreateUser", {
           UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,

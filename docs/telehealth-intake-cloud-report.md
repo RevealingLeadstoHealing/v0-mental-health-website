@@ -73,3 +73,11 @@ Only `app/ehr/native-telehealth-room.tsx`, about a dozen lines. No feature remov
 - `EHR_NATIVE_TELEHEALTH_ENABLED=true` and the Chime, Transcribe, HealthScribe, Translate and Polly permissions on the live Amplify role (needs AWS; see `.agents/tasks/telehealth-whole-chain/reconciliation.md` for the commands).
 - Browser permissions (camera and microphone allowed for the EHR site), real camera display, real Chime audio, live captions, and HealthScribe output.
 - Type-check and build: no `tsc` or `next build` here. The edits are small and typed loosely (`sessionStatus?.statusCode?.()` is read defensively), but the Amplify build is the authority.
+
+## Review follow-up
+
+- **Cognito resend errors.** The blanket "cannot be re-invited" wrapper is removed. `cognitoAdmin` now maps only `UnsupportedUserStateException` (confirmed account) to that message with a 409. Other failures keep their original status and sanitized message, so no raw Cognito detail is forwarded.
+- **Create path email status.** Not changed: the Save Patient flow creates with `sendInvitation: false`, so no email is sent at creation, and the Send Intake Package button uses the gated resend path.
+- **Consent discard.** The discard decision now uses a flag set when consent is withdrawn (`lib/ehr/recording-discard.ts`) instead of reading consent props at stop time, so ending a call cannot discard a legitimate recording.
+- **Sticky `joinErrorRef`.** Intentional: after a drop the failure reason stays visible until the next join.
+- **Tests.** Poll staleness and discard decisions are pure functions with behavior tests.
