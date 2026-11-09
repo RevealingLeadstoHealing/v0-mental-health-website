@@ -36,6 +36,7 @@ import SignedDocuments from "./signed-documents";
 import TelehealthEntry from "./telehealth-entry";
 import SpecialtyAssessmentForm from "./specialty-assessment-form";
 import { specialtyAssessments } from "../../lib/ehr/specialty-assessments";
+import { describeInviteEmailStatus } from "../../lib/ehr/invite-email-status";
 import React, { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Shield,
@@ -4275,7 +4276,13 @@ function ClientManagementPage() {
     setPatientError("");
     setPatientNotice("");
     try {
-      await productionApi("/api/ehr/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resendInvitation", clientId }) });
+      const result = await productionApi("/api/ehr/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resendInvitation", clientId }) });
+      const emailOutcome = describeInviteEmailStatus(result?.emailDelivered === true ? "sent" : result?.inviteEmailStatus);
+      if (!emailOutcome.delivered) {
+        updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Failed", invitationStatusUpdatedAt: new Date().toISOString() }));
+        setPatientError(emailOutcome.message);
+        return false;
+      }
       updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, invitationStatus: "Sent", invitationStatusUpdatedAt: new Date().toISOString() }));
       setPatientNotice("Patient invitation sent successfully.");
       return true;
@@ -4488,7 +4495,7 @@ function ClientManagementPage() {
                     return <p className="mt-2 text-sm font-medium text-emerald-700">✓ Intake package sent{whenText}. The patient received their username, temporary password, and personal telehealth link.</p>;
                   }
                   if (status === "Failed") {
-                    return <p className="mt-2 text-sm font-medium text-red-700">✗ The intake package failed to send{whenText}. Check the patient email address and try again.</p>;
+                    return <p className="mt-2 text-sm font-medium text-red-700">✗ The intake package failed to send{whenText}. See the red message above for the reason, fix it, and try again.</p>;
                   }
                   return <p className="mt-2 text-sm font-medium text-slate-600">Not sent yet. Click Send Intake Package to deliver the invitation.</p>;
                 })()}

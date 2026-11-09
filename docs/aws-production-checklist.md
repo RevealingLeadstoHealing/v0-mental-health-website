@@ -19,6 +19,7 @@ This checklist turns the current prototype into a practice-first production EHR.
 - [ ] Copy the verified identity ARN and re-deploy foundation stack with `SesFromAddress` and `SesIdentityArn` parameters.
 - [ ] Re-deploy Vercel IAM stack with matching SES parameters to grant `ses:SendEmail` to the runtime user.
 - [ ] Set `EHR_SES_FROM_ADDRESS` and `EHR_SES_IDENTITY_ARN` in Vercel environment variables.
+- [ ] Amplify hosting: the SSR compute role must allow `ses:SendEmail` (and `ses:SendRawEmail`) in us-east-1 on the verified sender identity, or the intake package email returns `not-configured` / `email-failed: SES 403` and the EHR shows a red failure message.
 - [ ] Test password reset and provider invitation emails end-to-end before first real provider account.
 
 ## Authentication

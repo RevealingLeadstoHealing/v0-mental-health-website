@@ -204,10 +204,16 @@ export async function POST(request: Request) {
         // password. So the patient still gets that plain AWS email, but we also send
         // our own branded invite below (same known temp password) so they always have
         // the full instructions, portal links, QR code, and intake-package direction.
-        await cognitoAdmin("AdminCreateUser", {
-          UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
-          MessageAction: "RESEND", TemporaryPassword: resendTemporaryPassword, DesiredDeliveryMediums: ["EMAIL"],
-        });
+        try {
+          await cognitoAdmin("AdminCreateUser", {
+            UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
+            MessageAction: "RESEND", TemporaryPassword: resendTemporaryPassword, DesiredDeliveryMediums: ["EMAIL"],
+          });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "unknown error";
+          throw new ApiError(error instanceof ApiError && error.status >= 400 && error.status < 500 ? error.status : 502,
+            `This patient already has a portal account that cannot be re-invited automatically (${detail}). If they already signed in once, ask them to use Forgot password on the login page.`);
+        }
       } else {
         const account = await cognitoAdmin("AdminCreateUser", {
           UserPoolId: rlthAwsFoundation.cognitoUserPoolId, Username: client.email,
@@ -232,7 +238,7 @@ export async function POST(request: Request) {
         fullName: client.fullName, email: String(client.email), temporaryPassword: resendTemporaryPassword,
       });
       await appendAuditEvent(actor, { action: existingAccount ? "Resent patient login invitation" : "Created patient login and sent secure invitation", category: "Client Administration", clientId, entityType: "client-profile", entityId: clientId, summary: existingAccount ? `A secure Cognito patient invitation was resent (branded invite email: ${inviteEmailStatus}).` : `The onboarding packet was saved before the secure Cognito invitation was sent (branded invite email: ${inviteEmailStatus}).` });
-      return NextResponse.json({ invitationSent: true, clientId, inviteEmailStatus });
+      return NextResponse.json({ invitationSent: true, emailDelivered: inviteEmailStatus === "sent", clientId, inviteEmailStatus });
     }
     const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
