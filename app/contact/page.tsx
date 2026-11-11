@@ -123,7 +123,7 @@ const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "0.6rem",
   marginTop: "0.35rem",
-  border: "2px solid var(--charcoal)",
+  border: "1px solid var(--text)",
   fontFamily: "inherit",
   fontSize: "1rem",
 };

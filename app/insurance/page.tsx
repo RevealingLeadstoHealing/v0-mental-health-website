@@ -18,29 +18,18 @@ export default function Insurance() {
       <section className="section-shell">
         <div className="content-card">
           <article>
-            <h2>Currently Active In-Network Plans</h2>
-            <ul>
-              <li>Carelon Behavioral Health</li>
-              <li>Anthem Blue Cross and Blue Shield New York (formerly Empire)</li>
-              <li>Cigna</li>
-              <li>Aetna</li>
-            </ul>
-          </article>
-
-          <article>
-            <h2>Pending &amp; Upcoming In-Network Coverage</h2>
+            <h2>Insurance</h2>
             <p>
-              We are actively onboarding with additional major networks&mdash;including Optum
-              (UnitedHealthcare, Oxford, Oscar) and Medicare Advantage. If your network is not listed
-              above, please feel free to inquire about the timeline for your plan.
+              We accept most major insurance plans. Please contact us to confirm your coverage before
+              your first visit.
             </p>
           </article>
 
           <article>
-            <h2>Private Pay &amp; Out-of-Network</h2>
+            <h2>Self-Pay &amp; Sliding Scale</h2>
             <p>
-              Self-pay options and documentation (superbills) for out-of-network reimbursement are
-              available upon request.
+              Self-pay and sliding-scale fees are available. Documentation (superbills) for
+              out-of-network reimbursement is available upon request.
             </p>
           </article>
         </div>

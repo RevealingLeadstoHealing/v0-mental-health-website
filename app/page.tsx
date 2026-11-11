@@ -9,10 +9,6 @@ export default function Home() {
     <>
       <SiteHeader />
 
-      <div className="home-logo-hero">
-        <img src="/rlth-logo.png" alt="Revealing Leads to Healing Wellness Services, LLC" />
-      </div>
-
       <section className="section-shell intro">
         <h1>Your Path to Wellness Starts Here</h1>
         <p>
@@ -52,7 +48,8 @@ export default function Home() {
               Yonkers, New York, offering individual, marital, family, and group therapy for adults
               and teenagers. With advanced training in trauma, group process, substance use, family
               systems, and integrative mental health care, Kay creates a safe, personalized space
-              where meaningful, lasting change can happen.
+              where meaningful, lasting change can happen. Kenseener is currently licensed in New York,
+              Florida, and Idaho, with applications pending in Vermont, Delaware, and Colorado.
             </p>
           </article>
         </div>

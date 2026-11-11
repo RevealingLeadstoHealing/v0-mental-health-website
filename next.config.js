@@ -13,13 +13,15 @@ const securityHeaders = [
       "frame-ancestors 'none'",
       "frame-src 'self' https://music.amazon.com https://www.google.com",
       "object-src 'none'",
-      "script-src 'self' 'unsafe-inline'",
+      // Local `next dev` only: React's dev tools need eval. Production is unchanged.
+      process.env.NODE_ENV === "development" ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob:",
       "font-src 'self' data: https://fonts.gstatic.com",
       "media-src 'self' blob:",
       "connect-src 'self' https://*.amazonaws.com https://*.chime.aws wss://*.chime.aws wss://*.amazonaws.com",
-      "upgrade-insecure-requests",
+      // Skipped on local `next dev`, which runs on plain http://localhost.
+      ...(process.env.NODE_ENV === "development" ? [] : ["upgrade-insecure-requests"]),
     ].join("; "),
   },
 ];
