@@ -1,0 +1,11 @@
+# Revealing Leads to Healing Wellness Services, LLC
+# Public site: https://www.revealing-leads-to-healing-wellness-services.org/
+User-agent: *
+Allow: /
+Disallow: /ehr/
+Disallow: /api/
+Disallow: /login
+Disallow: /logout
+Disallow: /search
+
+Sitemap: https://www.revealing-leads-to-healing-wellness-services.org/sitemap.xml
