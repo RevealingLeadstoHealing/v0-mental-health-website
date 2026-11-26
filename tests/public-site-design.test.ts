@@ -54,9 +54,11 @@ test("original fonts: Lato for text, Montserrat for headings, no Bevan", () => {
 });
 
 test("licensure states are listed on Home and About", () => {
-  const sentence = /Kenseener is currently licensed in New York, Florida, and Idaho, with applications pending in Vermont, Delaware, and Colorado\./;
+  const sentence = /Kenseener is currently licensed in New York, Florida, and Idaho, with applications pending in Vermont and Delaware\./;
   assert.match(home.replace(/\s+/g, " "), sentence);
   assert.match(about.replace(/\s+/g, " "), sentence);
+  assert.doesNotMatch(home, /Colorado/);
+  assert.doesNotMatch(about, /Colorado/);
 });
 
 test("insurance page uses the approved general wording and names no carriers", () => {
@@ -81,11 +83,11 @@ function cspFor(nodeEnv: string): string {
 
 test("live site security rules stay strict; only local dev is relaxed", () => {
   const prod = cspFor("production");
-  assert.match(prod, /script-src 'self' 'unsafe-inline'(;|$)/);
+  assert.match(prod, /script-src 'self' 'unsafe-inline' https:\/\/challenges\.cloudflare\.com(;|$)/);
   assert.doesNotMatch(prod, /unsafe-eval/);
   assert.match(prod, /upgrade-insecure-requests/);
 
   const dev = cspFor("development");
-  assert.match(dev, /script-src 'self' 'unsafe-inline' 'unsafe-eval'/);
+  assert.match(dev, /script-src 'self' 'unsafe-inline' 'unsafe-eval' https:\/\/challenges\.cloudflare\.com/);
   assert.doesNotMatch(dev, /upgrade-insecure-requests/);
 });

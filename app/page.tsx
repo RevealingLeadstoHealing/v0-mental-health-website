@@ -49,7 +49,7 @@ export default function Home() {
               and teenagers. With advanced training in trauma, group process, substance use, family
               systems, and integrative mental health care, Kay creates a safe, personalized space
               where meaningful, lasting change can happen. Kenseener is currently licensed in New York,
-              Florida, and Idaho, with applications pending in Vermont, Delaware, and Colorado.
+              Florida, and Idaho, with applications pending in Vermont and Delaware.
             </p>
           </article>
         </div>

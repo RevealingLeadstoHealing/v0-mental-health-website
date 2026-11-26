@@ -41,7 +41,7 @@ export default function AboutUs() {
               dedicated to helping clients address their unique needs with a focus on personalized care
               and evidence-based techniques. Let us help you take the next step toward a more balanced
               and fulfilling life. Kenseener is currently licensed in New York, Florida, and Idaho, with
-              applications pending in Vermont, Delaware, and Colorado.
+              applications pending in Vermont and Delaware.
             </p>
           </article>
 

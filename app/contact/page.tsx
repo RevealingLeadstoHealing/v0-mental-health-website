@@ -1,5 +1,13 @@
 import { SiteHeader, SiteFooter, EHR_LOGIN_URL } from "../site-chrome";
 import AccessQrCode from "../ehr/access-qr-code";
+import Script from "next/script";
+
+// Cloudflare Turnstile (anti-spam, 2026-11-26): the widget only renders
+// when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set. Until Kay / the deployer
+// creates keys in Cloudflare and sets them in Amplify, the form relies on
+// the honeypot, rate limiting and server-side validation in
+// app/api/contact/route.ts.
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export const metadata = { title: "Contact | Revealing Leads to Healing Wellness Services, LLC" };
 
@@ -42,25 +50,25 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
             <p>
               <label>
                 Name *<br />
-                <input type="text" name="name" required style={fieldStyle} />
+                <input type="text" name="name" required maxLength={100} style={fieldStyle} />
               </label>
             </p>
             <p>
               <label>
                 Email address *<br />
-                <input type="email" name="email" required style={fieldStyle} />
+                <input type="email" name="email" required maxLength={254} style={fieldStyle} />
               </label>
             </p>
             <p>
               <label>
                 Message *<br />
-                <textarea name="message" required rows={5} style={fieldStyle} />
+                <textarea name="message" required rows={5} maxLength={5000} style={fieldStyle} />
               </label>
             </p>
             <p>
               <label>
                 Phone number *<br />
-                <input type="tel" name="phone" required style={fieldStyle} />
+                <input type="tel" name="phone" required maxLength={40} style={fieldStyle} />
               </label>
             </p>
             <p>
@@ -68,6 +76,22 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
                 <input type="checkbox" name="copy" value="1" /> Send me a copy
               </label>
             </p>
+            {/* Honeypot: hidden from real people (off-screen, not
+                display:none, so bots that fill every field give
+                themselves away). The server rejects any submission
+                with this field filled — see app/api/contact/route.ts. */}
+            <p aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, overflow: "hidden" }}>
+              <label>
+                Website
+                <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+              </label>
+            </p>
+            {turnstileSiteKey ? (
+              <>
+                <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="lazyOnload" />
+                <div className="cf-turnstile" data-sitekey={turnstileSiteKey} />
+              </>
+            ) : null}
             <button type="submit" className="button">Submit form</button>
           </form>
         </div>
