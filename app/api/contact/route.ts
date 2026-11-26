@@ -13,6 +13,20 @@ import {
   verifyTurnstileToken,
 } from "../../../lib/site/contact-antispam";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+// Version stamp — proves which build is actually serving POST /api/contact.
+// GET /api/contact used to return 405; it now returns this JSON.
+export async function GET() {
+  return NextResponse.json({
+    version: "2f73fef+contact-fix-2",
+    runtimeCredentialsConfigured: hasAwsRuntimeCredentials(),
+    region: rlthAwsFoundation.region,
+    turnstileConfigured: turnstileConfigured(),
+  });
+}
+
 // Handles the public Contact page form (a plain HTML POST, no JavaScript
 // required). Redirects back to /contact with a status flag the page reads
 // to show a thank-you or error notice.
@@ -41,13 +55,13 @@ import {
 // and then the SES send, with no timeout on either, before returning any
 // redirect — so a missing credential or a hung AWS call left the plain
 // POST hanging for tens of seconds and the page looked frozen, with no
-// success or error shown. Both AWS calls are now bounded to 10 seconds
-// (matching the Turnstile timeout), run concurrently so neither blocks
-// the other, and the route always returns a redirect promptly. While
-// SES is paused (Case 179496551900783), a submission whose EHR alert
-// was recorded still returns ?sent=1 even though the email failed, so
-// Kay still gets the inquiry in the EHR.
+// success or error shown. Both AWS calls now share one 8-second deadline,
+// run concurrently so neither blocks the other, and the route always
+// returns a redirect promptly. While SES is paused (Case 179496551900783),
+// a submission whose EHR alert was recorded still returns ?sent=1 even
+// though the email failed, so Kay still gets the inquiry in the EHR.
 const AWS_CALL_TIMEOUT_MS = 10_000;
+const AWS_DEADLINE_MS = 8_000;
 
 /** Race a promise against a timeout; returns null on timeout. Never throws for a timeout. */
 async function withTimeout<T>(promise: Promise<T>, ms = AWS_CALL_TIMEOUT_MS): Promise<T | null> {
@@ -102,87 +116,99 @@ async function recordConsultationAlert({ name, email, phone, message }: { name: 
 export async function POST(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const error = () => NextResponse.redirect(new URL("/contact?error=1", origin), { status: 303 });
-
-  // 1. Per-IP rate limiting: max 5 submissions/hour per IP (in-memory,
-  // per server instance — see lib/site/contact-antispam.ts).
-  if (isRateLimited(clientIpFromHeaders(request.headers))) {
-    return error();
-  }
-
-  let name = "";
-  let email = "";
-  let phone = "";
-  let message = "";
-  let honeypot = "";
-  let turnstileToken = "";
-  let wantsCopy = false;
+  const startedAt = Date.now();
+  console.log("contact POST start", { ip: clientIpFromHeaders(request.headers) });
 
   try {
-    const form = await request.formData();
-    name = String(form.get("name") || "");
-    email = String(form.get("email") || "");
-    phone = String(form.get("phone") || "");
-    message = String(form.get("message") || "");
-    honeypot = String(form.get(HONEYPOT_FIELD) || "");
-    turnstileToken = String(form.get(TURNSTILE_FIELD) || "");
-    wantsCopy = form.get("copy") === "1";
+    // 1. Per-IP rate limiting: max 5 submissions/hour per IP (in-memory,
+    // per server instance — see lib/site/contact-antispam.ts).
+    if (isRateLimited(clientIpFromHeaders(request.headers))) {
+      return error();
+    }
+
+    let name = "";
+    let email = "";
+    let phone = "";
+    let message = "";
+    let honeypot = "";
+    let turnstileToken = "";
+    let wantsCopy = false;
+
+    try {
+      const form = await request.formData();
+      name = String(form.get("name") || "");
+      email = String(form.get("email") || "");
+      phone = String(form.get("phone") || "");
+      message = String(form.get("message") || "");
+      honeypot = String(form.get(HONEYPOT_FIELD) || "");
+      turnstileToken = String(form.get(TURNSTILE_FIELD) || "");
+      wantsCopy = form.get("copy") === "1";
+    } catch {
+      return error();
+    }
+
+    // 2. Honeypot: a filled hidden field means a bot. Pretend success so
+    // bots cannot learn they were caught — and send/log nothing.
+    const validation = validateContactForm({ name, email, phone, message, honeypot });
+    console.log("contact POST validated", { ok: validation.ok, errors: validation.errors, ms: Date.now() - startedAt });
+    if (validation.errors.includes("honeypot")) {
+      return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
+    }
+
+    // 3. Strict server-side validation + sanitization (email format, field
+    // lengths, HTML/control characters stripped). Never trust the browser.
+    if (!validation.ok) {
+      return error();
+    }
+    const clean = validation.sanitized;
+
+    // 4. Cloudflare Turnstile, fail-closed ONLY when keys are configured.
+    // Until NEXT_PUBLIC_TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are set
+    // in Cloudflare + Amplify, layers 1-3 above are the active protection.
+    if (turnstileConfigured()) {
+      const human = await verifyTurnstileToken(turnstileToken);
+      if (!human) {
+        return error();
+      }
+    }
+
+    // 5. No AWS runtime credentials at all: fail fast instead of hanging
+    // on DynamoDB/SES calls that can never succeed. Skip both AWS calls.
+    if (!hasAwsRuntimeCredentials()) {
+      return error();
+    }
+
+    // Only now — after every check has passed — log the standing in-EHR
+    // alert and send the email, using the sanitized values. Both run
+    // concurrently under one shared 8-second deadline, so a hung DynamoDB
+    // or SES call cannot leave the form hanging with no response.
+    const [emailResult, alertRecorded] = await Promise.race<[string | null, boolean | null]>([
+      Promise.all([
+        withTimeout(sendContactFormEmail({ ...clean, wantsCopy }), AWS_DEADLINE_MS),
+        withTimeout(recordConsultationAlert(clean), AWS_DEADLINE_MS),
+      ]),
+      new Promise<[string | null, boolean | null]>((resolve) =>
+        setTimeout(() => resolve(["email-error", false]), AWS_DEADLINE_MS),
+      ),
+    ]);
+
+    if (emailResult === "sent") {
+      return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
+    }
+
+    // SES is paused in us-east-1 (Case 179496551900783), so the email can
+    // fail even for a genuine inquiry. If the EHR alert was recorded, the
+    // inquiry is not lost — show success and log the email failure.
+    if (alertRecorded) {
+      console.error("Contact form email failed; inquiry recorded in EHR alert", emailResult);
+      return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
+    }
+
+    // "not-configured" (no AWS runtime credentials, e.g. local dev) or
+    // "email-pending-ses" / "email-error" (SES not yet out of sandbox, etc.)
+    // with no EHR alert recorded either.
+    return error();
   } catch {
     return error();
   }
-
-  // 2. Honeypot: a filled hidden field means a bot. Pretend success so
-  // bots cannot learn they were caught — and send/log nothing.
-  const validation = validateContactForm({ name, email, phone, message, honeypot });
-  if (validation.errors.includes("honeypot")) {
-    return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
-  }
-
-  // 3. Strict server-side validation + sanitization (email format, field
-  // lengths, HTML/control characters stripped). Never trust the browser.
-  if (!validation.ok) {
-    return error();
-  }
-  const clean = validation.sanitized;
-
-  // 4. Cloudflare Turnstile, fail-closed ONLY when keys are configured.
-  // Until NEXT_PUBLIC_TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are set
-  // in Cloudflare + Amplify, layers 1-3 above are the active protection.
-  if (turnstileConfigured()) {
-    const human = await verifyTurnstileToken(turnstileToken);
-    if (!human) {
-      return error();
-    }
-  }
-
-  // 5. No AWS runtime credentials at all: fail fast instead of hanging
-  // on DynamoDB/SES calls that can never succeed. Skip both AWS calls.
-  if (!hasAwsRuntimeCredentials()) {
-    return error();
-  }
-
-  // Only now — after every check has passed — log the standing in-EHR
-  // alert and send the email, using the sanitized values. Both run
-  // concurrently, each bounded to 10 seconds, so a hung DynamoDB or SES
-  // call cannot leave the form hanging with no response.
-  const [emailResult, alertRecorded] = await Promise.all([
-    withTimeout(sendContactFormEmail({ ...clean, wantsCopy })),
-    withTimeout(recordConsultationAlert(clean)),
-  ]);
-
-  if (emailResult === "sent") {
-    return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
-  }
-
-  // SES is paused in us-east-1 (Case 179496551900783), so the email can
-  // fail even for a genuine inquiry. If the EHR alert was recorded, the
-  // inquiry is not lost — show success and log the email failure.
-  if (alertRecorded) {
-    console.error("Contact form email failed; inquiry recorded in EHR alert", emailResult);
-    return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
-  }
-
-  // "not-configured" (no AWS runtime credentials, e.g. local dev) or
-  // "email-pending-ses" / "email-error" (SES not yet out of sandbox, etc.)
-  // with no EHR alert recorded either.
-  return error();
 }

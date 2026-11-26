@@ -11,7 +11,8 @@ const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export const metadata = { title: "Contact | Revealing Leads to Healing Wellness Services, LLC" };
 
-export default function Contact({ searchParams }: { searchParams?: { sent?: string; error?: string } }) {
+export default async function Contact({ searchParams }: { searchParams?: Promise<{ sent?: string; error?: string }> }) {
+  const params = await searchParams;
   return (
     <>
       <SiteHeader />
@@ -40,10 +41,10 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
 
       <section className="section-shell">
         <div className="content-card">
-          {searchParams?.sent ? (
+          {params?.sent ? (
             <p className="notice">Thank you &mdash; your message has been sent. We&rsquo;ll be in touch within 24&ndash;48 business hours.</p>
           ) : null}
-          {searchParams?.error ? (
+          {params?.error ? (
             <p className="notice">Something went wrong sending your message. Please try again or call the office directly.</p>
           ) : null}
           <form method="POST" action="/api/contact">
@@ -97,9 +98,11 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
           {/* Submit feedback (2026-11-26): the plain POST / redirect flow
               is kept — this only disables the button and shows
               "Sending…" on submit, so a slow POST cannot look like a
-              dead button. No fetch, no JavaScript submission. */}
+              dead button. If navigation has not happened in 15 s, the
+              button is re-enabled with an inline message so the user is
+              never stranded. No fetch, no JavaScript submission. */}
           <Script id="contact-form-sending" strategy="afterInteractive">
-            {`document.querySelector('form[action="/api/contact"]')?.addEventListener('submit', function () { var b = this.querySelector('button[type="submit"]'); if (b && !b.disabled) { b.disabled = true; b.textContent = 'Sending…'; } });`}
+            {`document.querySelector('form[action="/api/contact"]')?.addEventListener('submit', function () { var b = this.querySelector('button[type="submit"]'); if (b && !b.disabled) { b.disabled = true; b.textContent = 'Sending…'; setTimeout(function () { if (document.querySelector('form[action="/api/contact"]')) { b.disabled = false; b.textContent = 'Submit form'; var p = document.createElement('p'); p.className = 'notice'; p.textContent = 'Still sending — please try again, or call the office directly at (914) 635-2687.'; b.parentNode.insertBefore(p, b); } }, 15000); } });`}
           </Script>
         </div>
       </section>
