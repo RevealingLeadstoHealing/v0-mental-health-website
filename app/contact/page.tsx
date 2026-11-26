@@ -94,6 +94,13 @@ export default function Contact({ searchParams }: { searchParams?: { sent?: stri
             ) : null}
             <button type="submit" className="button">Submit form</button>
           </form>
+          {/* Submit feedback (2026-11-26): the plain POST / redirect flow
+              is kept — this only disables the button and shows
+              "Sending…" on submit, so a slow POST cannot look like a
+              dead button. No fetch, no JavaScript submission. */}
+          <Script id="contact-form-sending" strategy="afterInteractive">
+            {`document.querySelector('form[action="/api/contact"]')?.addEventListener('submit', function () { var b = this.querySelector('button[type="submit"]'); if (b && !b.disabled) { b.disabled = true; b.textContent = 'Sending…'; } });`}
+          </Script>
         </div>
       </section>
 

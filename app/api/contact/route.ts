@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sendContactFormEmail } from "../../../lib/site/send-contact-email";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { getDynamoDocumentClient } from "../../../lib/ehr/aws-runtime";
+import { getDynamoDocumentClient, hasAwsRuntimeCredentials } from "../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../lib/rlth-aws-foundation";
 import {
   HONEYPOT_FIELD,
@@ -36,7 +36,35 @@ import {
 // consultation request must never go unnoticed just because an email
 // didn't arrive. Best-effort — a DynamoDB hiccup here must never break
 // the actual form submission for the person filling it out.
-async function recordConsultationAlert({ name, email, phone, message }: { name: string; email: string; phone: string; message: string }) {
+//
+// TIMING FIX (2026-11-26): the route used to await the DynamoDB alert
+// and then the SES send, with no timeout on either, before returning any
+// redirect — so a missing credential or a hung AWS call left the plain
+// POST hanging for tens of seconds and the page looked frozen, with no
+// success or error shown. Both AWS calls are now bounded to 10 seconds
+// (matching the Turnstile timeout), run concurrently so neither blocks
+// the other, and the route always returns a redirect promptly. While
+// SES is paused (Case 179496551900783), a submission whose EHR alert
+// was recorded still returns ?sent=1 even though the email failed, so
+// Kay still gets the inquiry in the EHR.
+const AWS_CALL_TIMEOUT_MS = 10_000;
+
+/** Race a promise against a timeout; returns null on timeout. Never throws for a timeout. */
+async function withTimeout<T>(promise: Promise<T>, ms = AWS_CALL_TIMEOUT_MS): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function recordConsultationAlert({ name, email, phone, message }: { name: string; email: string; phone: string; message: string }): Promise<boolean> {
   try {
     const now = new Date().toISOString();
     const alertId = `consult_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -64,8 +92,10 @@ async function recordConsultationAlert({ name, email, phone, message }: { name: 
         acknowledgedBy: "",
       },
     }));
+    return true;
   } catch {
     // Never let alert logging block the actual contact-form submission.
+    return false;
   }
 }
 
@@ -124,17 +154,35 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 5. No AWS runtime credentials at all: fail fast instead of hanging
+  // on DynamoDB/SES calls that can never succeed. Skip both AWS calls.
+  if (!hasAwsRuntimeCredentials()) {
+    return error();
+  }
+
   // Only now — after every check has passed — log the standing in-EHR
-  // alert and send the email, using the sanitized values.
-  await recordConsultationAlert(clean);
+  // alert and send the email, using the sanitized values. Both run
+  // concurrently, each bounded to 10 seconds, so a hung DynamoDB or SES
+  // call cannot leave the form hanging with no response.
+  const [emailResult, alertRecorded] = await Promise.all([
+    withTimeout(sendContactFormEmail({ ...clean, wantsCopy })),
+    withTimeout(recordConsultationAlert(clean)),
+  ]);
 
-  const result = await sendContactFormEmail({ ...clean, wantsCopy });
+  if (emailResult === "sent") {
+    return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
+  }
 
-  if (result === "sent") {
+  // SES is paused in us-east-1 (Case 179496551900783), so the email can
+  // fail even for a genuine inquiry. If the EHR alert was recorded, the
+  // inquiry is not lost — show success and log the email failure.
+  if (alertRecorded) {
+    console.error("Contact form email failed; inquiry recorded in EHR alert", emailResult);
     return NextResponse.redirect(new URL("/contact?sent=1", origin), { status: 303 });
   }
 
   // "not-configured" (no AWS runtime credentials, e.g. local dev) or
   // "email-pending-ses" / "email-error" (SES not yet out of sandbox, etc.)
+  // with no EHR alert recorded either.
   return error();
 }
