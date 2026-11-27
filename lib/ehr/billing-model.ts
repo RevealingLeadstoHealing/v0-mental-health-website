@@ -5,11 +5,12 @@
 //     -> clinical_review_passed   (clinical documentation + signature complete)
 //       -> billing_review_passed  (payer, codes, charge, eligibility complete)
 //         -> ready_to_transmit    (both reviews recorded by authorized roles)
-//           -> transmitted        (only when a real clearinghouse is connected)
+//           -> transmitted        (accepted by the clearinghouse)
 //   any stage -> rejected         (a reviewer can send it back with a reason)
 //
 // Nothing can reach ready_to_transmit unless BOTH reviews passed. A claim can
-// never be transmitted from the UI until a clearinghouse integration is wired.
+// only be transmitted through the connected clearinghouse (lib/ehr/clearinghouse.ts)
+// by an owner or billing staff member.
 
 export type ClaimStatus =
   | "draft"
@@ -24,7 +25,7 @@ export type ReviewStage = "clinical" | "billing";
 export interface ClaimDiagnosis {
   code: string;
   label: string;
-  rank: "primary" | "secondary" | "tertiary";
+  rank: "primary" | "secondary" | "tertiary" | "quaternary";
 }
 
 export interface ClaimServiceLine {
@@ -33,6 +34,11 @@ export interface ClaimServiceLine {
   units: number;
   minutes?: number;
   chargeAmount: number;
+  // Optional telehealth coding. Place of service: "11" in-office (default),
+  // "10" telehealth-home, "02" telehealth-other. Modifiers: "95" audio+video,
+  // "93" audio-only. Absence preserves today's in-office behavior.
+  placeOfService?: string;
+  modifiers?: string[];
 }
 
 export interface ClaimReviewRecord {
@@ -43,6 +49,19 @@ export interface ClaimReviewRecord {
   reviewerRole: string;
   reviewedAt: string;
   reason?: string; // required when rejected
+}
+
+export interface ClaimTransmissionRecord {
+  action: "validate" | "submit";
+  mode: "test" | "production";
+  accepted: boolean;
+  errors: string[];
+  patientControlNumber: string;
+  stediClaimId?: string;
+  submissionId?: string;
+  attemptedAt: string;
+  attemptedById: string;
+  attemptedByName: string;
 }
 
 export interface BillingClaim {
@@ -61,6 +80,9 @@ export interface BillingClaim {
   sessionMinutes: number;
   diagnoses: ClaimDiagnosis[];
   serviceLines: ClaimServiceLine[];
+  // Claim-level place-of-service default the UI sets for all lines; optional so
+  // existing claims (no POS) keep today's in-office behavior.
+  placeOfService?: string;
   chargeAmount: number;
   paidAmount: number;
   status: ClaimStatus;
@@ -68,6 +90,12 @@ export interface BillingClaim {
   billingReview?: ClaimReviewRecord;
   reviews: ClaimReviewRecord[];
   providerSignature?: string;
+  // Derived server-side from the supervised-note records (never trusted from a client).
+  // A claim covered by a supervisee's note is blocked until the supervisor signs it.
+  supervisorCosignRequired?: boolean;
+  supervisorCosignedAt?: string;
+  supervisedNoteId?: string;
+  transmissions?: ClaimTransmissionRecord[];
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -94,6 +122,7 @@ export function validateClinicalReview(claim: Partial<BillingClaim>): Validation
   if (!claim.serviceLines?.length) missing.push("At least one service (CPT/HCPCS) line");
   if (!claim.providerSignature) missing.push("Authenticated provider signature");
   if (!claim.renderingProviderNpi) missing.push("Rendering provider NPI");
+  if (claim.supervisorCosignRequired && !claim.supervisorCosignedAt) missing.push("Supervisor co-sign required");
   return { ok: missing.length === 0, missing };
 }
 
@@ -120,6 +149,32 @@ export function validateBillingReview(claim: Partial<BillingClaim>): ValidationR
     missing.push("Charge amount must equal the sum of service line charges");
   }
   return { ok: missing.length === 0, missing };
+}
+
+/**
+ * Composes the two existing review validators into a single named-deficiency
+ * list for a claim. Pure recomposition — introduces NO new rules — so the UI
+ * (review queue, payer worklist, standing alerts) can surface exactly the same
+ * gaps the server enforces on PATCH review and transmit.
+ *
+ * `clinical` / `billing` hold the stage-specific named missing items. `all`
+ * is the de-duplicated union for convenience.
+ */
+export interface ClaimDeficiencies {
+  clinical: string[];
+  billing: string[];
+  all: string[];
+  ok: boolean;
+}
+
+export function claimDeficiencies(claim: Partial<BillingClaim>): ClaimDeficiencies {
+  const clinical = validateClinicalReview(claim).missing;
+  const billing = validateBillingReview(claim).missing;
+  const all: string[] = [];
+  for (const item of [...clinical, ...billing]) {
+    if (!all.includes(item)) all.push(item);
+  }
+  return { clinical, billing, all, ok: all.length === 0 };
 }
 
 // --- State machine -----------------------------------------------------------
@@ -153,6 +208,10 @@ export function nextStatusAfterReview(
  */
 export function canReview(role: string, stage: ReviewStage): boolean {
   if (stage === "clinical") return role === "owner" || role === "provider";
+  return role === "owner" || role === "billing_staff";
+}
+
+export function canTransmit(role: string): boolean {
   return role === "owner" || role === "billing_staff";
 }
 

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../lib/ehr/auth";
-import { appendAuditEvent, listClinicalRecords, putClinicalRecord, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, listClientChartRecords, putClinicalRecord, putLatestModuleSnapshot, getClientProfile } from "../../../../lib/ehr/dynamodb-store";
+import { MODULE_SNAPSHOT_TYPE, isValidModuleKey } from "../../../../lib/ehr/module-snapshots";
+import { getStoredNotesSnapshot, getSupervisee, listSupervisedNotes } from "../../../../lib/ehr/supervision-store";
+import { findIllegalFinalization, reconcileSupervisedNotes } from "../../../../lib/ehr/supervision";
 
 export async function GET(request: Request) {
   try {
@@ -20,7 +23,7 @@ export async function GET(request: Request) {
       requireRole(actor, ["owner", "provider", "clinical_staff", "auditor"]);
     }
 
-    const records = await listClinicalRecords(clientId, limit);
+    const records = await listClientChartRecords(clientId, limit);
     await appendAuditEvent(actor, {
       action: "Viewed clinical record list",
       category: "Clinical Record Access",
@@ -53,13 +56,71 @@ export async function POST(request: Request) {
       throw new ApiError(400, "payload is required.");
     }
 
+    if (recordType === MODULE_SNAPSHOT_TYPE && !isValidModuleKey(payload.moduleKey)) {
+      throw new ApiError(400, "A valid payload.moduleKey is required for module snapshots.");
+    }
+
+    const status = typeof body.status === "string" ? body.status : "draft";
+
+    // Supervision guard. The server's supervised-note records are the source of truth for
+    // supervisee notes: a supervisee cannot finalize or sign by writing a chart snapshot,
+    // and a stale snapshot cannot overwrite a note the supervisor has signed.
+    // Non-owners fail closed on lookup errors; the owner's own notes are never blocked.
+    let writePayload = payload;
+    const isNotesSnapshot =
+      recordType === MODULE_SNAPSHOT_TYPE && payload.moduleKey === "notes" && Array.isArray(payload.value);
+    if (isNotesSnapshot || recordType === "clinical-note") {
+      const guard = async () => {
+        const supervisee = await getSupervisee(actor.practiceId, actor.email);
+        // The owner is never under the supervisee guard, even if a stale registry entry exists.
+        // A deactivated supervisee stays guarded: any registry entry keeps the guard.
+        const activeSupervisee = actor.role !== "owner" && supervisee ? supervisee : null;
+        if (recordType === "clinical-note") {
+          if (activeSupervisee && status !== "draft") {
+            throw new ApiError(403, "Supervisee notes are finalized only through supervisor review.");
+          }
+          return payload;
+        }
+        const supervised = await listSupervisedNotes(actor.practiceId, { clientId });
+        if (activeSupervisee) {
+          const storedNotes = await getStoredNotesSnapshot(clientId);
+          const illegal = findIllegalFinalization(payload.value, supervised, actor.email, storedNotes);
+          if (illegal.length) {
+            throw new ApiError(403, "Supervisee notes are finalized only through supervisor review.");
+          }
+        }
+        if (supervised.length === 0 && !activeSupervisee) return payload;
+        return {
+          ...payload,
+          value: reconcileSupervisedNotes(
+            payload.value,
+            supervised,
+            activeSupervisee ? { email: actor.email, kind: activeSupervisee.kind } : null
+          ),
+        };
+      };
+      if (actor.role === "owner") {
+        try {
+          writePayload = await guard();
+        } catch (error) {
+          if (error instanceof ApiError) throw error;
+          writePayload = payload;
+        }
+      } else {
+        writePayload = await guard();
+      }
+    }
+
     const record = await putClinicalRecord(actor, {
       clientId,
       recordType,
       recordId: typeof body.recordId === "string" ? body.recordId : undefined,
-      payload,
-      status: typeof body.status === "string" ? body.status : "draft",
+      payload: writePayload,
+      status,
     });
+    if (recordType === MODULE_SNAPSHOT_TYPE && !body.recordId) {
+      await putLatestModuleSnapshot(actor, clientId, writePayload, status);
+    }
 
     await appendAuditEvent(actor, {
       action: body.recordId ? "Updated clinical record" : "Created clinical record",

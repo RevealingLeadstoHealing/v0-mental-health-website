@@ -22,12 +22,13 @@ export function TreatmentGoalEditor({ goals, onChange, disabled = false }: { goa
   </fieldset>)}</div>;
 }
 
-type PlanSummary = { goals?: TreatmentGoal[]; longTermGoal?: string; shortTermGoal?: string; primaryDiagnosis?: string; secondaryDiagnosis?: string; tertiaryDiagnosis?: string; plannedServiceCodes?: string };
+type PlanSummary = { goals?: TreatmentGoal[]; longTermGoal?: string; shortTermGoal?: string; primaryDiagnosis?: string; secondaryDiagnosis?: string; tertiaryDiagnosis?: string; fourthDiagnosis?: string; plannedServiceCodes?: string };
 export function TreatmentGoalSummary({ plan }: { plan: PlanSummary }) {
   return <>
     {plan.primaryDiagnosis && <p className="text-sm mt-2"><strong>Primary diagnosis:</strong> {plan.primaryDiagnosis}</p>}
     {plan.secondaryDiagnosis && <p className="text-sm"><strong>Secondary diagnosis:</strong> {plan.secondaryDiagnosis}</p>}
     {plan.tertiaryDiagnosis && <p className="text-sm"><strong>Additional diagnosis:</strong> {plan.tertiaryDiagnosis}</p>}
+    {plan.fourthDiagnosis && <p className="text-sm"><strong>Additional diagnosis:</strong> {plan.fourthDiagnosis}</p>}
     {plan.plannedServiceCodes && <p className="text-sm"><strong>Planned CPT / HCPCS services:</strong> {plan.plannedServiceCodes}</p>}
     <GoalDetails plan={plan} />
   </>;

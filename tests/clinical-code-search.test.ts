@@ -18,3 +18,14 @@ test('time guidance handles psychotherapy thresholds without inferring diagnosti
   assert.doesNotMatch(psychotherapyTimeGuidance(15), /9083[247]/);
   assert.equal(psychotherapyTimeGuidance(''), '');
 });
+test('short keywords list behavioral-health categories first', () => {
+  const first = (query: string) => searchCodes(codes, query, 10).matches.map(item => item.code);
+  assert.ok(first('anx').every(code => code.startsWith('F4') || code.startsWith('F06')), first('anx').join());
+  assert.ok(first('anx').includes('F41.1'));
+  assert.ok(first('dep').every(code => /^F3[234]/.test(code)), first('dep').join());
+  assert.ok(first('alc').every(code => code.startsWith('F10')));
+  assert.ok(first('opi').every(code => code.startsWith('F11')));
+  assert.equal(first('adj')[0], 'F43.20');
+  assert.ok(searchCodes(codes, 'panic').matches.every(item => !item.label.toLowerCase().includes('tympanic')));
+  assert.ok(searchCodes(codes, 'dys').categories.some(category => category.name === 'Depressive disorders'));
+});

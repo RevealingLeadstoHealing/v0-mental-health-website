@@ -2,7 +2,7 @@ import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/li
 import { rlthAwsFoundation } from "../rlth-aws-foundation";
 import { getDynamoDocumentClient } from "./aws-runtime";
 import type { EhrActor } from "./auth";
-import type { BillingClaim, ClaimReviewRecord, ClaimStatus } from "./billing-model";
+import type { BillingClaim, ClaimReviewRecord, ClaimStatus, ClaimTransmissionRecord } from "./billing-model";
 
 // Claims are stored in the clinical records table using a dedicated key space:
 //   PK = PRACTICE#{practiceId}#BILLING
@@ -151,6 +151,48 @@ export async function applyClaimReview(
       ConditionExpression: "attribute_exists(PK) AND attribute_exists(SK)",
       UpdateExpression: `SET ${setParts.join(", ")}`,
       ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+    })
+  );
+}
+
+/**
+ * Append a clearinghouse validation/submission attempt. When newStatus is given,
+ * the claim must still be ready_to_transmit so a claim is never sent twice.
+ */
+export async function recordClaimTransmission(
+  practiceId: string,
+  dateOfService: string,
+  claimId: string,
+  transmission: ClaimTransmissionRecord,
+  newStatus?: ClaimStatus
+): Promise<void> {
+  const dynamo = getDynamoDocumentClient();
+  const setParts = [
+    "updatedAt = :now",
+    "transmissions = list_append(if_not_exists(transmissions, :empty), :attempt)",
+  ];
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {
+    ":now": nowIso(),
+    ":empty": [],
+    ":attempt": [transmission],
+  };
+  let condition = "attribute_exists(PK) AND attribute_exists(SK)";
+  if (newStatus) {
+    setParts.push("#status = :status");
+    names["#status"] = "status";
+    values[":status"] = newStatus;
+    values[":ready"] = "ready_to_transmit";
+    condition += " AND #status = :ready";
+  }
+  await dynamo.send(
+    new UpdateCommand({
+      TableName: TableName(),
+      Key: claimKeys(practiceId, dateOfService, claimId),
+      ConditionExpression: condition,
+      UpdateExpression: `SET ${setParts.join(", ")}`,
+      ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
       ExpressionAttributeValues: values,
     })
   );

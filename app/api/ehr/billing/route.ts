@@ -19,6 +19,8 @@ import {
   type ClaimServiceLine,
   type ReviewStage,
 } from "../../../../lib/ehr/billing-model";
+import { listSupervisedNotes } from "../../../../lib/ehr/supervision-store";
+import { withSupervisionStatus } from "../../../../lib/ehr/supervision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,11 +40,17 @@ export async function GET(request: Request) {
     if (claimId && dateOfService) {
       const claim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
       if (!claim) throw new ApiError(404, "Claim was not found.");
-      return NextResponse.json({ claim }, { headers: { "Cache-Control": "no-store" } });
+      // Supervisor co-sign state is derived fresh from the supervised-note records.
+      const supervised = await listSupervisedNotes(actor.practiceId);
+      return NextResponse.json({ claim: withSupervisionStatus(claim, supervised) }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const claims = await listBillingClaims(actor.practiceId);
-    return NextResponse.json({ claims }, { headers: { "Cache-Control": "no-store" } });
+    const supervisedNotes = await listSupervisedNotes(actor.practiceId);
+    return NextResponse.json(
+      { claims: claims.map((item) => withSupervisionStatus(item, supervisedNotes)) },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -69,23 +77,43 @@ export async function POST(request: Request) {
           .map((d: Record<string, unknown>) => ({
             code: String(d.code || "").slice(0, 20),
             label: String(d.label || "").slice(0, 300),
-            rank: (["primary", "secondary", "tertiary"].includes(String(d.rank))
+            rank: (["primary", "secondary", "tertiary", "quaternary"].includes(String(d.rank))
               ? d.rank
               : "primary") as ClaimDiagnosis["rank"],
           }))
       : [];
 
+    // Telehealth claim coding is whitelisted so only valid CMS-1500 values persist.
+    const ALLOWED_POS = ["11", "10", "02"];
+    const ALLOWED_MODIFIERS = ["95", "93"];
+    const sanitizePlaceOfService = (value: unknown) => {
+      const pos = String(value || "").trim();
+      return ALLOWED_POS.includes(pos) ? pos : undefined;
+    };
+    const sanitizeModifiers = (value: unknown) =>
+      Array.isArray(value)
+        ? value.map((m) => String(m || "").trim()).filter((m) => ALLOWED_MODIFIERS.includes(m))
+        : [];
+
     const serviceLines: ClaimServiceLine[] = Array.isArray(body.serviceLines)
       ? body.serviceLines
           .filter((l: unknown) => l && typeof l === "object")
-          .map((l: Record<string, unknown>) => ({
-            code: String(l.code || "").slice(0, 20),
-            label: String(l.label || "").slice(0, 300),
-            units: Math.max(1, Number(l.units) || 1),
-            minutes: l.minutes != null ? Number(l.minutes) : undefined,
-            chargeAmount: Number(l.chargeAmount) || 0,
-          }))
+          .map((l: Record<string, unknown>) => {
+            const placeOfService = sanitizePlaceOfService(l.placeOfService);
+            const modifiers = sanitizeModifiers(l.modifiers);
+            return {
+              code: String(l.code || "").slice(0, 20),
+              label: String(l.label || "").slice(0, 300),
+              units: Math.max(1, Number(l.units) || 1),
+              minutes: l.minutes != null ? Number(l.minutes) : undefined,
+              chargeAmount: Number(l.chargeAmount) || 0,
+              ...(placeOfService ? { placeOfService } : {}),
+              ...(modifiers.length ? { modifiers } : {}),
+            };
+          })
       : [];
+
+    const claimPlaceOfService = sanitizePlaceOfService(body.placeOfService);
 
     const claim = await createBillingClaim(actor, {
       clientId,
@@ -101,6 +129,7 @@ export async function POST(request: Request) {
       sessionMinutes: Number(body.sessionMinutes) || 0,
       diagnoses,
       serviceLines,
+      ...(claimPlaceOfService ? { placeOfService: claimPlaceOfService } : {}),
       chargeAmount: Number(body.chargeAmount) || 0,
       providerSignature: String(body.providerSignature || "").slice(0, 200),
     });
@@ -152,10 +181,14 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, "A reason is required when rejecting a claim.");
     }
 
-    const claim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
-    if (!claim) throw new ApiError(404, "Claim was not found.");
+    const storedClaim = await getBillingClaim(actor.practiceId, dateOfService, claimId);
+    if (!storedClaim) throw new ApiError(404, "Claim was not found.");
 
-    await requireClientAccess(actor, claim.clientId);
+    await requireClientAccess(actor, storedClaim.clientId);
+
+    // A claim covered by a supervisee's note cannot pass clinical review until the
+    // supervisor has signed that note. Derived server-side on every request.
+    const claim = withSupervisionStatus(storedClaim, await listSupervisedNotes(actor.practiceId));
 
     if (claim.status === "transmitted") {
       throw new ApiError(409, "A transmitted claim can no longer be reviewed.");

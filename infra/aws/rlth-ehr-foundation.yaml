@@ -31,6 +31,15 @@ Parameters:
       sends from SesFromAddress via this identity. Leave empty only to fall
       back to Cognito's default shared sender (50/day, sandbox-limited).
 
+  AllowedEhrOrigin:
+    Type: String
+    Default: https://ehr.revealing-leads-to-healing-wellness-services.org
+    Description: EHR browser origin allowed to upload directly to the documents bucket.
+  AllowedAmplifyOrigin:
+    Type: String
+    Default: https://aws-ehr-production.d1mwc7x488m8xn.amplifyapp.com
+    Description: Amplify branch origin allowed to upload directly to the documents bucket.
+
 Conditions:
   # True when a verified SES identity ARN has been supplied.
   # When false, Cognito uses its own shared email sender (50 emails/day limit).
@@ -362,6 +371,15 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref AllowedEhrOrigin
+              - !Ref AllowedAmplifyOrigin
+            AllowedMethods: [PUT, GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 300
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced

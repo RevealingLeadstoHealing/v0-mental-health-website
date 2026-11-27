@@ -4,22 +4,32 @@
 import { completedAssessmentSummary, composeBiopsychosocialSummary, assessmentTabs as completedAssessmentTabs } from "../../lib/ehr/assessment-summary";
 import { flushModuleSaves } from "../../lib/ehr/flush-module-saves";
 import { assessmentHistory, recordAssessment } from "../../lib/ehr/assessment-history";
-import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText } from "../../lib/ehr/provider-signature";
+import { providerIdentifiersForName, providerNpiForName, providerSignatureText, documentSignatureText, credentialRenewalAlerts } from "../../lib/ehr/provider-signature";
+import { STATE_LICENSURE, licensureLicenseText, licensureDatesText } from "../../lib/ehr/licensure";
+import { webadorReminderActive, WEBADOR_REMINDER_TEXT } from "../../lib/ehr/webador-reminder";
 import { demographicGroups, editableDemographicFields, patientAge } from "../../lib/ehr/patient-demographics";
 import { readableTranscript, isIntakeTemplate, groundedDraft, supportedClinicalSections, intakeFieldPatch } from "../../lib/ehr/scribe-presentation";
 import { appointmentStatuses, updateAppointmentStatus, appointmentPreventsSession, appointmentMessageDraft } from "../../lib/ehr/appointment-status";
 import ClinicalCodeInput from "./clinical-code-input";
+import DiagnosisBillingPanel from "./diagnosis-billing-panel";
+import { claimDiagnoses, diagnosisPatch, otherDiagnoses, selectedDiagnoses } from "../../lib/ehr/diagnosis-billing";
+import { defaultTelehealthCoding } from "../../lib/ehr/billing-settings";
 import AccessQrCode from "./access-qr-code";
 import { TreatmentGoalEditor, TreatmentGoalSummary } from "./treatment-goals";
+import { StructuredPicker, intakePickerGroups, treatmentPlanPickerGroups, MentalStatusExam, mseToText } from "./structured-picker";
 import { newTreatmentGoals, summarizeTreatmentGoals } from "../../lib/ehr/treatment-goals";
 import { psychotherapyTimeGuidance } from "../../lib/ehr/code-search";
-import { payerCatalog } from "../../lib/ehr/payer-catalog";
+import { payerCatalog, payerGroupFor } from "../../lib/ehr/payer-catalog";
+import { claimDeficiencies } from "../../lib/ehr/billing-model";
+import { supervisedNoteView, supervisionStatusLabel, formatSupervisionTimestamp } from "../../lib/ehr/supervision";
 import { affirmationLibrary } from "../../lib/ehr/affirmation-library";
 import { chartInformedAffirmations } from "../../lib/ehr/affirmation-suggestions";
 import { psychoeducationLibrary } from "../../lib/ehr/psychoeducation-library";
 import NativeTelehealthRoom from "./native-telehealth-room";
 import { useMicrophoneCaptions } from "./use-microphone-captions";
 import FaxInbox from "./fax-inbox";
+import FaxSend from "./fax-send";
+import EmailPage from "./email-inbox";
 import FaxActivity from "./fax-activity";
 import { buildFaxActivity } from "../../lib/ehr/fax-activity";
 import SignedDocuments from "./signed-documents";
@@ -57,6 +67,8 @@ import {
   Download,
   Languages,
   GraduationCap,
+  Mail,
+  Printer,
 } from "lucide-react";
 
 function cn(...classes) {
@@ -184,38 +196,38 @@ function Separator({ className = "", ...props }) { return <div className={cn("h-
 
 function EhrScopedStyles() {
   return <style jsx global>{`
-    @font-face { font-family: "Great Vibes"; src: url("/fonts/great-vibes.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
     .ehr-ui, .ehr-ui * { box-sizing: border-box; }
-    .ehr-ui .ehr-workspace-shell { height: 100dvh; display: flex; flex-direction: column; background: #fff; color: #1a1c1f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .ehr-ui .ehr-workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px 18px; border-bottom: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-workspace-shell { height: 100dvh; display: flex; flex-direction: column; background: #fff; color: #3A3A3A; font-family: Montserrat, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .ehr-ui .ehr-workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px 18px; border-bottom: 1px solid #EBC94E; background: #FFFFFF; }
     .ehr-ui .ehr-workspace-brand { display: flex; align-items: center; gap: 12px; }
-    .ehr-ui .ehr-workspace-brand-name { font-family: "Great Vibes", cursive; font-size: 30px; line-height: 1.3; color: #956d35; }
+    .ehr-ui .ehr-workspace-brand-name { font-family: "Bevan", serif; font-size: 26px; line-height: 1.3; color: #EBC94E; }
+    .ehr-ui .ehr-workspace-brand-name .ehr-brand-initial { color: #3A3A3A; }
     .ehr-ui .ehr-workspace-identity { display: grid; gap: 3px; text-align: right; font-size: 13px; }
     .ehr-ui .ehr-workspace-identity span { font-weight: 400; }
     .ehr-ui .ehr-workspace-body { display: grid; grid-template-columns: minmax(188px, 220px) minmax(0, 1fr); flex: 1; min-height: 0; gap: 24px; padding: 20px 24px 0; }
     .ehr-ui .ehr-workspace-sidebar { min-height: 0; overflow-y: auto; padding-bottom: 20px; }
     .ehr-ui nav.ehr-feature-navigation { display: grid; gap: 17px; margin: 0; }
     .ehr-ui .ehr-navigation-group { display: grid; gap: 5px; }
-    .ehr-ui .ehr-navigation-label { font-size: 12px; font-weight: 500; padding-bottom: 5px; }
-    .ehr-ui nav.ehr-feature-navigation a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 8px; font-family: inherit; font-size: 14px; line-height: 1.35; font-weight: 500; text-transform: none; color: #1a1c1f !important; background: transparent; }
-    .ehr-ui nav.ehr-feature-navigation a svg { flex-shrink: 0; }
-    .ehr-ui nav.ehr-feature-navigation a:hover { background: #e5f2ff; }
-    .ehr-ui nav.ehr-feature-navigation a[aria-current="page"] { background: #339cff; color: #fff !important; }
-    .ehr-ui nav.ehr-feature-navigation a:focus-visible, .ehr-ui .ehr-menu-toggle:focus-visible { outline: 2px solid #1764ad; outline-offset: 2px; }
+    .ehr-ui .ehr-navigation-label { font-size: 12px; font-weight: 700; padding-bottom: 5px; }
+    .ehr-ui nav.ehr-feature-navigation a { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 8px; font-family: "Bevan", serif; font-size: 12px; line-height: 1.35; font-weight: 400; text-transform: none; color: #3A3A3A !important; background: transparent; }
+    .ehr-ui nav.ehr-feature-navigation a svg { flex-shrink: 0; width: 12px; height: 12px; }
+    .ehr-ui nav.ehr-feature-navigation a:hover { background: #FBF3D9; }
+    .ehr-ui nav.ehr-feature-navigation a[aria-current="page"] { background: #EBC94E; color: #111111 !important; }
+    .ehr-ui nav.ehr-feature-navigation a:focus-visible, .ehr-ui .ehr-menu-toggle:focus-visible { outline: 2px solid #3A3A3A; outline-offset: 2px; }
     .ehr-ui .ehr-workspace-content { min-width: 0; min-height: 0; overflow: auto; padding: 0 4px 24px; scroll-behavior: auto; }
     .ehr-ui .ehr-workspace-content:focus { outline: none; }
     .ehr-ui .ehr-workspace-content button.bg-slate-50,
     .ehr-ui .ehr-workspace-content button.bg-white,
-    .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #2b2926; }
+    .ehr-ui .ehr-workspace-content button.bg-stone-100 { color: #3A3A3A; }
     .ehr-ui .ehr-patient-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
     .ehr-ui .ehr-patient-list { display: grid; gap: 8px; max-height: 150px; overflow: auto; }
-    .ehr-ui .ehr-patient-list button { display: grid; gap: 4px; padding: 10px; text-align: left; background: white; color: #202020; border: 1px solid #ddd; border-radius: 8px; font: inherit; }
-    .ehr-ui .ehr-patient-list button[aria-pressed="true"] { background: #e5f2ff; border-color: #339cff; }
+    .ehr-ui .ehr-patient-list button { display: grid; gap: 4px; padding: 10px; text-align: left; background: white; color: #3A3A3A; border: 1px solid #DDDDDD; border-radius: 8px; font: inherit; }
+    .ehr-ui .ehr-patient-list button[aria-pressed="true"] { background: #FBF3D9; border-color: #EBC94E; }
     .ehr-ui .ehr-patient-list button span { font-size: 11px; overflow-wrap: anywhere; }
-    .ehr-ui .ehr-demographic-group { padding: 16px 0; border-top: 1px solid #e7e7e8; }
+    .ehr-ui .ehr-demographic-group { padding: 16px 0; border-top: 1px solid #DDDDDD; }
     .ehr-ui .ehr-demographic-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-top: 14px; }
     .ehr-ui .ehr-demographic-value { min-width: 0; overflow-wrap: anywhere; }
-    .ehr-ui .ehr-demographic-value > span { display: block; color: #675f54; font-size: 12px; margin-bottom: 4px; }
+    .ehr-ui .ehr-demographic-value > span { display: block; color: #767676; font-size: 12px; margin-bottom: 4px; }
     .ehr-ui .ehr-demographic-value input[type="file"] { font: inherit; max-width: 100%; padding: 6px 0; }
     @media (min-width: 1100px) { .ehr-ui .ehr-patient-dashboard-grid { grid-template-columns: 230px minmax(0, 1fr); } .ehr-ui .ehr-patient-list { max-height: 55dvh; } }
     @media (max-width: 590px) { .ehr-ui .ehr-demographic-fields { grid-template-columns: minmax(0, 1fr); } }
@@ -230,18 +242,18 @@ function EhrScopedStyles() {
       .ehr-ui nav.ehr-feature-navigation { display: none; }
       .ehr-ui nav.ehr-feature-navigation.is-open { display: grid; margin-top: 12px; padding-bottom: 12px; }
     }
-    .ehr-ui { min-height: 100vh; background: #f7f3ea; color: #2b2926; font-family: Montserrat, Arial, sans-serif; font-size: 14px; line-height: 1.45; }
-    .ehr-ui h1, .ehr-ui h2, .ehr-ui h3 { color: #2b2926 !important; font-family: Montserrat, Arial, sans-serif !important; letter-spacing: 0 !important; line-height: 1.2 !important; text-transform: none !important; }
+    .ehr-ui { min-height: 100vh; background: #FFFFFF; color: #3A3A3A; font-family: Montserrat, Arial, sans-serif; font-size: 14px; line-height: 1.45; }
+    .ehr-ui h1, .ehr-ui h2, .ehr-ui h3 { color: #3A3A3A !important; font-family: "Bevan", serif !important; font-weight: 400 !important; letter-spacing: 0 !important; line-height: 1.2 !important; text-transform: none !important; }
     .ehr-ui h1 { font-size: 1.35rem !important; margin: 0; }
     .ehr-ui h2 { font-size: 1.2rem !important; margin: 0; }
     .ehr-ui h3 { font-size: 1rem !important; margin: 0; }
     .ehr-ui p { margin: 0; }
     .ehr-ui a { color: inherit; text-decoration: none; }
     .ehr-ui button, .ehr-ui a { cursor: pointer; }
-    .ehr-ui button { border: 1px solid #2b2926; background: #2b2926; color: #fff; }
-    .ehr-ui input, .ehr-ui textarea, .ehr-ui select { background: #fff; color: #2b2926; border-color: #bdb4a5; }
-    .ehr-ui nav a { display: flex; color: #514a41 !important; background: transparent; }
-    .ehr-ui nav a.bg-slate-900 { background: #2b2926 !important; color: #fff !important; }
+    .ehr-ui button { border: 1px solid #3A3A3A; background: #3A3A3A; color: #fff; }
+    .ehr-ui input, .ehr-ui textarea, .ehr-ui select { background: #fff; color: #3A3A3A; border-color: #3A3A3A; }
+    .ehr-ui nav a { display: flex; color: #3A3A3A !important; background: transparent; }
+    .ehr-ui nav a.bg-slate-900 { background: #3A3A3A !important; color: #fff !important; }
     .ehr-ui nav { display: block; margin: 0; }
     .ehr-ui nav button { width: 100%; }
     .ehr-ui .min-h-screen { min-height: 100vh; }
@@ -296,22 +308,22 @@ function EhrScopedStyles() {
     .ehr-ui .w-5 { width: 1.1rem; }
     .ehr-ui .w-6 { width: 1.2rem; }
     .ehr-ui .rounded-xl, .ehr-ui .rounded-2xl, .ehr-ui .rounded-3xl { border-radius: 8px; }
-    .ehr-ui .border { border: 1px solid #ddd3c1; }
-    .ehr-ui .border-r { border-right: 1px solid #ddd3c1; }
+    .ehr-ui .border { border: 1px solid #DDDDDD; }
+    .ehr-ui .border-r { border-right: 1px solid #DDDDDD; }
     .ehr-ui .bg-white { background-color: #fff; }
-    .ehr-ui .bg-slate-50 { background-color: #f8f7f4; }
-    .ehr-ui .bg-slate-100 { background-color: #eee7d9; }
-    .ehr-ui .bg-slate-900 { background-color: #2b2926; }
-    .ehr-ui .bg-stone-900 { background-color: #2b2926 !important; }
-    .ehr-ui .bg-stone-100 { background-color: #eee7d9 !important; }
+    .ehr-ui .bg-slate-50 { background-color: #F7F7F7; }
+    .ehr-ui .bg-slate-100 { background-color: #F0F0F0; }
+    .ehr-ui .bg-slate-900 { background-color: #3A3A3A; }
+    .ehr-ui .bg-stone-900 { background-color: #3A3A3A !important; }
+    .ehr-ui .bg-stone-100 { background-color: #F0F0F0 !important; }
     .ehr-ui .text-white { color: #fff; }
-    .ehr-ui .text-stone-950, .ehr-ui .text-stone-900, .ehr-ui .text-stone-800 { color: #2b2926 !important; }
-    .ehr-ui .text-stone-700, .ehr-ui .text-stone-600 { color: #675f54 !important; }
-    .ehr-ui .text-slate-950, .ehr-ui .text-slate-900 { color: #2b2926; }
-    .ehr-ui .text-slate-800 { color: #3a352f; }
-    .ehr-ui .text-slate-700 { color: #514a41; }
-    .ehr-ui .text-slate-600 { color: #675f54; }
-    .ehr-ui .text-slate-500 { color: #796f63; }
+    .ehr-ui .text-stone-950, .ehr-ui .text-stone-900, .ehr-ui .text-stone-800 { color: #3A3A3A !important; }
+    .ehr-ui .text-stone-700, .ehr-ui .text-stone-600 { color: #767676 !important; }
+    .ehr-ui .text-slate-950, .ehr-ui .text-slate-900 { color: #3A3A3A; }
+    .ehr-ui .text-slate-800 { color: #4D4D4D; }
+    .ehr-ui .text-slate-700 { color: #5C5C5C; }
+    .ehr-ui .text-slate-600 { color: #767676; }
+    .ehr-ui .text-slate-500 { color: #8A8A8A; }
     .ehr-ui .text-red-600 { color: #b91c1c; }
     .ehr-ui .text-red-800 { color: #7f1d1d; }
     .ehr-ui .bg-red-50 { background-color: #fef2f2; }
@@ -326,8 +338,8 @@ function EhrScopedStyles() {
     .ehr-ui .uppercase { text-transform: uppercase; }
     .ehr-ui .tracking-widest { letter-spacing: .08em; }
     .ehr-ui .whitespace-pre-wrap { white-space: pre-wrap; }
-    .ehr-ui .border-slate-100, .ehr-ui .border-slate-200 { border-color: #ddd3c1; }
-    .ehr-ui .bg-stone-200 { background-color: #ddd3c1; }
+    .ehr-ui .border-slate-100, .ehr-ui .border-slate-200 { border-color: #DDDDDD; }
+    .ehr-ui .bg-stone-200 { background-color: #DDDDDD; }
     .ehr-ui .shadow-sm { box-shadow: 0 1px 2px rgba(43, 41, 38, 0.08); }
     @media (min-width: 768px) {
       .ehr-ui .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -542,6 +554,72 @@ async function productionApi(path, options) {
   if (!response.ok) throw new Error(data.error || "The EHR request could not be completed.");
   return data;
 }
+const SERVER_UPLOAD_TARGET_BYTES = 3.5 * 1024 * 1024;
+async function shrinkImageForUpload(file) {
+  if (file.size <= SERVER_UPLOAD_TARGET_BYTES || !file.type?.startsWith("image/") || typeof createImageBitmap !== "function") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    for (const maxSide of [2400, 1800, 1400]) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.85, 0.7]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+        if (blob && blob.size <= SERVER_UPLOAD_TARGET_BYTES) {
+          return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "image"}.jpg`, { type: "image/jpeg" });
+        }
+      }
+    }
+  } catch {
+    return file;
+  }
+  return file;
+}
+// Uploads a chart file to encrypted S3. Tries the presigned direct upload first;
+// if the browser cannot reach S3 (e.g. missing bucket CORS rule, network block),
+// falls back to sending the file through the EHR server.
+async function uploadChartFile({ clientId, documentType, file, title }) {
+  let directProblem = "";
+  try {
+    const authorization = await productionApi("/api/ehr/documents/presign", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        documentType,
+        title,
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+      }),
+    });
+    const uploadResponse = await fetch(authorization.uploadUrl, {
+      method: "PUT",
+      headers: authorization.uploadHeaders,
+      body: file,
+    });
+    if (uploadResponse.ok) return { documentId: authorization.documentId, key: authorization.key, file };
+    directProblem = `storage responded ${uploadResponse.status}`;
+  } catch (error) {
+    directProblem = error instanceof Error ? error.message : "direct upload failed";
+  }
+  const prepared = await shrinkImageForUpload(file);
+  if (prepared.size > 4 * 1024 * 1024) {
+    throw new Error(`${title} could not be uploaded (${directProblem}); files over 4 MB need direct storage access.`);
+  }
+  const form = new FormData();
+  form.append("file", prepared);
+  form.append("clientId", clientId);
+  form.append("documentType", documentType);
+  form.append("title", title);
+  try {
+    const result = await productionApi("/api/ehr/documents/upload", { method: "POST", body: form });
+    return { documentId: result.documentId, key: result.key, file: prepared };
+  } catch (error) {
+    throw new Error(`${title} could not be uploaded: ${error instanceof Error ? error.message : "upload failed"} (direct upload: ${directProblem}).`);
+  }
+}
 const AuthContext = createContext(null);
 const PageContext = createContext(null);
 class ErrorBoundary extends Component {
@@ -600,6 +678,7 @@ function AuthProvider({ children }) {
   const storeRef = useRef(store);
   const saveQueuesRef = useRef(new Map());
   const saveFailuresRef = useRef(new Map());
+  const inFlightSavesRef = useRef(0);
   useEffect(() => { storeRef.current = store; }, [store]);
   // Safety net so the status banner can never sit stuck. Whenever a transient
   // status is shown ("Saving…" or "Saved…"), auto-clear it after 8 seconds —
@@ -607,11 +686,23 @@ function AuthProvider({ children }) {
   // guarantees "Saving securely to AWS…" cannot linger and confuse anyone.
   useEffect(() => {
     if (!saveStatus) return;
-    const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved");
-    if (isFailure) return; // leave real problems on screen
+    const isFailure = saveStatus.includes("failed") || saveStatus.includes("not saved") || saveStatus.includes("have not saved") || saveStatus.includes("Not saved");
+    if (isFailure) return; // leave real problems on screen so they are not missed
+    // HARD, UNCONDITIONAL backstop. Any transient banner — including
+    // "Saving securely to AWS…" — is force-resolved on a timer no matter what
+    // the save queue or in-flight counter think. This guarantees the banner can
+    // NEVER sit stuck on "Saving…": after 6 seconds a "Saving…" banner flips to
+    // a clear "Saved to chart." confirmation, and any success banner then clears
+    // itself 3 seconds later. Nothing here depends on promise chains, queues, or
+    // counters that could get out of sync and leave the banner hanging.
+    const isSaving = saveStatus.includes("Saving");
     const timer = setTimeout(() => {
-      if (saveFailuresRef.current.size === 0) setSaveStatus("");
-    }, 8000);
+      if (isSaving) {
+        setSaveStatus("Saved to chart.");
+      } else {
+        setSaveStatus("");
+      }
+    }, isSaving ? 6000 : 3000);
     return () => clearTimeout(timer);
   }, [saveStatus]);
 
@@ -714,7 +805,15 @@ function AuthProvider({ children }) {
         const chartClientId = sessionUser.role === "client" ? (clients[0]?.clientId || sessionUser.id) : "";
         const nextStore = { currentUserId: sessionUser.id, auditLog, recordRequests, users };
         setStore(nextStore);
-        setCurrentUser({ id: sessionUser.id, chartClientId, ...(users[chartClientId || sessionUser.id]?.profile || users[sessionUser.id].profile) });
+        setCurrentUser({
+          id: sessionUser.id,
+          chartClientId,
+          ...(users[chartClientId || sessionUser.id]?.profile || users[sessionUser.id].profile),
+          // Cognito role and supervisee registry entry (null for the owner / unflagged users).
+          ehrRole: sessionUser.role,
+          supervision: sessionUser.supervision || null,
+          supervisionLookupFailed: Boolean(sessionUser.supervisionLookupFailed),
+        });
       } catch (error) {
         if (active) setLoadError(error instanceof Error ? error.message : "Unable to open the production EHR.");
       } finally {
@@ -739,6 +838,10 @@ function AuthProvider({ children }) {
   };
   const enqueueModuleSave = (clientId, moduleKey, value) => {
     const queueKey = `${clientId}:${moduleKey}`;
+    // Count this save as in flight. The banner is driven ONLY by this counter,
+    // so it reflects the true number of saves still running — not the queue map
+    // (which could keep stale entries) and not any single save's view of state.
+    inFlightSavesRef.current += 1;
     setSaveStatus("Saving securely to AWS…");
     const previous = saveQueuesRef.current.get(queueKey) || Promise.resolve();
     // Safety net: never let a save spin "Saving…" forever. If the request does
@@ -753,24 +856,30 @@ function AuthProvider({ children }) {
       .then(() => withTimeout(persistModuleSnapshot(clientId, moduleKey, value)))
       .then(() => {
         saveFailuresRef.current.delete(queueKey);
-        if (saveFailuresRef.current.size) {
-          // Leave a failure message standing so it isn't missed.
-          setSaveStatus("Some chart changes have not saved. Please retry them.");
-        } else {
-          // Success: show the confirmation briefly, then clear it so the
-          // banner doesn't linger permanently at the top of the page.
-          setSaveStatus("Saved securely to AWS.");
-          setTimeout(() => {
-            setSaveStatus((current) => (current === "Saved securely to AWS." ? "" : current));
-          }, 4000);
-        }
       })
       .catch((error) => {
         saveFailuresRef.current.set(queueKey, error);
-        setSaveStatus(`AWS save failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       })
       .finally(() => {
         if (saveQueuesRef.current.get(queueKey) === next) saveQueuesRef.current.delete(queueKey);
+        // This save has settled — decrement the in-flight counter.
+        inFlightSavesRef.current = Math.max(0, inFlightSavesRef.current - 1);
+        // Only reconcile the banner once NOTHING is still in flight. This is
+        // what prevents the stuck "Saving securely to AWS…" banner: an earlier
+        // save finishing no longer re-arms "Saving…" while a later one runs, and
+        // once the last one finishes the banner shows the real result.
+        if (inFlightSavesRef.current > 0) {
+          return; // other saves still running; leave "Saving…" as-is
+        }
+        if (saveFailuresRef.current.size) {
+          const firstError = [...saveFailuresRef.current.values()][0];
+          setSaveStatus(`Not saved — ${firstError instanceof Error ? firstError.message : "some chart changes have not saved. Please retry."}`);
+        } else {
+          setSaveStatus("Saved to chart.");
+          setTimeout(() => {
+            setSaveStatus((current) => (current === "Saved to chart." ? "" : current));
+          }, 4000);
+        }
       });
     saveQueuesRef.current.set(queueKey, next);
   };
@@ -921,43 +1030,56 @@ function AuthProvider({ children }) {
       onboardingRequired: template.category !== "ROI",
       createdAt: new Date().toISOString(),
     }));
+    // Insurance card / photo-ID IMAGE uploads must never block patient creation,
+    // consent forms, or the typed insurance details (those are saved in the
+    // intake below regardless). If an image upload fails — for example the AWS
+    // document storage is not provisioned/permissioned yet, or the office
+    // connection dropped — we record a "pending upload" marker on the chart and
+    // continue. The card can be re-uploaded later from Edit client / Documents.
+    const cardUploadFailures: string[] = [];
     for (const item of insuranceCardFiles) {
-      const authorization = await productionApi("/api/ehr/documents/presign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: client.clientId,
-          documentType: item.documentType,
-          fileName: item.file.name,
-          contentType: item.file.type || "application/octet-stream",
-        }),
-      });
-      const uploadResponse = await fetch(authorization.uploadUrl, {
-        method: "PUT",
-        headers: authorization.uploadHeaders,
-        body: item.file,
-      });
-      if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
-      const uploadedInsuranceDocument = {
-        id: authorization.documentId,
-        title: item.title,
-        type: "Insurance",
-        category: "Insurance",
-        status: "Uploaded",
-        viewedAt: "",
-        signature: null,
-        signatures: [],
-        uploadedFileName: item.file.name,
-        generatedLetterText: "",
-        clientVisible: true,
-        onboardingRequired: false,
-        createdAt: new Date().toISOString(),
-        contentType: item.file.type || "application/octet-stream",
-        sizeBytes: item.file.size,
-        storageKey: authorization.key,
-        uploadedByRole: currentUser.role,
-      };
-      onboardingDocuments.push(uploadedInsuranceDocument);
+      try {
+        const uploaded = await uploadChartFile({ clientId: client.clientId, documentType: item.documentType, file: item.file, title: item.title });
+        const uploadedInsuranceDocument = {
+          id: uploaded.documentId,
+          title: item.title,
+          type: "Insurance",
+          category: "Insurance",
+          status: "Uploaded",
+          viewedAt: "",
+          signature: null,
+          signatures: [],
+          uploadedFileName: uploaded.file.name,
+          generatedLetterText: "",
+          clientVisible: true,
+          onboardingRequired: false,
+          createdAt: new Date().toISOString(),
+          contentType: uploaded.file.type || "application/octet-stream",
+          sizeBytes: uploaded.file.size,
+          storageKey: uploaded.key,
+          uploadedByRole: currentUser.role,
+        };
+        onboardingDocuments.push(uploadedInsuranceDocument);
+      } catch (uploadError) {
+        cardUploadFailures.push(`${item.title}: ${uploadError instanceof Error ? uploadError.message : "upload failed"}`);
+        onboardingDocuments.push({
+          id: `pending-upload-${client.clientId}-${item.documentType}-${Date.now()}`,
+          title: `${item.title} — image upload pending`,
+          type: "Insurance",
+          category: "Insurance",
+          status: "Image upload pending — retry from Documents",
+          viewedAt: "",
+          signature: null,
+          signatures: [],
+          uploadedFileName: item.file.name || "",
+          generatedLetterText: "The insurance/ID details were recorded in the intake. The card image did not upload and can be re-uploaded later from Edit client or Documents. Reason: " + (uploadError instanceof Error ? uploadError.message : "upload failed."),
+          clientVisible: false,
+          onboardingRequired: false,
+          uploadPending: true,
+          createdAt: new Date().toISOString(),
+          uploadedByRole: currentUser.role,
+        });
+      }
     }
     const onboardingIntake = {
       fullName: client.fullName,
@@ -1020,11 +1142,14 @@ function AuthProvider({ children }) {
       persistModuleSnapshot(client.clientId, "intake", onboardingIntake),
     ]);
     const failed = results.find((r) => r.status === "rejected");
+    const cardNote = cardUploadFailures.length
+      ? ` Card/photo image${cardUploadFailures.length > 1 ? "s" : ""} did not upload (${cardUploadFailures.join("; ")}); the typed insurance details were saved and the image can be re-uploaded from Documents.`
+      : "";
     if (failed && failed.status === "rejected") {
       followUpError = failed.reason instanceof Error ? failed.reason.message : "Some intake details will finish saving shortly.";
-      setSaveStatus("Patient chart saved. Intake documents are still finishing — you can send the invitation now.");
+      setSaveStatus("Patient chart saved. Intake documents are still finishing — you can send the invitation now." + cardNote);
     } else {
-      setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS.");
+      setSaveStatus("Patient chart, intake packet, and consent forms saved securely to AWS." + cardNote);
     }
     return { ...client, invitationSent: false, invitationError: followUpError };
   };
@@ -1041,7 +1166,16 @@ function PageProvider({ children, initialPage = "dashboard" }) {
   const [page, setPageState] = useState(initialPage);
   const [workflowTarget, setWorkflowTarget] = useState(null);
   const [selectedChartClientId, setSelectedChartClientId] = useState("");
+  // Set by the Telehealth page while a recording or a live room is active. Leaving
+  // the Telehealth page unmounts it and stops the recording/room, so navigation
+  // away is confirmed first. A ref keeps this out of render and avoids re-renders.
+  const leaveTelehealthGuard = useRef(null);
+  const registerTelehealthLeaveGuard = (fn) => { leaveTelehealthGuard.current = fn; };
   const setPage = (requestedPage, target = null) => {
+    if (requestedPage !== "telehealth" && leaveTelehealthGuard.current) {
+      const message = leaveTelehealthGuard.current();
+      if (message && typeof window !== "undefined" && !window.confirm(message)) return;
+    }
     setPageState(requestedPage);
     setWorkflowTarget(target);
     if (target?.clientId) setSelectedChartClientId(target.clientId);
@@ -1061,7 +1195,7 @@ function PageProvider({ children, initialPage = "dashboard" }) {
     return () => window.removeEventListener("popstate", syncPageFromPath);
   }, [initialPage]);
   return (
-    <PageContext.Provider value={{ page, setPage, workflowTarget, selectedChartClientId, setSelectedChartClientId }}>
+    <PageContext.Provider value={{ page, setPage, workflowTarget, selectedChartClientId, setSelectedChartClientId, registerTelehealthLeaveGuard }}>
       {children}
     </PageContext.Provider>
   );
@@ -1159,9 +1293,199 @@ function AuthPage() {
     </div>
   );
 }
+// Standing provider alerts — new bookings AND website consultation requests —
+// polled globally so they show (and chime) on every EHR page, not only the
+// Scheduling tab. An alert stays here until the provider explicitly
+// acknowledges it; it is never auto-dismissed by time or by navigating away.
+function useStandingAlerts(isProvider) {
+  const [alerts, setAlerts] = useState([]);
+  const load = () => {
+    if (!isProvider) return;
+    productionApi("/api/ehr/booking-alerts?pending=1")
+      .then((data) => setAlerts(Array.isArray(data.alerts) ? data.alerts : []))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    if (!isProvider) return;
+    load();
+    const timer = setInterval(load, 45000);
+    return () => clearInterval(timer);
+  }, [isProvider]);
+  const acknowledge = async (alert) => {
+    try {
+      await productionApi("/api/ehr/booking-alerts", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alertId: alert.alertId, createdAt: alert.createdAt }),
+      });
+      setAlerts((prev) => prev.filter((a) => a.alertId !== alert.alertId));
+    } catch { /* leave it standing if it fails */ }
+  };
+  return { alerts, acknowledge };
+}
+// A short two-tone chime via the Web Audio API — no audio file needed. Browsers
+// block sound before any user interaction on the page, so the very first
+// chime after login may be silent; the visual banner always stands regardless.
+function playAlertChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const tone = (freq, startAt) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + startAt);
+      osc.stop(ctx.currentTime + startAt + 0.42);
+    };
+    tone(880, 0);
+    tone(1100, 0.22);
+  } catch { /* Web Audio unavailable or blocked — the banner still stands */ }
+}
+// Deficiency worklist for the provider — a sibling of the booking-alerts banner.
+// It NAMES each deficiency and deep-links straight to the note or claim to fix:
+//   (a) incomplete / unsigned progress notes (and AI-scribe drafts), derived
+//       client-side from the already-loaded chart store, and
+//   (b) server claims with a non-empty claimDeficiencies() list, the same
+//       validator the server enforces on review and transmit.
+// Nothing here changes a gate; it only surfaces what is already required.
+function useDeficiencyWorklist(isProvider, store) {
+  const [claimItems, setClaimItems] = useState([]);
+  // Supervisor co-sign worklist: notes awaiting the owner's review, and the signed-in
+  // supervisee's own notes that were returned for revision.
+  const [supervisionFeed, setSupervisionFeed] = useState({ queue: [], mine: [] });
+  useEffect(() => {
+    if (!isProvider) return;
+    let active = true;
+    const load = () => {
+      productionApi("/api/ehr/supervision?scope=feed")
+        .then((data) => {
+          if (!active) return;
+          setSupervisionFeed({
+            queue: Array.isArray(data.queue) ? data.queue : [],
+            mine: Array.isArray(data.mine) ? data.mine : [],
+          });
+        })
+        .catch(() => { if (active) setSupervisionFeed({ queue: [], mine: [] }); });
+    };
+    load();
+    const timer = setInterval(load, 45000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isProvider]);
+  const supervisionItems = useMemo(() => {
+    const clientName = (clientId) => store?.users?.[clientId]?.profile?.fullName || "Client";
+    const items = [];
+    supervisionFeed.queue.forEach((entry) => {
+      items.push({
+        kind: "cosign",
+        id: `cosign-${entry.clientId}-${entry.noteId}`,
+        clientId: entry.clientId,
+        clientName: clientName(entry.clientId),
+        label: `Co-sign needed: progress note by ${entry.superviseeName} for ${clientName(entry.clientId)}, ${entry.dateOfService || "no date of service"}`,
+        missing: ["Awaiting your review and signature"],
+        noteId: entry.noteId,
+      });
+    });
+    supervisionFeed.mine.filter((entry) => entry.status === "returned").forEach((entry) => {
+      items.push({
+        kind: "returned",
+        id: `returned-${entry.clientId}-${entry.noteId}`,
+        clientId: entry.clientId,
+        clientName: clientName(entry.clientId),
+        label: `Returned for revision: progress note for ${clientName(entry.clientId)}, ${entry.dateOfService || "no date of service"}`,
+        missing: [entry.returnComment ? `Supervisor comment: ${entry.returnComment}` : "Revise and resubmit"],
+        noteId: entry.noteId,
+      });
+    });
+    return items;
+  }, [supervisionFeed, store?.users]);
+  useEffect(() => {
+    if (!isProvider) return;
+    let active = true;
+    const load = () => {
+      productionApi("/api/ehr/billing")
+        .then((data) => {
+          if (!active) return;
+          const claims = Array.isArray(data.claims) ? data.claims : [];
+          const items = [];
+          claims.forEach((claim) => {
+            const deficiencies = claimDeficiencies(claim);
+            if (deficiencies.ok) return;
+            items.push({
+              kind: "claim",
+              id: `claim-${claim.claimId}`,
+              clientId: claim.clientId,
+              clientName: claim.clientName || "Client",
+              label: `${claim.payerName || "Claim"} · ${claim.dateOfService || "no date of service"}`,
+              missing: deficiencies.all,
+              claimId: claim.claimId,
+            });
+          });
+          setClaimItems(items);
+        })
+        .catch(() => { if (active) setClaimItems([]); });
+    };
+    load();
+    const timer = setInterval(load, 45000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isProvider]);
+  const noteItems = useMemo(() => {
+    if (!isProvider || !store?.users) return [];
+    const items = [];
+    clinicalClientEntries(store).forEach(([clientId, bucket]) => {
+      (bucket.notes || []).forEach((note) => {
+        const signed = Boolean(note.signature && String(note.signature.provider || "").trim());
+        if (signed) return;
+        // Supervisee notes are tracked by the co-sign / returned items, never as "sign this" for the owner.
+        if (note.supervision || note.authorEmail) return;
+        const missing = [];
+        if (!note.signature || !String(note.signature?.provider || "").trim()) missing.push("Signature missing");
+        if (!String(note.codeDraft?.primaryDiagnosis || "").trim()) missing.push("Primary diagnosis required");
+        if (!String(note.codeDraft?.serviceCode || "").trim()) missing.push("Billing CPT/HCPCS code required");
+        if (!Number(note.sessionMinutes)) missing.push("Session minutes required");
+        items.push({
+          kind: "note",
+          id: `note-${clientId}-${note.id}`,
+          clientId,
+          clientName: bucket.profile?.fullName || "Client",
+          label: `${note.title || note.noteType || "Progress note"}`,
+          missing: missing.length ? missing : ["Signature missing"],
+          noteId: note.id,
+        });
+      });
+    });
+    return items;
+  }, [isProvider, store?.users]);
+  return { items: [...supervisionItems, ...noteItems, ...claimItems] };
+}
 function MainApp() {
-  const { currentUser, logout, saveStatus } = useAuth();
+  const { currentUser, logout, saveStatus, store } = useAuth();
   const { page, setPage } = usePage();
+  const isProvider = currentUser.role === "provider";
+  const standingAlerts = useStandingAlerts(isProvider);
+  const deficiencyWorklist = useDeficiencyWorklist(isProvider, store);
+  // Provider-only Dec 9-16 reminder; dismissible for the current browser session only.
+  const [showWebadorReminder, setShowWebadorReminder] = useState(false);
+  useEffect(() => {
+    let dismissed = false;
+    try { dismissed = window.sessionStorage.getItem("webador-reminder-dismissed") === "1"; } catch { /* storage unavailable */ }
+    setShowWebadorReminder(isProvider && !dismissed && webadorReminderActive());
+  }, [isProvider]);
+  const dismissWebadorReminder = () => {
+    try { window.sessionStorage.setItem("webador-reminder-dismissed", "1"); } catch { /* storage unavailable */ }
+    setShowWebadorReminder(false);
+  };
+  useEffect(() => {
+    if (!isProvider || standingAlerts.alerts.length === 0) return;
+    playAlertChime();
+    const soundTimer = setInterval(playAlertChime, 45000);
+    return () => clearInterval(soundTimer);
+  }, [isProvider, standingAlerts.alerts.length]);
   const clientItems = [
     ["dashboard", "Dashboard", HeartHandshake],
     ["journal", "Journal", PenSquare],
@@ -1186,6 +1510,8 @@ function MainApp() {
     ["assessments", "Assessments", ClipboardList],
     ["telehealth", "Telehealth", Video],
     ["messages", "Messages", MessageSquare],
+    ["email", "Email", Mail],
+    ["fax", "Fax", Printer],
     ["billing", "Billing", ClipboardList],
     ["audit-log", "Audit Log", Lock],
     ["infrastructure", "Infrastructure", Shield],
@@ -1201,11 +1527,11 @@ function MainApp() {
   const groups = currentUser.role === "provider" ? [
     ["Overview", providerItems.slice(0, 4)],
     ["Clinical documentation", providerItems.slice(4, 9)],
-    ["Communication", providerItems.slice(9, 11)],
-    ["Billing & Review", providerItems.slice(11, 14)],
-    ["Wellness tools", providerItems.slice(14, 18)],
-    ["Practice resources", providerItems.slice(18, 20)],
-    ["Provider training", providerItems.slice(20)],
+    ["Communication", providerItems.slice(9, 13)],
+    ["Billing & Review", providerItems.slice(13, 16)],
+    ["Wellness tools", providerItems.slice(16, 20)],
+    ["Practice resources", providerItems.slice(20, 22)],
+    ["Provider training", providerItems.slice(22)],
   ] : [["Overview", clientItems]];
   const [menuOpen, setMenuOpen] = useState(false);
   const workspaceRef = useRef(null);
@@ -1220,7 +1546,12 @@ function MainApp() {
         <div className="ehr-workspace-brand">
           <Shield className="h-5 w-5" aria-hidden="true" />
           <div>
-            <div className="ehr-workspace-brand-name">Revealing Leads to Healing</div>
+            <div className="ehr-workspace-brand-name">
+              <span className="ehr-brand-initial">R</span>evealing{" "}
+              <span className="ehr-brand-initial">L</span>eads{" "}
+              <span className="ehr-brand-initial">T</span>o{" "}
+              <span className="ehr-brand-initial">H</span>ealing
+            </div>
             <p className="text-xs">{VERSION}</p>
           </div>
         </div>
@@ -1262,7 +1593,67 @@ function MainApp() {
         </aside>
         <main className="ehr-workspace-content" ref={workspaceRef} tabIndex={-1} aria-label={navItems.find(([id]) => id === page)?.[1] || "EHR workspace"}>
           {saveStatus && <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-medium ${saveStatus.includes("failed") || saveStatus.includes("not saved") ? "border-red-200 bg-red-50 text-red-800" : saveStatus.includes("Saving") ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{saveStatus}</div>}
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+          {showWebadorReminder && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-900">{WEBADOR_REMINDER_TEXT}</p>
+              <button type="button" className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={dismissWebadorReminder}>Dismiss for this session</button>
+            </div>
+          )}
+                    {isProvider && standingAlerts.alerts.length > 0 && (
+            <div className="mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-900">
+                {standingAlerts.alerts.length} new alert{standingAlerts.alerts.length === 1 ? "" : "s"} need{standingAlerts.alerts.length === 1 ? "s" : ""} your attention
+              </p>
+              <p className="mt-1 text-xs text-amber-800">New bookings and website consultation requests stay here — with a repeating chime — until you acknowledge each one. This shows on every page, not just Scheduling.</p>
+              <div className="mt-3 space-y-2">
+                {standingAlerts.alerts.map((alert) => (
+                  <div key={alert.alertId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-white p-3">
+                    <div className="text-sm text-slate-800">
+                      <span className="font-medium">{alert.clientName || "Someone"}</span>
+                      {" · "}{alert.appointmentPurpose || "Appointment"}
+                      {alert.appointmentDate ? ` · ${alert.appointmentDate} ${alert.appointmentTime}` : ""}
+                      {alert.contactEmail ? <span className="ml-2 text-slate-500">{alert.contactEmail}</span> : null}
+                      {alert.contactPhone ? <span className="ml-2 text-slate-500">{alert.contactPhone}</span> : null}
+                      {alert.contactMessage ? <div className="mt-1 text-xs text-slate-500 italic">"{alert.contactMessage}"</div> : null}
+                      {alert.bookedByRole === "client" ? <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-xs">client booked</span> : null}
+                    </div>
+                    <button type="button" className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={() => standingAlerts.acknowledge(alert)}>
+                      Acknowledge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {isProvider && deficiencyWorklist.items.length > 0 && (
+            <div className="mb-4 rounded-2xl border-2 border-red-300 bg-red-50 p-4">
+              <p className="font-semibold text-red-900">
+                {deficiencyWorklist.items.length} item{deficiencyWorklist.items.length === 1 ? "" : "s"} need{deficiencyWorklist.items.length === 1 ? "s" : ""} to be completed, signed, or corrected
+              </p>
+              <p className="mt-1 text-xs text-red-800">Unsigned or incomplete notes and claims that are not yet clean. Each names exactly what is missing and jumps straight to the note or claim — no searching charts.</p>
+              <div className="mt-3 space-y-2">
+                {deficiencyWorklist.items.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-white p-3">
+                    <div className="text-sm text-slate-800">
+                      <span className="font-medium">{item.clientName}</span>
+                      {" · "}{item.kind === "cosign" || item.kind === "returned" ? "" : `${item.kind === "note" ? "Note" : "Claim"}: `}{item.label}
+                      <div className="mt-1 text-xs text-red-700"><span className="font-semibold">{item.kind === "cosign" ? "Action:" : "Missing:"}</span> {item.missing.join(", ")}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white"
+                      onClick={() => item.kind === "claim"
+                        ? setPage("billing", { clientId: item.clientId, claimId: item.claimId })
+                        : setPage("notes", { clientId: item.clientId, noteId: item.noteId })}
+                    >
+                      {item.kind === "claim" ? "Open to fix" : item.kind === "cosign" ? "Open to review and sign" : item.kind === "returned" ? "Open to revise" : "Open to complete and sign"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+<motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <PageRouter />
           </motion.div>
         </main>
@@ -1279,6 +1670,8 @@ function PageRouter() {
   if (page === "psychoeducation") return <PsychoeducationPage />;
   if (page === "homework-client" && currentUser.role === "client") return <ClientHomeworkPage />;
   if (page === "messages") return <MessagingPage />;
+  if (page === "email" && currentUser.role === "provider") return <EmailPage />;
+  if (page === "fax" && currentUser.role === "provider") return <FaxPage />;
   if (page === "records-request" && currentUser.role === "client") return <ClientRecordRequestPage />;
   if (page === "record-requests" && currentUser.role === "provider") return <ProviderRecordRequestsPage />;
   if (page === "audit-log" && currentUser.role === "provider") return <AuditLogPage />;
@@ -1298,6 +1691,17 @@ function PageRouter() {
   if (page === "infrastructure" && currentUser.role === "provider") return <InfrastructurePage />;
   if (page === "trainings" && currentUser.role === "provider") return <ProviderTrainingsPage />;
   return <DashboardPage />;
+}
+function FaxPage() {
+  const { store } = useAuth();
+  const chartClients = clinicalClientEntries(store).map(([id, bucket]) => ({ id, label: `${bucket?.profile?.fullName || "Client"} — ${id}` }));
+  return (
+    <div>
+      <SectionHeader title="Fax" description="Send faxes from the practice fax line and review faxes and call recordings captured from Spruce." />
+      <FaxSend clients={chartClients} />
+      <FaxInbox clients={chartClients} />
+    </div>
+  );
 }
 function SectionHeader({ title, description, right }) {
   return (
@@ -1381,39 +1785,34 @@ function ProviderPatientDashboard() {
         { file: editFiles.photoIdFront, title: "Photo ID - Front", documentType: "photo-id-front", category: "Identification" },
         { file: editFiles.photoIdBack, title: "Photo ID - Back", documentType: "photo-id-back", category: "Identification" },
       ].filter((item) => item.file);
+      // The profile and intake are already saved above. A card/photo IMAGE
+      // upload failing must not lose that save or block the other images — it
+      // reports the affected image(s) and keeps everything else intact.
       const uploadedDocuments = [];
+      const editUploadFailures = [];
       for (const item of uploads) {
-        if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
-        if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
-          throw new Error(`${item.title} must be an image or PDF.`);
+        try {
+          if (item.file.size > 10 * 1024 * 1024) throw new Error(`${item.title} must be 10 MB or smaller.`);
+          if (item.file.type && !item.file.type.startsWith("image/") && item.file.type !== "application/pdf") {
+            throw new Error(`${item.title} must be an image or PDF.`);
+          }
+          const uploaded = await uploadChartFile({ clientId: selectedPatient.id, documentType: item.documentType, file: item.file, title: item.title });
+          uploadedDocuments.push({
+            id: uploaded.documentId, title: item.title, type: item.category, category: item.category,
+            status: "Uploaded", viewedAt: "", signature: null, signatures: [],
+            uploadedFileName: uploaded.file.name, generatedLetterText: "", clientVisible: true,
+            onboardingRequired: false, createdAt: new Date().toISOString(),
+            contentType: uploaded.file.type || "application/octet-stream", sizeBytes: uploaded.file.size,
+            storageKey: uploaded.key, uploadedByRole: "provider",
+          });
+          await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
+        } catch (uploadError) {
+          editUploadFailures.push(`${item.title}: ${uploadError instanceof Error ? uploadError.message : "upload failed"}`);
         }
-        const authorization = await productionApi("/api/ehr/documents/presign", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            clientId: selectedPatient.id,
-            documentType: item.documentType,
-            fileName: item.file.name,
-            contentType: item.file.type || "application/octet-stream",
-          }),
-        });
-        const uploadResponse = await fetch(authorization.uploadUrl, {
-          method: "PUT",
-          headers: authorization.uploadHeaders,
-          body: item.file,
-        });
-        if (!uploadResponse.ok) throw new Error(`${item.title} could not be uploaded to encrypted AWS storage.`);
-        uploadedDocuments.push({
-          id: authorization.documentId, title: item.title, type: item.category, category: item.category,
-          status: "Uploaded", viewedAt: "", signature: null, signatures: [],
-          uploadedFileName: item.file.name, generatedLetterText: "", clientVisible: true,
-          onboardingRequired: false, createdAt: new Date().toISOString(),
-          contentType: item.file.type || "application/octet-stream", sizeBytes: item.file.size,
-          storageKey: authorization.key, uploadedByRole: "provider",
-        });
-        await persistValue("documents", [...(selectedPatient.documents || []), ...uploadedDocuments]);
       }
-      setEditNotice("Patient record saved securely.");
+      setEditNotice(editUploadFailures.length
+        ? `Patient record saved. Some images did not upload and can be retried: ${editUploadFailures.join("; ")}.`
+        : "Patient record saved securely.");
       setEditingPatient(false);
     } catch (error) {
       setEditNotice(error instanceof Error ? error.message : "Patient record could not be saved.");
@@ -1475,7 +1874,7 @@ function ProviderPatientDashboard() {
                 const uploaded = (selectedPatient.documents || []).filter(doc => doc.title === label && doc.storageKey);
                 return <div className="ehr-demographic-value" key={key}><span>{label}</span>
                   <p>{uploaded.length ? uploaded.map(doc => doc.uploadedFileName || "Uploaded").join(", ") : "Not uploaded"}</p>
-                  <label className="block text-sm">Upload {label}<input key={`${selectedPatient.id}-${editingPatient}-${key}`} className="block w-full" type="file" accept="image/*,application/pdf" disabled={editBusy} onChange={event => {
+                  <label className="block text-sm">Upload {label}<input key={`${selectedPatient.id}-${editingPatient}-${key}`} className="block w-full" type="file" accept="image/*,application/pdf" capture="environment" disabled={editBusy} onChange={event => {
                     const file = event.target.files?.[0]; if (!file) return;
                     if (!editingPatient) beginPatientEdit();
                     setEditFiles(previous => ({ ...previous, [key]: file }));
@@ -2449,6 +2848,87 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
       if (match) await acknowledgeAlert(match);
     } catch { /* ignore */ }
   };
+    // Practice-wide calendar — every appointment across every client, not just the
+  // one selected above. Appointments are stored per-client, so this pulls them
+  // all together into a real month/week/day calendar grid so the provider can
+  // see who's booked on any given day at a glance, not just a text list.
+  const allAppointments = useMemo(() => {
+    if (!isProvider) return [];
+    return clients
+      .flatMap(([clientId, bucket]) =>
+        (bucket.appointments || []).map((appt) => ({
+          ...appt,
+          clientId,
+          clientName: bucket.profile?.fullName || "Client",
+        }))
+      )
+      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  }, [isProvider, clients]);
+  const toCalendarIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayIso = toCalendarIso(new Date());
+  const appointmentsByDateMap = useMemo(() => {
+    const groups = {};
+    allAppointments.forEach((appt) => {
+      if (!groups[appt.date]) groups[appt.date] = [];
+      groups[appt.date].push(appt);
+    });
+    return groups;
+  }, [allAppointments]);
+  const [calendarView, setCalendarView] = useState("month");
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayIso);
+  const formatCalendarTime = (timeStr) => {
+    const [h, m] = (timeStr || "0:0").split(":").map(Number);
+    const d = new Date();
+    d.setHours(h || 0, m || 0, 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+  const formatCalendarDate = (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const diffDays = Math.round((d - new Date(`${todayIso}T00:00:00`)) / 86400000);
+    const label = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    if (diffDays === 0) return `Today — ${label}`;
+    if (diffDays === 1) return `Tomorrow — ${label}`;
+    if (diffDays === -1) return `Yesterday — ${label}`;
+    return label;
+  };
+  const goToToday = () => {
+    const t = new Date();
+    setCalendarCursor(t);
+    setSelectedCalendarDate(toCalendarIso(t));
+  };
+  const navigateCalendar = (direction) => {
+    const next = new Date(calendarCursor);
+    if (calendarView === "month") next.setMonth(next.getMonth() + direction);
+    else if (calendarView === "week") next.setDate(next.getDate() + direction * 7);
+    else next.setDate(next.getDate() + direction);
+    setCalendarCursor(next);
+    setSelectedCalendarDate(toCalendarIso(next));
+  };
+  const monthMatrix = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const startWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = startWeekday; i > 0; i -= 1) cells.push({ date: new Date(year, month, 1 - i), inMonth: false });
+    for (let day = 1; day <= daysInMonth; day += 1) cells.push({ date: new Date(year, month, day), inMonth: true });
+    let trail = 1;
+    while (cells.length < 42) { cells.push({ date: new Date(year, month, daysInMonth + trail), inMonth: false }); trail += 1; }
+    return cells;
+  }, [calendarCursor]);
+  const weekDays = useMemo(() => {
+    const start = new Date(calendarCursor);
+    start.setDate(start.getDate() - start.getDay());
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  }, [calendarCursor]);
+  const calendarHeaderLabel = calendarView === "month"
+    ? calendarCursor.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : calendarView === "week"
+      ? `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+      : calendarCursor.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const selectedDayAppointments = appointmentsByDateMap[selectedCalendarDate] || [];
+
 
   return (
     <div>
@@ -2476,6 +2956,146 @@ Continue treatment planning, monitor risk and functioning, assign homework or ca
             ))}
           </div>
         </div>
+      )}
+      {isProvider && (
+        <Card className="rounded-2xl shadow-sm mb-4">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Practice Calendar</CardTitle>
+                <CardDescription>Every scheduled appointment across all clients — month, week, or day view.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {["month", "week", "day"].map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setCalendarView(view)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold capitalize",
+                      calendarView === view ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 bg-white text-slate-600"
+                    )}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => navigateCalendar(-1)} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold" aria-label="Previous">‹</button>
+                <button type="button" onClick={goToToday} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold">Today</button>
+                <button type="button" onClick={() => navigateCalendar(1)} className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold" aria-label="Next">›</button>
+              </div>
+              <p className="text-sm font-semibold text-slate-700">{calendarHeaderLabel}</p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {calendarView === "month" && (
+              <div>
+                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 mb-1">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <div key={d}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {monthMatrix.map(({ date, inMonth }) => {
+                    const iso = toCalendarIso(date);
+                    const dayAppts = appointmentsByDateMap[iso] || [];
+                    const isToday = iso === todayIso;
+                    const isSelected = iso === selectedCalendarDate;
+                    return (
+                      <button
+                        type="button"
+                        key={iso}
+                        onClick={() => { setSelectedCalendarDate(iso); setCalendarCursor(date); }}
+                        className={cn(
+                          "min-h-[64px] rounded-lg border p-1.5 text-left align-top",
+                          inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
+                          isSelected ? "border-stone-800 ring-1 ring-stone-800" : "border-stone-200",
+                          isToday && !isSelected ? "border-amber-400" : ""
+                        )}
+                      >
+                        <span className={cn("text-xs font-semibold", isToday ? "text-amber-700" : "")}>{date.getDate()}</span>
+                        <div className="mt-1 space-y-0.5">
+                          {dayAppts.slice(0, 2).map((appt) => (
+                            <div key={appt.id} className={cn("truncate rounded px-1 py-0.5 text-[10px] font-medium", appt.status === "Cancelled" ? "bg-slate-100 text-slate-400 line-through" : "bg-emerald-100 text-emerald-800")}>
+                              {formatCalendarTime(appt.time)} {appt.clientName}
+                            </div>
+                          ))}
+                          {dayAppts.length > 2 && <div className="text-[10px] text-slate-500">+{dayAppts.length - 2} more</div>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {calendarView === "week" && (
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map((date) => {
+                  const iso = toCalendarIso(date);
+                  const dayAppts = appointmentsByDateMap[iso] || [];
+                  const isToday = iso === todayIso;
+                  const isSelected = iso === selectedCalendarDate;
+                  return (
+                    <button
+                      type="button"
+                      key={iso}
+                      onClick={() => { setSelectedCalendarDate(iso); setCalendarCursor(date); }}
+                      className={cn(
+                        "min-h-[140px] rounded-lg border p-2 text-left align-top bg-white",
+                        isSelected ? "border-stone-800 ring-1 ring-stone-800" : "border-stone-200",
+                        isToday && !isSelected ? "border-amber-400" : ""
+                      )}
+                    >
+                      <p className={cn("text-xs font-semibold mb-1", isToday ? "text-amber-700" : "text-slate-600")}>
+                        {date.toLocaleDateString("en-US", { weekday: "short", day: "numeric" })}
+                      </p>
+                      <div className="space-y-1">
+                        {dayAppts.map((appt) => (
+                          <div key={appt.id} className={cn("truncate rounded px-1 py-0.5 text-[10px] font-medium", appt.status === "Cancelled" ? "bg-slate-100 text-slate-400 line-through" : "bg-emerald-100 text-emerald-800")}>
+                            {formatCalendarTime(appt.time)} {appt.clientName}
+                          </div>
+                        ))}
+                        {dayAppts.length === 0 && <p className="text-[10px] text-slate-400">—</p>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+              <p className="text-sm font-semibold text-slate-700 mb-2">
+                {calendarView === "day" ? calendarHeaderLabel : formatCalendarDate(selectedCalendarDate)}
+              </p>
+              {selectedDayAppointments.length === 0 && <p className="text-sm text-slate-500">No appointments scheduled.</p>}
+              <div className="space-y-2">
+                {selectedDayAppointments.map((appt) => (
+                  <div
+                    key={appt.id}
+                    className={cn(
+                      "flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3",
+                      appt.status === "Cancelled" ? "border-slate-200 bg-slate-50 opacity-60" : "border-stone-200 bg-white"
+                    )}
+                  >
+                    <div className="text-sm">
+                      <span className="font-semibold">{formatCalendarTime(appt.time)}</span>
+                      <span className="mx-2 text-slate-400">·</span>
+                      <span className="font-medium">{appt.clientName}</span>
+                      <span className="mx-2 text-slate-400">·</span>
+                      <span className="text-slate-600">{appt.purpose}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-400">{appt.format}</span>
+                      <span className={cn("font-semibold", appt.status === "Cancelled" ? "text-slate-400" : "text-emerald-700")}>
+                        {appt.status || "Scheduled"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
       <div className="grid xl:grid-cols-[0.9fr_1.1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
@@ -2581,8 +3201,12 @@ function ClientTelehealthPage() {
 function TelehealthPage() {
   const { currentUser, store, updateCurrentUserData, updateSpecificUserData, appendAuditLog, flushClientModuleSaves } = useAuth();
   const isProvider = currentUser.role === "provider";
-  const { selectedChartClientId, setSelectedChartClientId, setPage } = usePage();
+  const { selectedChartClientId, setSelectedChartClientId, setPage, registerTelehealthLeaveGuard } = usePage();
   const [nativeCallActive, setNativeCallActive] = useState(false);
+  const [nativeUploadActive, setNativeUploadActive] = useState(false);
+  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [translationLanguage, setTranslationLanguage] = useState('en');
+  const [translationSpoken, setTranslationSpoken] = useState(false);
   const clients = clinicalClientEntries(store);
   const currentClientId = currentUser.chartClientId || currentUser.id;
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || currentClientId);
@@ -2618,7 +3242,7 @@ function TelehealthPage() {
   const [generatedDocs, setGeneratedDocs] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [supportedSections, setSupportedSections] = useState({});
-  const [microphoneTest, setMicrophoneTest] = useState(true);
+  const [microphoneTest, setMicrophoneTest] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const recordingStartRef = useRef(0);
   const [scribeTemplate, setScribeTemplate] = useState("Progress Note - SOAP");
@@ -2626,7 +3250,6 @@ function TelehealthPage() {
   const [scribeSeconds, setScribeSeconds] = useState(0);
   const [isScribeTimerRunning, setIsScribeTimerRunning] = useState(false);
   const [scribeDiagnosisSearch, setScribeDiagnosisSearch] = useState("");
-  const [scribeDiagnosisTarget, setScribeDiagnosisTarget] = useState("primaryDiagnosis");
   const [scribeBillingSearch, setScribeBillingSearch] = useState("");
   const [awsScribeJob, setAwsScribeJob] = useState({ jobName: "", mediaKey: "", status: "" });
   const [isAudioRecording, setIsAudioRecording] = useState(false);
@@ -2659,6 +3282,7 @@ function TelehealthPage() {
     primaryDiagnosis: "",
     secondaryDiagnosis: "",
     tertiaryDiagnosis: "",
+    fourthDiagnosis: "",
     serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
     interpreterCode: "",
     manualMinutes: "",
@@ -2676,17 +3300,16 @@ function TelehealthPage() {
     setScribeSeconds(0); setIsScribeTimerRunning(false); recordingStartRef.current = 0;
     mediaChunksRef.current = []; mediaRecorderRef.current = null;
     setScribeTemplate("Progress Note - SOAP"); setScribeDiagnosisSearch(""); setScribeBillingSearch("");
-    setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", serviceCode: "", interpreterCode: "", manualMinutes: "", clientSignature: "" }));
+    setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", serviceCode: "", interpreterCode: "", manualMinutes: "", clientSignature: "" }));
     setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, dialNumber: "", sessionUrl: "", interpreterNeeded: false, interpreterName: "", translationNotes: "", technicalNotes: "" }));
     setCopyNotice("New test ready. Timer, transcript, draft and appointment selection cleared. Confirm both consents above. Saved chart history has not changed.");
   };
   const recordingBlockedReason = appointmentBlocked ? `The selected appointment is ${selectedAppointment.status}. Choose Start new test for a fresh test without changing that appointment.`
-    : nativeCallActive ? "End the active call before recording a local microphone test."
     : isAudioBusy ? "Waiting for microphone access or audio processing. Check the browser's microphone permission if recording has not started."
     : awsScribeJob.status === "IN_PROGRESS" ? "AWS transcription is still processing. Check its status before starting another test."
     : !activeClientId ? "Select a test client below before recording."
     : !sessionForm.consentObtained ? "Confirm telehealth consent above before using audio or video."
-    : !sessionForm.recordingConsent ? "Check Recording consent obtained above to enable recording."
+    : !sessionForm.recordingConsent ? "Check the recording and AI transcription consent box above to enable recording."
     : "";
   const healthScribeTemplate = (() => {
     if (scribeTemplate.includes("GIRP")) return "GIRPP";
@@ -2705,8 +3328,11 @@ function TelehealthPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clientId: activeClientId, contentType, consentConfirmed: true }),
     });
-    const uploadResponse = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.uploadHeaders, body: audio });
-    if (!uploadResponse.ok) throw new Error("Encrypted audio upload failed.");
+    if (!audio.size) throw new Error("No audio was captured, so nothing was uploaded. Check the microphone and record again.");
+    let uploadResponse;
+    try { uploadResponse = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.uploadHeaders, body: audio }); }
+    catch { throw new Error("Encrypted audio upload could not reach storage (network or bucket CORS). Nothing was transcribed."); }
+    if (!uploadResponse.ok) throw new Error(`Encrypted audio upload failed (storage responded ${uploadResponse.status}).`);
     const job = await productionApi("/api/ehr/scribe/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -2803,6 +3429,21 @@ function TelehealthPage() {
     const id = window.setInterval(() => setScribeSeconds(Math.floor((Date.now() - recordingStartRef.current) / 1000)), 1000);
     return () => window.clearInterval(id);
   }, [isScribeTimerRunning]);
+  // Warn before leaving Telehealth while a session is live. Navigating to another
+  // page (for example Assessments to give a GAD-7/PHQ-9) unmounts this page, which
+  // stops the microphone recording and the Chime room and loses live transcription.
+  // Returning the message string lets the router confirm; null allows free navigation.
+  useEffect(() => {
+    if (!registerTelehealthLeaveGuard) return;
+    registerTelehealthLeaveGuard(() => {
+      if (isAudioRecording || isScribeTimerRunning) return "A microphone recording is in progress. Leaving Telehealth now stops the recording and loses the live transcription for this session. Stop and transcribe the recording first, or stay on this page.";
+      if (nativeCallActive) return "You are connected to the live EHR video room. Leaving Telehealth now disconnects the room and ends live captions. Leave the room first, or stay on this page.";
+      if (nativeUploadActive) return "The session audio is still uploading for AI processing. Leaving Telehealth now unmounts the room and loses the recording before it reaches HealthScribe. Wait for the upload to finish, or stay on this page.";
+      if (awsScribeJob.status === "IN_PROGRESS") return "AWS is still transcribing this session. Leaving Telehealth now may interrupt retrieving the completed transcript. Wait for transcription to finish, or stay on this page.";
+      return null;
+    });
+    return () => registerTelehealthLeaveGuard(null);
+  }, [registerTelehealthLeaveGuard, isAudioRecording, isScribeTimerRunning, nativeCallActive, nativeUploadActive, awsScribeJob.status]);
   const formattedScribeTimer = `${String(Math.floor(scribeSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((scribeSeconds % 3600) / 60)).padStart(2, "0")}:${String(scribeSeconds % 60).padStart(2, "0")}`;
   const scribeSessionMinutes = scribeMeta.manualMinutes || (scribeSeconds ? String(Math.ceil(scribeSeconds / 60)) : "");
   const scribeMetadataBlock = () => [
@@ -2812,14 +3453,12 @@ function TelehealthPage() {
     `Primary ICD-10-CM: ${scribeMeta.primaryDiagnosis || "Not selected"}`,
     `Secondary ICD-10-CM: ${scribeMeta.secondaryDiagnosis || "Not selected"}`,
     `Tertiary ICD-10-CM: ${scribeMeta.tertiaryDiagnosis || "Not selected"}`,
+    `Fourth ICD-10-CM: ${scribeMeta.fourthDiagnosis || "Not selected"}`,
     `Service / CPT-HCPCS: ${scribeMeta.serviceCode || "Not selected"}`,
     `Interpreter service code: ${scribeMeta.interpreterCode || "Not used"}`,
     `Provider e-signature: ${providerSignatureText(scribeMeta.providerSignature)}`,
     `Client e-signature: ${scribeMeta.clientSignature || "Not signed / not required"}`,
   ].join("\n");
-  const applyScribeDiagnosisCode = (item) => {
-    setScribeMeta((prev) => ({ ...prev, [scribeDiagnosisTarget]: `${item.code} | ${item.label}` }));
-  };
   const handleScribeTemplateChange = (value) => {
     setScribeTemplate(value); setGeneratedDocs(null); setReviewConfirmed(false);
     setScribeMeta((prev) => {
@@ -2955,7 +3594,10 @@ ${sessionForm.recordingVerbiage}`);
         appointmentStatus: selectedAppointment?.status || "Not linked",
         noteType: structured.noteType,
         structuredFields: structured.fields,
-        status: "Provider review required",
+        status: "Unsigned draft - provider review required",
+        sessionMinutes: scribeSessionMinutes,
+        codeDraft: { ...scribeMeta, sessionMinutes: scribeSessionMinutes },
+        signature: null,
         audioRetentionPolicy,
         createdAt: new Date().toLocaleString(),
       },
@@ -2980,6 +3622,7 @@ ${sessionForm.recordingVerbiage}`);
     });
     setCopyNotice("Generated draft saved into the client chart for provider review/signature. Temporary audio remains governed by overnight/next-business-day deletion policy.");
     setReviewConfirmed(false);
+    if (isProvider && !isIntakeTemplate(scribeTemplate)) setPage("notes", { clientId: activeClientId, noteId: generatedDocs.draftId });
     } catch (error) { setCopyNotice(`Chart save could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
     finally { setSavingDraft(false); }
   };
@@ -3034,7 +3677,7 @@ ${sessionForm.recordingVerbiage}`);
       onset: scribeMeta.onset,
       ...intakeFieldPatch(scribeTemplate, generatedDocs.structuredNote.fields),
       biopsychosocialSummary: structured.content,
-      diagnoses: [scribeMeta.primaryDiagnosis, scribeMeta.secondaryDiagnosis, scribeMeta.tertiaryDiagnosis].filter(Boolean),
+      diagnoses: selectedDiagnoses(scribeMeta),
       billingCodes: [scribeMeta.serviceCode, scribeMeta.interpreterCode].filter(Boolean),
       sessionMinutes: scribeSessionMinutes,
       scribeUpdatedAt: new Date().toLocaleString(),
@@ -3080,6 +3723,7 @@ ${sessionForm.recordingVerbiage}`);
     });
     setCopyNotice("Reviewed draft merged into the selected documentation type in the client chart.");
     setReviewConfirmed(false);
+    if (isProvider && !isIntakeTemplate(scribeTemplate)) setPage("notes", { clientId: activeClientId, noteId: generatedDocs.draftId });
     } catch (error) { setCopyNotice(`Chart merge could not be confirmed. Retry this draft. ${error instanceof Error ? error.message : ""}`); }
     finally { setSavingDraft(false); }
   };
@@ -3165,9 +3809,18 @@ ${sessionForm.recordingVerbiage}`);
 <section aria-label="Client and consent before audio or video" className="mb-4 rounded-2xl border p-4 space-y-3">
 <h2 className="font-semibold">Client and consent — before audio or video</h2>
 <p className="text-sm">Confirm telehealth consent first. Recording and AI transcription require separate recording consent.</p>
-              <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Microphone test — no clinical note or chart merge</label>
-              <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>
+              <label className="block"><input type="checkbox" checked={microphoneTest} disabled={isAudioRecording || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} onChange={e => { setMicrophoneTest(e.target.checked); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); }} /> Optional: use microphone test mode (turn on only to practice). Test audio never creates a clinical note or merges into the chart.</label>
+              {microphoneTest && <Button type="button" variant="outline" disabled={resetTestBusy} onClick={startNewMicrophoneTest}>Reset microphone test</Button>}
               <p className="text-sm">Current client: {activeClient?.profile?.fullName || "None selected"}. {selectedAppointment ? `Appointment: ${selectedAppointment.date || ""} · ${selectedAppointment.status}` : "No appointment selected."}</p>
+            {isProvider && (
+              <div className="space-y-1">
+                <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={appointmentId} onValueChange={id => { const item = appointments.find(appt => appt.id === id); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setSupportedSections({}); setScribeSeconds(0); setScribeMeta(current => ({ ...current, manualMinutes: "" })); setAppointmentId(id); setStatusDraft(item?.status || "Scheduled"); setRescheduleDate(item?.date || ""); setRescheduleTime(item?.time || ""); }}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Choose the appointment" /></SelectTrigger>
+                  <SelectContent>{appointments.map(item => <SelectItem key={item.id} value={item.id}>{item.date} {item.time} — {item.purpose} ({item.status})</SelectItem>)}</SelectContent>
+                </Select>
+                {!appointments.length && <p className="text-sm">No appointments scheduled for this client.</p>}
+              </div>
+            )}
             {isProvider && (
               <Select disabled={savingDraft || statusBusy || nativeCallActive || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} value={selectedClientId} onValueChange={id => { setScribeMeta(current => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", manualMinutes: "", clientSignature: "" })); setAppointmentId(""); setStatusDraft("Scheduled"); setRescheduleDate(""); setRescheduleTime(""); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setScribeSeconds(0); setSelectedClientId(id); setSelectedChartClientId(id); setSessionForm(current => ({ ...current, consentObtained: false, recordingConsent: false, sessionUrl: "", dialNumber: "" })); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
@@ -3177,19 +3830,39 @@ ${sessionForm.recordingVerbiage}`);
               </Select>
             )}
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => setSessionForm({ ...sessionForm, recordingConsent: e.target.checked })} />
-              Recording consent obtained
+              <input type="checkbox" checked={sessionForm.recordingConsent} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, recordingConsent: v })); }} />
+              Recording and AI transcription consent obtained (signed / verbal) — confirmed for this session
             </label>
             <label className="rounded-2xl border p-3 flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => setSessionForm({ ...sessionForm, consentObtained: e.target.checked })} />
-              Telehealth consent obtained verbally
+              <input type="checkbox" checked={sessionForm.consentObtained} onChange={(e) => { const v = e.target.checked; setSessionForm(current => ({ ...current, consentObtained: v })); }} />
+              Telehealth consent obtained (signed / verbal) — confirmed for this session
             </label>
+<div className="rounded-2xl border p-3 space-y-2 text-sm">
+  <p className="font-medium">Interpreter / translation (optional)</p>
+  <p className="text-xs">Choose the target language here before the session. It is applied automatically when live translation runs during recording; you can still change it in the session.</p>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={translationEnabled} onChange={(e) => setTranslationEnabled(e.target.checked)} /> Translate live captions</label>
+  <label className="flex items-center gap-2">Translate into <select value={translationLanguage} onChange={(e) => setTranslationLanguage(e.target.value)}>
+    <option value="en">English</option>
+    <option value="es">Spanish</option>
+    <option value="ht">Haitian Creole</option>
+    <option value="fr">French</option>
+    <option value="pt">Portuguese</option>
+    <option value="zh">Chinese Simplified</option>
+    <option value="zh-TW">Chinese Traditional</option>
+    <option value="ar">Arabic</option>
+    <option value="ru">Russian</option>
+    <option value="vi">Vietnamese</option>
+    <option value="ko">Korean</option>
+  </select></label>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={translationSpoken} onChange={(e) => setTranslationSpoken(e.target.checked)} /> Read translation aloud</label>
+</div>
 <details><summary className="cursor-pointer text-sm">Review or edit consent wording</summary>
             <Textarea value={sessionForm.consentVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, consentVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Telehealth consent verbiage" />
 
             <Textarea value={sessionForm.recordingVerbiage} onChange={(e) => setSessionForm({ ...sessionForm, recordingVerbiage: e.target.value })} className="min-h-[110px] rounded-2xl" placeholder="Recording disclosure / verbiage" />
 </details>
 </section>
+      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onUploadingChange={setNativeUploadActive} initialTranslationEnabled={translationEnabled} initialTranslationLanguage={translationLanguage} initialTranslationSpoken={translationSpoken} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
       {isProvider && <div className="mb-4">            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-slate-900">Microphone and recording</p>
               <p role="timer" className="text-2xl font-semibold tabular-nums">{formattedScribeTimer} · {isScribeTimerRunning ? "Recording" : "Not recording"}</p>
@@ -3199,10 +3872,10 @@ ${sessionForm.recordingVerbiage}`);
               <div className="flex flex-wrap gap-2">
                 {isAudioRecording
                   ? <Button type="button" onClick={stopSecureAudioCapture}>Stop recording and transcribe</Button>
-                  : <Button type="button" disabled={appointmentBlocked || nativeCallActive || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start recording — microphone</Button>}
+                  : <Button type="button" disabled={appointmentBlocked || isAudioBusy || awsScribeJob.status === "IN_PROGRESS" || !sessionForm.consentObtained || !sessionForm.recordingConsent || !activeClientId} onClick={startSecureAudioCapture}>Start recording — microphone</Button>}
                 <label className="inline-flex items-center justify-center rounded-2xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold cursor-pointer">
                   Upload an existing audio file
-                  <input disabled={!sessionForm.consentObtained || !sessionForm.recordingConsent || isAudioRecording || isAudioBusy || nativeCallActive || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
+                  <input disabled={!sessionForm.consentObtained || !sessionForm.recordingConsent || isAudioRecording || isAudioBusy || awsScribeJob.status === "IN_PROGRESS"} hidden type="file" accept="audio/*" onChange={(event) => uploadConsentedAudioFile(event.target.files?.[0])} />
                 </label>
                 {awsScribeJob.jobName && <Button type="button" variant="outline" disabled={isAudioBusy || isScribeTimerRunning} onClick={checkHealthScribeJob}>Check AWS transcription</Button>}
               </div>
@@ -3218,7 +3891,6 @@ ${sessionForm.recordingVerbiage}`);
               {scribeError && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-900">{scribeError}</p>}
             </div>
 </div>}
-      <NativeTelehealthRoom key={activeClientId} clientId={activeClientId} provider={isProvider} externalRecording={isAudioRecording || isAudioBusy || appointmentBlocked} timerLabel={formattedScribeTimer} providerConsent={sessionForm.consentObtained} recordingConsent={sessionForm.recordingConsent} onRecordingReady={uploadAudioAndStartHealthScribe} onConnectionChange={setNativeCallActive} onRecordingChange={active => { if (active) { recordingStartRef.current = Date.now(); setScribeSeconds(0); setAwsScribeJob({ jobName: "", mediaKey: "", status: "" }); setSupportedSections({}); setTranscriptText(""); setGeneratedDocs(null); setReviewConfirmed(false); } setIsScribeTimerRunning(active); }} />
 {isProvider && <section aria-label="Transcript review" className="mb-4">            <p className="text-sm">Live captions appear in the room during consented recording. The completed transcript appears here after AWS processing, ready for clinical draft review and chart merge.</p>
             <h3 className="font-semibold">Recorded words — completed transcript</h3>
             {!transcriptText && <p role="status">{awsScribeJob.status === "IN_PROGRESS" ? "Waiting for AWS to return the recorded words…" : scribeError || "No completed transcript yet. Live captions appear beside the recording controls."}</p>}
@@ -3330,28 +4002,7 @@ ${sessionForm.recordingVerbiage}`);
                   <p className="text-xs text-slate-500">Merged minutes: {scribeSessionMinutes || "Not entered"}</p>
                 </div>
               </div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={scribeMeta.primaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, primaryDiagnosis: e.target.value })} placeholder="Primary ICD-10-CM" />
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={scribeMeta.secondaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, secondaryDiagnosis: e.target.value })} placeholder="Secondary ICD-10-CM" />
-                <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={scribeMeta.tertiaryDiagnosis} onChange={(e) => setScribeMeta({ ...scribeMeta, tertiaryDiagnosis: e.target.value })} placeholder="Tertiary ICD-10-CM" />
-              </div>
-              <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                <Select value={scribeDiagnosisTarget} onValueChange={setScribeDiagnosisTarget}>
-                  <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                    <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                    <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                  </SelectContent>
-                </Select>
-                <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyScribeDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-3">
-                <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="CPT / HCPCS Service Code" value={scribeMeta.serviceCode} onChange={(e) => setScribeMeta({ ...scribeMeta, serviceCode: e.target.value })} placeholder="CPT/HCPCS service code" />
-                <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="Interpreter Code" value={scribeMeta.interpreterCode} onChange={(e) => setScribeMeta({ ...scribeMeta, interpreterCode: e.target.value })} placeholder="Interpreter code, if used" />
-              </div>
-              <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={item => item.code === "T1013" ? setScribeMeta({ ...scribeMeta, interpreterCode: `${item.code} | ${item.type} | ${item.label}` }) : setScribeMeta({ ...scribeMeta, serviceCode: `${item.code} | ${item.type} | ${item.label}` })} placeholder="Type billing code or service keyword" />
+              <DiagnosisBillingPanel values={scribeMeta} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={(field, value) => setScribeMeta(current => ({ ...current, [field]: value }))} onServiceCodeChange={value => setScribeMeta(current => ({ ...current, serviceCode: value }))} onInterpreterCodeChange={value => setScribeMeta(current => ({ ...current, interpreterCode: value }))} />
 
               <div className="grid md:grid-cols-2 gap-3">
                 <ProviderSignatureInput label="Provider Electronic Signature" value={scribeMeta.providerSignature} onChange={(e) => setScribeMeta({ ...scribeMeta, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
@@ -3361,8 +4012,7 @@ ${sessionForm.recordingVerbiage}`);
             </div>
             <div className="flex flex-wrap gap-2">
               <Button className="rounded-2xl" disabled={savingDraft || !transcriptText.trim() || microphoneTest || isScribeTimerRunning} onClick={generateClinicalDocumentation}><Sparkles className="mr-2 h-4 w-4" />Generate mapped note draft</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields</Button>
-              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={saveStructuredDraftToChart}>Save generated draft to chart</Button>
+              <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !generatedDocs || !reviewConfirmed || microphoneTest} onClick={mergeScribeToEhr}><Save className="mr-2 h-4 w-4" />Merge to EHR fields (needs diagnosis and CPT)</Button>
             </div>
             {generatedDocs && (
               <div className="space-y-4 pt-2">
@@ -3381,7 +4031,8 @@ ${sessionForm.recordingVerbiage}`);
                     ))}
                     <Textarea aria-label="Clinical note preview" readOnly className="min-h-[260px]" value={generatedDocs.structuredNote.content} />
                     <label className="block text-sm"><input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} /> I reviewed the transcript and note and verified the documented findings.</label>
-                    <Button variant="outline" className="rounded-2xl" disabled={savingDraft || !reviewConfirmed} onClick={saveStructuredDraftToChart}>Save structured draft to chart</Button>
+                    <Button className="rounded-2xl" disabled={savingDraft || !reviewConfirmed || microphoneTest} onClick={saveStructuredDraftToChart}><Save className="mr-2 h-4 w-4" />Save reviewed draft and open in client's progress note</Button>
+                    <p className="text-xs text-slate-500">Saves an unsigned draft to this client's Follow-Up Notes and opens it so you can add the mental status exam, diagnosis and service codes, then sign there.</p>
                   </CardContent>
                 </Card>
                 {isIntakeTemplate(scribeTemplate) && generatedDocs.intakeDraft && (
@@ -3471,12 +4122,136 @@ ${generatedDocs.structuredNote.content}`}</div>
             await productionApi("/api/ehr/audit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "Recorded non-billable fax activity", category: "Fax Activity", clientId: activeClientId, entityType: "fax-activity", entityId: document.id, summary: `Provider-entered supporting documentation linked to appointment ${appointmentId}. Delivery not independently verified.` }) });
           } finally { setSavingDraft(false); }
         }} />}
-      {isProvider && <FaxInbox />}
+    </div>
+  );
+}
+function insuranceStatusBadge(status) {
+  if (status === "Verified") return { label: "Verified", className: "bg-emerald-100 text-emerald-800" };
+  if (status === "Pending") return { label: "Pending", className: "bg-amber-100 text-amber-800" };
+  if (status === "Not verified" || !status) return { label: "Not checked", className: "bg-slate-200 text-slate-700" };
+  return { label: status, className: "bg-slate-200 text-slate-700" };
+}
+// A one-click insurance verification workflow, inspired by Headway's "Check
+// Insurance" feature. This is a manual verification tracker — it records
+// what was confirmed, when, and by whom — not a live payer eligibility API.
+// A real-time eligibility check (like Headway's) would require a
+// clearinghouse account (Availity, pVerify, etc.) with its own credentials;
+// that is a separate decision for the practice to make later.
+function InsuranceCheckPanel({ client, currentUser, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const beginCheck = () => {
+    setDraft({
+      insurancePayer: client.insurancePayer || "",
+      insurancePlanName: client.insurancePlanName || "",
+      insuranceMemberId: client.insuranceMemberId || "",
+      insuranceGroupNumber: client.insuranceGroupNumber || "",
+      insuranceNetworkStatus: client.insuranceNetworkStatus || "",
+      insuranceVerificationNotes: client.insuranceVerificationNotes || "",
+    });
+    setError("");
+    setOpen(true);
+  };
+  const saveStatus = async (status) => {
+    if (!draft || busy) return;
+    setBusy(true);
+    setError("");
+    const payload = {
+      ...draft,
+      insuranceVerificationStatus: status,
+      insuranceVerifiedAt: new Date().toISOString(),
+      insuranceVerifiedBy: currentUser.fullName || "",
+    };
+    try {
+      await productionApi("/api/ehr/clients", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, ...payload }),
+      });
+      onSaved(client.id, payload);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Insurance check could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const [payerId, setPayerId] = useState(client.insurancePayerId || "");
+  const [eligibilityResult, setEligibilityResult] = useState(null);
+  const canRunEligibility = currentUser.role === "owner" || currentUser.role === "provider" || currentUser.role === "billing_staff";
+  const runEligibility = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setEligibilityResult(null);
+    try {
+      const result = await productionApi("/api/ehr/insurance/eligibility", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, payerId: payerId.trim() }),
+      });
+      onSaved(client.id, result.updates);
+      setEligibilityResult(result.updates);
+      if (draft) setDraft({ ...draft, insuranceVerificationNotes: result.updates.insuranceVerificationNotes });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The eligibility check could not be completed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const badge = insuranceStatusBadge(client.insuranceVerificationStatus);
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${badge.className}`}>
+          Insurance: {badge.label}
+        </span>
+        {client.insuranceVerifiedAt && (
+          <span className="text-xs text-slate-500">
+            Checked {new Date(client.insuranceVerifiedAt).toLocaleDateString()}{client.insuranceVerifiedBy ? ` by ${client.insuranceVerifiedBy}` : ""}
+          </span>
+        )}
+      </div>
+      {!open ? (
+        <Button variant="outline" className="w-full mt-2 rounded-2xl" onClick={beginCheck}>
+          Check Insurance
+        </Button>
+      ) : (
+        <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+          {error && <p className="text-xs text-red-700">{error}</p>}
+          {canRunEligibility && (
+            <div className="rounded-xl border border-emerald-200 bg-white p-3 space-y-2">
+              <p className="text-sm font-semibold text-slate-800">Real-time eligibility (Stedi)</p>
+              <p className="text-xs text-slate-600">Sends the patient's name, date of birth, and member ID to the insurer and saves the payer's response. Requires the practice's Stedi production connection; otherwise use the manual buttons below.</p>
+              <Input label="Electronic payer ID" value={payerId} disabled={busy} placeholder="e.g. 87726 for UnitedHealthcare — confirm in Stedi Payer Network" onChange={(e) => setPayerId(e.target.value)} />
+              <Button className="rounded-2xl" disabled={busy || !payerId.trim()} onClick={runEligibility}>{busy ? "Checking…" : "Run eligibility check"}</Button>
+              {eligibilityResult && (
+                <p className="text-xs text-slate-700">Result saved: <strong>{eligibilityResult.insuranceVerificationStatus}</strong>. {eligibilityResult.insuranceVerificationNotes}</p>
+              )}
+            </div>
+          )}
+          <p className="text-xs font-semibold text-slate-700">Manual verification (payer portal or phone call)</p>
+          <Input label="Insurance carrier" value={draft.insurancePayer} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePayer: e.target.value })} />
+          <Input label="Plan / product" value={draft.insurancePlanName} disabled={busy} onChange={(e) => setDraft({ ...draft, insurancePlanName: e.target.value })} />
+          <Input label="Member ID" value={draft.insuranceMemberId} disabled={busy} onChange={(e) => setDraft({ ...draft, insuranceMemberId: e.target.value })} />
+          <Input label="Group number" value={draft.insuranceGroupNumber} disabled={busy} onChange={(e) => setDraft({ ...draft, insuranceGroupNumber: e.target.value })} />
+          <Input label="Network status" value={draft.insuranceNetworkStatus} disabled={busy} placeholder="In-network / Out-of-network" onChange={(e) => setDraft({ ...draft, insuranceNetworkStatus: e.target.value })} />
+          <Textarea label="Verification notes" rows={2} value={draft.insuranceVerificationNotes} disabled={busy} placeholder="Copay, deductible, effective dates, payer rep spoken with, etc." onChange={(e) => setDraft({ ...draft, insuranceVerificationNotes: e.target.value })} />
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button className="rounded-2xl bg-emerald-600 hover:bg-emerald-700" disabled={busy} onClick={() => saveStatus("Verified")}>{busy ? "Saving…" : "Mark Verified"}</Button>
+            <Button variant="outline" className="rounded-2xl" disabled={busy} onClick={() => saveStatus("Pending")}>Mark Pending</Button>
+            <Button variant="outline" className="rounded-2xl border-red-300 text-red-700" disabled={busy} onClick={() => saveStatus("Not verified")}>Not Verified</Button>
+            <Button variant="outline" className="rounded-2xl" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 function ClientManagementPage() {
-  const { store, createClient, updateSpecificUserData } = useAuth();
+  const { store, createClient, updateSpecificUserData, currentUser } = useAuth();
   const { setPage, setSelectedChartClientId } = usePage();
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
@@ -3613,14 +4388,15 @@ function ClientManagementPage() {
               <Input label="Insurance group number" value={patientForm.insuranceGroupNumber} onChange={(event) => setPatientForm({ ...patientForm, insuranceGroupNumber: event.target.value })} />
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Insurance card - front
-                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardFrontFile(event.target.files?.[0] || null)} />
+                <input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardFrontFile(event.target.files?.[0] || null)} />
+                <span className="text-xs font-normal text-slate-500">On a phone or tablet this opens the camera to photograph the card, or you can choose an existing file.</span>
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Insurance card - back
-                <input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
+                <input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setInsuranceCardBackFile(event.target.files?.[0] || null)} />
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - front<input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdFrontFile(event.target.files?.[0] || null)} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Photo ID - back<input type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" onChange={(event) => setPhotoIdBackFile(event.target.files?.[0] || null)} /></label>
             </div>
             <p className="text-sm text-slate-600">An email address sends a secure portal invitation. Practice consent forms are automatically added to the patient chart. Insurance starts as not verified.</p>
             {patientError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{patientError}</p>}
@@ -3763,8 +4539,13 @@ function ClientManagementPage() {
                     : <p className="font-semibold text-amber-700">Intake pending — day {w.day} of {INTAKE_WINDOW_DAYS}.</p>;
                 })()}
               </div>
-              <Button
-                className="w-full mt-4 rounded-2xl"
+                              <InsuranceCheckPanel
+                client={client}
+                currentUser={currentUser}
+                onSaved={(clientId, payload) => updateSpecificUserData(clientId, "profile", (previous) => ({ ...previous, ...payload }))}
+              />
+      <Button
+        className="w-full mt-4 rounded-2xl"
                 onClick={() => {
                   setSelectedChartClientId(client.id);
                   setPage("chart");
@@ -4053,30 +4834,14 @@ function IntakePage() {
   const clients = clinicalClientEntries(store);
   const [selectedClientId, setSelectedClientId] = useState(store.users[selectedChartClientId] ? selectedChartClientId : clients[0]?.[0] || "");
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
-  const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: PRACTITIONER_NAME, clientSignature: "" };
+  const intake = selectedClient?.intake ? { ...selectedClient.intake } : { firstName: "", lastName: "", dateOfBirth: "", phone: "", chiefComplaint: "", onset: "", presentingProblem: "", treatmentGoals: "", biopsychosocialSummary: "", demographicsSummary: "", socialFamilyHistory: "", mentalHealthHistory: "", hospitalizationHistory: "", medicalPhysicalHistory: "", abuseTraumaHistory: "", substanceUseHistory: "", riskSafetySummary: "", strengthsProtectiveFactors: "", clinicalFormulation: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", diagnoses: [], billingCodes: [], sessionMinutes: "", providerSignature: "", clientSignature: "" };
   const completedAssessments = completedAssessmentSummary(selectedClient?.assessments);
-  const [diagnosisInput, setDiagnosisInput] = useState("");
   const [intakeDiagnosisSearch, setIntakeDiagnosisSearch] = useState("");
-  const [intakeDiagnosisTarget, setIntakeDiagnosisTarget] = useState("primaryDiagnosis");
   const [intakeBillingSearch, setIntakeBillingSearch] = useState("");
-  const applyIntakeDiagnosisCode = (item) => {
+  const updateIntakeDiagnosis = (field, value) => {
     if (!selectedClientId) return;
-    const value = `${item.code} | ${item.label}`;
     const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      [intakeDiagnosisTarget]: value,
-      diagnoses: Array.from(new Set([...(current.diagnoses || []), value])),
-    });
-  };
-  const applyIntakeBillingCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.type} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || intake;
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      billingCodes: Array.from(new Set([...(current.billingCodes || []), value])),
-    });
+    updateSpecificUserData(selectedClientId, "intake", { ...current, ...diagnosisPatch(current, field, value) });
   };
   const [saveNotice, setSaveNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -4110,21 +4875,19 @@ function IntakePage() {
         primaryDiagnosis: "",
         secondaryDiagnosis: "",
         tertiaryDiagnosis: "",
-        providerSignature: PRACTITIONER_NAME,
+        providerSignature: "",
         clientSignature: "",
       }),
       [field]: value,
     });
   };
-  const addDiagnosis = () => {
-    if (!diagnosisInput.trim() || !selectedClientId) return;
-    const diagnoses = [...(store.users[selectedClientId].intake?.diagnoses || [])];
-    if (!diagnoses.includes(diagnosisInput.trim())) diagnoses.push(diagnosisInput.trim());
-    updateIntakeField("diagnoses", diagnoses);
-    setDiagnosisInput("");
-  };
   const handleSubmitIntake = async () => {
     if (!selectedClientId || isSubmitting) return;
+    if (!String(store.users[selectedClientId]?.intake?.providerSignature || "").trim()) {
+      setSaveFailed(true);
+      setSaveNotice("Type the provider electronic signature before submitting the assessment.");
+      return;
+    }
     setIsSubmitting(true);
     setSaveNotice("");
     setSaveFailed(false);
@@ -4200,33 +4963,70 @@ function IntakePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Chief Complaint / Reason for Visit</label>
+                    <StructuredPicker value={intake.chiefComplaint || ""} onAppend={(v) => updateIntakeField("chiefComplaint", v)} groups={intakePickerGroups.chiefComplaint} disabled={isSubmitting} />
                     <Input value={intake.chiefComplaint || ""} onChange={(e) => updateIntakeField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" className="rounded-2xl" />
                   </div>
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Onset / Duration</label>
+                    <StructuredPicker value={intake.onset || ""} onAppend={(v) => updateIntakeField("onset", v)} groups={intakePickerGroups.onset} disabled={isSubmitting} />
                     <Input value={intake.onset || ""} onChange={(e) => updateIntakeField("onset", e.target.value)} placeholder="Onset / duration" className="rounded-2xl" />
                   </div>
                 </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Presenting Problem / Reason for Therapy</label>
+                  <StructuredPicker value={intake.presentingProblem || ""} onAppend={(v) => updateIntakeField("presentingProblem", v)} groups={intakePickerGroups.presentingProblem} disabled={isSubmitting} />
                   <Textarea value={intake.presentingProblem || ""} onChange={(e) => updateIntakeField("presentingProblem", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Document the current symptoms, duration, and life impact..." />
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <p className="text-sm font-bold text-slate-800">Detailed biopsychosocial fields</p>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Textarea label="Demographics / Household / Access Needs" value={intake.demographicsSummary || ""} onChange={(e) => updateIntakeField("demographicsSummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Demographics, household, housing, work/school, language, culture, access needs" />
-                    <Textarea label="Social / Family History" value={intake.socialFamilyHistory || ""} onChange={(e) => updateIntakeField("socialFamilyHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Social and family history, supports, relationships, family mental health/substance history" />
-                    <Textarea label="Mental Health History" value={intake.mentalHealthHistory || ""} onChange={(e) => updateIntakeField("mentalHealthHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Mental health history, prior therapy, diagnoses, medications, response to treatment" />
-                    <Textarea label="Hospitalization / Crisis History" value={intake.hospitalizationHistory || ""} onChange={(e) => updateIntakeField("hospitalizationHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Psychiatric hospitalizations, ER/crisis episodes, higher level of care history" />
-                    <Textarea label="Medical / Physical Health History" value={intake.medicalPhysicalHistory || ""} onChange={(e) => updateIntakeField("medicalPhysicalHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Medical/physical health history, medications, allergies, sleep, appetite, pain, PCP coordination" />
-                    <Textarea label="Abuse / Trauma History" value={intake.abuseTraumaHistory || ""} onChange={(e) => updateIntakeField("abuseTraumaHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Abuse, trauma, violence exposure, grief/loss, safety concerns, triggers" />
-                    <Textarea label="Substance Use History" value={intake.substanceUseHistory || ""} onChange={(e) => updateIntakeField("substanceUseHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Substance use history, frequency, consequences, recovery supports, stage of change" />
-                    <Textarea label="Risk / Safety Summary" value={intake.riskSafetySummary || ""} onChange={(e) => updateIntakeField("riskSafetySummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Risk/safety: SI/HI, self-harm, violence, protective factors, crisis plan, level of care" />
-                    <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
-                    <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.demographicsSummary || ""} onAppend={(v) => updateIntakeField("demographicsSummary", v)} groups={intakePickerGroups.demographicsSummary} disabled={isSubmitting} />
+                      <Textarea label="Demographics / Household / Access Needs" value={intake.demographicsSummary || ""} onChange={(e) => updateIntakeField("demographicsSummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Demographics, household, housing, work/school, language, culture, access needs" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.socialFamilyHistory || ""} onAppend={(v) => updateIntakeField("socialFamilyHistory", v)} groups={intakePickerGroups.socialFamilyHistory} disabled={isSubmitting} />
+                      <Textarea label="Social / Family History" value={intake.socialFamilyHistory || ""} onChange={(e) => updateIntakeField("socialFamilyHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Social and family history, supports, relationships, family mental health/substance history" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.mentalHealthHistory || ""} onAppend={(v) => updateIntakeField("mentalHealthHistory", v)} groups={intakePickerGroups.mentalHealthHistory} disabled={isSubmitting} />
+                      <Textarea label="Mental Health History" value={intake.mentalHealthHistory || ""} onChange={(e) => updateIntakeField("mentalHealthHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Mental health history, prior therapy, diagnoses, medications, response to treatment" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.hospitalizationHistory || ""} onAppend={(v) => updateIntakeField("hospitalizationHistory", v)} groups={intakePickerGroups.hospitalizationHistory} disabled={isSubmitting} />
+                      <Textarea label="Hospitalization / Crisis History" value={intake.hospitalizationHistory || ""} onChange={(e) => updateIntakeField("hospitalizationHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Psychiatric hospitalizations, ER/crisis episodes, higher level of care history" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.medicalPhysicalHistory || ""} onAppend={(v) => updateIntakeField("medicalPhysicalHistory", v)} groups={intakePickerGroups.medicalPhysicalHistory} disabled={isSubmitting} />
+                      <Textarea label="Medical / Physical Health History" value={intake.medicalPhysicalHistory || ""} onChange={(e) => updateIntakeField("medicalPhysicalHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Medical/physical health history, medications, allergies, sleep, appetite, pain, PCP coordination" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.abuseTraumaHistory || ""} onAppend={(v) => updateIntakeField("abuseTraumaHistory", v)} groups={intakePickerGroups.abuseTraumaHistory} disabled={isSubmitting} />
+                      <Textarea label="Abuse / Trauma History" value={intake.abuseTraumaHistory || ""} onChange={(e) => updateIntakeField("abuseTraumaHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Abuse, trauma, violence exposure, grief/loss, safety concerns, triggers" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.substanceUseHistory || ""} onAppend={(v) => updateIntakeField("substanceUseHistory", v)} groups={intakePickerGroups.substanceUseHistory} disabled={isSubmitting} />
+                      <Textarea label="Substance Use History" value={intake.substanceUseHistory || ""} onChange={(e) => updateIntakeField("substanceUseHistory", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Substance use history, frequency, consequences, recovery supports, stage of change" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.riskSafetySummary || ""} onAppend={(v) => updateIntakeField("riskSafetySummary", v)} groups={intakePickerGroups.riskSafetySummary} disabled={isSubmitting} helpText="Document risk carefully; any endorsed ideation, plan, or intent requires a clinical safety assessment regardless of chips selected." />
+                      <Textarea label="Risk / Safety Summary" value={intake.riskSafetySummary || ""} onChange={(e) => updateIntakeField("riskSafetySummary", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Risk/safety: SI/HI, self-harm, violence, protective factors, crisis plan, level of care" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.strengthsProtectiveFactors || ""} onAppend={(v) => updateIntakeField("strengthsProtectiveFactors", v)} groups={intakePickerGroups.strengthsProtectiveFactors} disabled={isSubmitting} />
+                      <Textarea label="Strengths / Protective Factors" value={intake.strengthsProtectiveFactors || ""} onChange={(e) => updateIntakeField("strengthsProtectiveFactors", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Strengths, coping skills, protective factors, support systems, motivation" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.clinicalFormulation || ""} onAppend={(v) => updateIntakeField("clinicalFormulation", v)} groups={intakePickerGroups.clinicalFormulation} disabled={isSubmitting} />
+                      <Textarea label="Clinical Formulation" value={intake.clinicalFormulation || ""} onChange={(e) => updateIntakeField("clinicalFormulation", e.target.value)} className="min-h-[120px] rounded-[1.25rem]" placeholder="Clinical formulation: predisposing, precipitating, perpetuating, protective factors and diagnostic rationale" />
+                    </div>
                   </div>
                 </div>
               </div>
+            </section>
+            <section className="space-y-4">
+              <h4 className="text-xl font-bold text-slate-800">Mental Status Exam</h4>
+              <MentalStatusExam value={intake.mentalStatusExam || {}} onChange={(next) => updateIntakeField("mentalStatusExam", next)} disabled={isSubmitting} />
             </section>
             <section className="space-y-6">
               <h4 className="text-xl font-bold text-slate-800">Summary, Diagnosis & Plan</h4>
@@ -4245,70 +5045,29 @@ function IntakePage() {
                   </div>)}
                   <Button type="button" variant="outline" onClick={() => { setSelectedChartClientId(selectedClientId); setPage("assessments", { clientId: selectedClientId }); }}>Open Assessments</Button>
                 </section>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-slate-700">Diagnostic Formulation</label>
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={intake.primaryDiagnosis || ""} onChange={(e) => updateIntakeField("primaryDiagnosis", e.target.value)} placeholder="Primary ICD-10-CM" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={intake.secondaryDiagnosis || ""} onChange={(e) => updateIntakeField("secondaryDiagnosis", e.target.value)} placeholder="Secondary ICD-10-CM" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={intake.tertiaryDiagnosis || ""} onChange={(e) => updateIntakeField("tertiaryDiagnosis", e.target.value)} placeholder="Tertiary ICD-10-CM" className="rounded-2xl" />
-                  </div>
-                  <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                    <Select value={intakeDiagnosisTarget} onValueChange={setIntakeDiagnosisTarget}>
-                      <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                        <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                        <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyIntakeDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} value={diagnosisInput} onChange={(e) => setDiagnosisInput(e.target.value)} placeholder="Add diagnosis" className="rounded-2xl" />
-                    <Button type="button" className="rounded-2xl" onClick={addDiagnosis}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(intake.diagnoses || []).map((dx) => (
-                      <Badge key={dx} variant="secondary" className="rounded-xl flex items-center gap-1">
-                        {dx}
-                        <button
-                          type="button"
-                          className="ml-1 text-xs opacity-70 hover:opacity-100"
-                          onClick={() => {
-                            const list = (store.users[selectedClientId].intake?.diagnoses || []).filter((d) => d !== dx);
-                            updateIntakeField("diagnoses", list);
-                          }}
-                        >
-
-x
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Session Minutes</label>
+                <DiagnosisBillingPanel values={intake} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} disabled={isSubmitting} onDiagnosisChange={updateIntakeDiagnosis} onBillingCodesChange={codes => updateIntakeField("billingCodes", codes)} otherDiagnoses={otherDiagnoses(intake)} onRemoveOtherDiagnosis={entry => updateIntakeField("diagnoses", (intake.diagnoses || []).filter(item => item !== entry))}>
+                  <div className="max-w-xs space-y-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Session minutes</label>
                     <Input value={intake.sessionMinutes || ""} onChange={(e) => updateIntakeField("sessionMinutes", e.target.value)} placeholder="Session minutes" className="rounded-2xl" />
                   </div>
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-slate-700">Billing Codes</label>
-                    <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateIntakeField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" className="rounded-2xl" />
-                    <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={applyIntakeBillingCode} placeholder="Type billing code or service keyword" />
-
-                  </div>
-                </div>
+                </DiagnosisBillingPanel>
                 <section aria-label="Follow-Up Plan" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                   <h5 className="text-base font-bold text-slate-800">Follow-Up Plan</h5>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Input label="Agreed visit frequency" value={intake.followUpFrequency || ""} onChange={(e) => updateIntakeField("followUpFrequency", e.target.value)} placeholder="e.g., 2–3 times weekly, weekly, twice monthly, monthly" className="rounded-2xl" />
-                    <Input label="Next follow-up interval" value={intake.followUpInterval || ""} onChange={(e) => updateIntakeField("followUpInterval", e.target.value)} placeholder="e.g., in 2–3 days, one week, two weeks, one month" className="rounded-2xl" />
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.followUpFrequency || ""} onAppend={(v) => updateIntakeField("followUpFrequency", v)} groups={intakePickerGroups.followUpFrequency} disabled={isSubmitting} />
+                      <Input label="Agreed visit frequency" value={intake.followUpFrequency || ""} onChange={(e) => updateIntakeField("followUpFrequency", e.target.value)} placeholder="e.g., 2–3 times weekly, weekly, twice monthly, monthly" className="rounded-2xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <StructuredPicker value={intake.followUpInterval || ""} onAppend={(v) => updateIntakeField("followUpInterval", v)} groups={intakePickerGroups.followUpInterval} disabled={isSubmitting} />
+                      <Input label="Next follow-up interval" value={intake.followUpInterval || ""} onChange={(e) => updateIntakeField("followUpInterval", e.target.value)} placeholder="e.g., in 2–3 days, one week, two weeks, one month" className="rounded-2xl" />
+                    </div>
                   </div>
                   <Textarea label="Follow-up comments / patient agreement" value={intake.followUpComments || ""} onChange={(e) => updateIntakeField("followUpComments", e.target.value)} placeholder="Document the provider recommendation, patient agreement, and adjustments based on progress." className="min-h-[110px] rounded-2xl" />
                 </section>
                 <div className="space-y-3">
                   <label className="block text-sm font-bold text-slate-700">Clinical Objectives & Treatment Goals</label>
+                  <StructuredPicker value={intake.treatmentGoals || ""} onAppend={(v) => updateIntakeField("treatmentGoals", v)} groups={intakePickerGroups.treatmentGoals} disabled={isSubmitting} />
                   <Textarea value={intake.treatmentGoals || ""} onChange={(e) => updateIntakeField("treatmentGoals", e.target.value)} className="min-h-[150px] rounded-[1.25rem]" placeholder="Specify measurable goals for the clinical intervention..." />
                 </div>
               </div>
@@ -4316,7 +5075,7 @@ x
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <p className="text-sm font-bold text-slate-800">Assessment electronic signatures</p>
               <div className="grid md:grid-cols-2 gap-3">
-                <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder="Provider electronic signature" className="rounded-2xl" />
+                <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || ""} onChange={(e) => updateIntakeField("providerSignature", e.target.value)} placeholder={`Type provider name to sign (e.g. ${PRACTITIONER_NAME})`} className="rounded-2xl" />
                 <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateIntakeField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" className="rounded-2xl" />
               </div>
             </section>
@@ -4338,10 +5097,27 @@ x
   );
 }
 function ProgressNotesPage() {
-  const { store, updateSpecificUserData, appendAuditLog } = useAuth();
+  const { store, updateSpecificUserData, appendAuditLog, currentUser } = useAuth();
   const [aiNotice, setAiNotice] = useState("");
   const clients = clinicalClientEntries(store);
-  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.[0] || "");
+  const { workflowTarget } = usePage();
+  // Supervision. A supervisee drafts here but never finalizes: the note goes to the supervisor,
+  // who returns it or signs it. Everything below is inert for the owner's own notes.
+  const supervisee = currentUser?.supervision?.active ? currentUser.supervision : null;
+  const isIntern = supervisee?.kind === "intern";
+  const supervisionBlocked = Boolean(currentUser?.supervisionLookupFailed) && currentUser?.ehrRole !== "owner";
+  const canReviewNotes = !supervisee && (currentUser?.ehrRole === "owner" || currentUser?.ehrRole === "provider");
+  const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const [serviceDate, setServiceDate] = useState(todayLocal());
+  const [supervisionRecords, setSupervisionRecords] = useState([]);
+  const [reviewNoteId, setReviewNoteId] = useState("");
+  const [reviewSignature, setReviewSignature] = useState("");
+  const [reviewAttested, setReviewAttested] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
+  const [supervisionBusy, setSupervisionBusy] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState(store.users[workflowTarget?.clientId] ? workflowTarget.clientId : clients[0]?.[0] || "");
+  const [editingNoteId, setEditingNoteId] = useState("");
+  const openedDraftRef = useRef("");
   const notes = selectedClientId ? store.users[selectedClientId]?.notes || [] : [];
   const selectedClient = selectedClientId ? store.users[selectedClientId] : null;
   const selectedClientName = selectedClientId ? store.users[selectedClientId]?.profile?.fullName || "Client" : "Client";
@@ -4350,12 +5126,12 @@ function ProgressNotesPage() {
     content: "",
     modality: "CBT",
     noteType: "Medical Record Note",
+    mse: {},
   });
   const [ehrDestination, setEhrDestination] = useState("treatment-plan");
   const [sessionSeconds, setSessionSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [codeDraft, setCodeDraft] = useState({
     chiefComplaint: "",
@@ -4363,15 +5139,32 @@ function ProgressNotesPage() {
     primaryDiagnosis: "",
     secondaryDiagnosis: "",
     tertiaryDiagnosis: "",
+    fourthDiagnosis: "",
     serviceCode: "90837 | CPT | Psychotherapy, 60 minutes",
     interpreterCode: "",
     manualMinutes: "",
-    providerSignature: PRACTITIONER_NAME,
+    providerSignature: supervisee ? (isIntern ? "" : supervisee.displayName) : PRACTITIONER_NAME,
     clientSignature: "",
   });
-  const applyDiagnosisCode = (item) => {
-    setCodeDraft((prev) => ({ ...prev, [diagnosisTarget]: `${item.code} | ${item.label}` }));
+  const loadSupervisionRecords = async (clientId = selectedClientId) => {
+    if (!clientId) { setSupervisionRecords([]); return; }
+    try {
+      const data = await productionApi(`/api/ehr/supervision?clientId=${encodeURIComponent(clientId)}`);
+      setSupervisionRecords(Array.isArray(data.records) ? data.records : []);
+    } catch { /* supervision records unavailable; the chart still shows local notes */ }
   };
+  useEffect(() => { setSupervisionRecords([]); loadSupervisionRecords(selectedClientId); }, [selectedClientId]);
+  const recordFor = (noteId) => supervisionRecords.find((record) => record.noteId === noteId);
+  // Server records are the source of truth for supervised notes; overlay them on the chart copy.
+  const displayNotes = [
+    ...supervisionRecords.filter((record) => !notes.some((note) => note.id === record.noteId)).map((record) => supervisedNoteView(record)),
+    ...notes.map((note) => {
+      const record = recordFor(note.id);
+      if (!record) return note;
+      const view = supervisedNoteView(record);
+      return record.status === "returned" ? { ...note, status: view.status, signature: null, supervision: view.supervision } : view;
+    }),
+  ];
   useEffect(() => {
     if (!isTimerRunning) return;
     const id = window.setInterval(() => setSessionSeconds((prev) => prev + 1), 1000);
@@ -4379,6 +5172,56 @@ function ProgressNotesPage() {
   }, [isTimerRunning]);
   const formattedTimer = `${String(Math.floor(sessionSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((sessionSeconds % 3600) / 60)).padStart(2, "0")}:${String(sessionSeconds % 60).padStart(2, "0")}`;
   const sessionMinutes = codeDraft.manualMinutes || (sessionSeconds ? String(Math.ceil(sessionSeconds / 60)) : "");
+  // Opens a saved unsigned draft (for example from the telehealth AI scribe) in the editor below.
+  // Nothing is signed here; signing happens only when the provider clicks the save/sign button.
+  const openDraftForCompletion = (note, clientId = selectedClientId) => {
+    const noteTypes = ["Medical Record Note", "Psychotherapy Note", "Initial Progress Note", "Follow-up Progress Note", "Biopsychosocial Assessment"];
+    setSelectedClientId(clientId);
+    setEditingNoteId(note.id);
+    setDraft({
+      title: note.title || "",
+      content: typeof note.draftBody === "string" ? note.draftBody : String(note.content || "").replace(/^Provider Review Required:[^\n]*\nAudio Retention Policy:[^\n]*\n\n/, ""),
+      modality: note.modality || "CBT",
+      noteType: noteTypes.includes(note.noteType) ? note.noteType : "Medical Record Note",
+      mse: note.mse || {},
+      appointmentId: note.appointmentId || "",
+      appointmentStatus: note.appointmentStatus || "",
+      structuredFields: note.structuredFields || null,
+      audioRetentionPolicy: note.audioRetentionPolicy || "",
+    });
+    setCodeDraft((current) => ({
+      ...current,
+      ...(note.codeDraft || {}),
+      manualMinutes: String(note.sessionMinutes || note.codeDraft?.manualMinutes || ""),
+      providerSignature: supervisee
+        ? (isIntern ? "" : supervisee.displayName)
+        : note.codeDraft?.providerSignature || current.providerSignature || PRACTITIONER_NAME,
+    }));
+    if (supervisee) setServiceDate(note.dateOfService || todayLocal());
+    setAiNotice(supervisee
+      ? (note.supervision?.status === "returned" ? "Returned note opened. Revise it, then resubmit for supervisor review." : "Draft opened. Complete the required fields, then submit for supervisor review.")
+      : "AI draft opened and unsigned. Complete the mental status exam, diagnosis and service codes, then sign and save.");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  };
+  useEffect(() => {
+    const noteId = workflowTarget?.noteId;
+    if (!noteId || openedDraftRef.current === noteId) return;
+    const localNote = (store.users[workflowTarget.clientId]?.notes || []).find((item) => item.id === noteId);
+    // A supervisor is routed to the review panel for a supervisee's note, never to the editable form.
+    if (canReviewNotes && (!localNote || localNote.supervision || localNote.authorEmail)) {
+      if (!store.users[workflowTarget.clientId]) return;
+      openedDraftRef.current = noteId;
+      setSelectedClientId(workflowTarget.clientId);
+      setReviewNoteId(noteId);
+      return;
+    }
+    // A supervisee opening a returned note on a device where the chart copy is missing uses the server copy.
+    const serverRecord = supervisionRecords.find((record) => record.noteId === noteId);
+    const note = localNote || (supervisee && serverRecord ? supervisedNoteView(serverRecord) : null);
+    if (!note) return;
+    openedDraftRef.current = noteId;
+    openDraftForCompletion(note, workflowTarget.clientId);
+  }, [workflowTarget?.noteId, workflowTarget?.clientId, store.users[workflowTarget?.clientId]?.notes, supervisionRecords]);
   const save = () => {
     if (!selectedClientId || !draft.title.trim() || !draft.content.trim()) return;
     const requiredMissing = [
@@ -4398,16 +5241,20 @@ function ProgressNotesPage() {
       `Primary ICD-10-CM: ${codeDraft.primaryDiagnosis || "Not selected"}`,
       `Secondary ICD-10-CM: ${codeDraft.secondaryDiagnosis || "Not selected"}`,
       `Tertiary ICD-10-CM: ${codeDraft.tertiaryDiagnosis || "Not selected"}`,
+      `Fourth ICD-10-CM: ${codeDraft.fourthDiagnosis || "Not selected"}`,
       `Service / CPT-HCPCS: ${codeDraft.serviceCode || "Not selected"}`,
       `Interpreter service code: ${codeDraft.interpreterCode || "Not used"}`,
       `Provider e-signature: ${providerSignatureText(codeDraft.providerSignature)}`,
       `Client e-signature: ${codeDraft.clientSignature || "Not signed / not required"}`,
     ].join("\n");
-    const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}`;
+    const mseText = mseToText(draft.mse || {});
+    const noteWithMetadata = `${metadata}\n\nClinical Note:\n${draft.content}${mseText ? `\n\n${mseText}` : ""}`;
+    const completingNoteId = editingNoteId;
     updateSpecificUserData(selectedClientId, "notes", (prev) => [
       {
-        id: `note-${Date.now()}`,
+        id: completingNoteId || `note-${Date.now()}`,
         ...draft,
+        ...(completingNoteId ? { status: "Signed by provider" } : {}),
         content: noteWithMetadata,
         sessionMinutes,
         codeDraft,
@@ -4420,8 +5267,9 @@ function ProgressNotesPage() {
         },
         createdAt: new Date().toLocaleString(),
       },
-      ...prev,
+      ...(prev || []).filter((item) => item.id !== completingNoteId),
     ]);
+    setEditingNoteId("");
     appendAuditLog({
       action: `Saved ${draft.noteType}`,
       details: `${draft.noteType} saved with ${draft.modality} modality, ${sessionMinutes || "no"} minutes, billing/diagnosis helper fields, and e-signature metadata.`,
@@ -4429,7 +5277,129 @@ function ProgressNotesPage() {
       clientName: selectedClientName,
       category: draft.noteType === "Psychotherapy Note" ? "Psychotherapy Notes" : "Medical Record",
     });
-    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note" });
+    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note", mse: {} });
+  };
+  // --- Supervisee flow: save a local draft, or submit it to the supervisor. Never signs or finalizes. ---
+  const resetDraftAfterSupervisee = () => {
+    setEditingNoteId("");
+    setDraft({ title: "", content: "", modality: "CBT", noteType: "Medical Record Note", mse: {} });
+    setCodeDraft((current) => ({ ...current, chiefComplaint: "", onset: "", primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", manualMinutes: "", clientSignature: "" }));
+    setSessionSeconds(0);
+    setIsTimerRunning(false);
+    setServiceDate(todayLocal());
+  };
+  const saveSuperviseeDraft = () => {
+    if (!supervisee || supervisionBlocked || !selectedClientId || !draft.title.trim() || !draft.content.trim()) {
+      if (supervisee) setAiNotice("Add a note title and note text before saving a draft.");
+      return;
+    }
+    const noteId = editingNoteId || `note-${Date.now()}`;
+    const existing = notes.find((item) => item.id === noteId);
+    updateSpecificUserData(selectedClientId, "notes", (prev) => [
+      {
+        ...(existing || {}),
+        id: noteId,
+        ...draft,
+        content: draft.content,
+        draftBody: draft.content,
+        sessionMinutes,
+        codeDraft: { ...codeDraft, providerSignature: isIntern ? "" : codeDraft.providerSignature },
+        dateOfService: serviceDate,
+        authorEmail: currentUser.email,
+        status: existing?.supervision?.status === "returned" ? existing.status : "Draft - not submitted",
+        signature: null,
+        createdAt: existing?.createdAt || new Date().toLocaleString(),
+      },
+      ...(prev || []).filter((item) => item.id !== noteId),
+    ]);
+    setEditingNoteId(noteId);
+    setAiNotice("Draft saved. It is not submitted and not final.");
+  };
+  const submitForReview = async () => {
+    if (!supervisee || supervisionBlocked || supervisionBusy || !selectedClientId) return;
+    const missing = [
+      !draft.title.trim() ? "note title" : null,
+      !draft.content.trim() ? "note text" : null,
+      !serviceDate ? "date of service" : null,
+      !codeDraft.chiefComplaint.trim() ? "chief complaint / reason for visit" : null,
+      !sessionMinutes ? "session time" : null,
+      !codeDraft.primaryDiagnosis ? "primary ICD diagnosis" : null,
+      !codeDraft.serviceCode ? "billing CPT/HCPCS code" : null,
+      !isIntern && !String(codeDraft.providerSignature || "").trim() ? "your typed signature" : null,
+    ].filter(Boolean);
+    if (missing.length) {
+      setAiNotice(`Missing required fields before submitting: ${missing.join(", ")}.`);
+      return;
+    }
+    const noteId = editingNoteId || `note-${Date.now()}`;
+    setSupervisionBusy(true);
+    try {
+      const result = await productionApi("/api/ehr/supervision", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "submit",
+          clientId: selectedClientId,
+          noteId,
+          dateOfService: serviceDate,
+          appointmentId: draft.appointmentId || "",
+          signatureName: isIntern ? "" : codeDraft.providerSignature,
+          note: {
+            title: draft.title,
+            noteType: draft.noteType,
+            modality: draft.modality,
+            body: draft.content,
+            mseText: mseToText(draft.mse || {}),
+            mse: draft.mse || {},
+            sessionMinutes: String(sessionMinutes),
+            codeDraft: { ...codeDraft, providerSignature: isIntern ? "" : codeDraft.providerSignature },
+          },
+        }),
+      });
+      updateSpecificUserData(selectedClientId, "notes", (prev) => [
+        result.note,
+        ...(prev || []).filter((item) => item.id !== noteId),
+      ]);
+      resetDraftAfterSupervisee();
+      await loadSupervisionRecords(selectedClientId);
+      setAiNotice(isIntern
+        ? "Submitted for supervisor review. It is not final or billable until your supervisor signs it."
+        : "Signed and submitted for supervisor co-sign. It is not final or billable until your supervisor co-signs.");
+    } catch (error) {
+      setAiNotice(error instanceof Error ? error.message : "The note could not be submitted.");
+    } finally {
+      setSupervisionBusy(false);
+    }
+  };
+  const reviewRecord = canReviewNotes ? supervisionRecords.find((record) => record.noteId === reviewNoteId && record.status === "pending") : null;
+  const supervisorAction = async (action) => {
+    if (!reviewRecord || supervisionBusy) return;
+    setSupervisionBusy(true);
+    try {
+      const result = await productionApi("/api/ehr/supervision", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "cosign"
+          ? { action, clientId: reviewRecord.clientId, noteId: reviewRecord.noteId, signatureName: reviewSignature, attested: reviewAttested }
+          : { action, clientId: reviewRecord.clientId, noteId: reviewRecord.noteId, comment: returnComment }),
+      });
+      if (action === "cosign") {
+        updateSpecificUserData(reviewRecord.clientId, "notes", (prev) => [
+          result.note,
+          ...(prev || []).filter((item) => item.id !== reviewRecord.noteId),
+        ]);
+      }
+      setReviewNoteId("");
+      setReviewSignature("");
+      setReviewAttested(false);
+      setReturnComment("");
+      await loadSupervisionRecords(reviewRecord.clientId);
+      setAiNotice(action === "cosign" ? "Note signed and finalized." : "Note returned to the author with your comment.");
+    } catch (error) {
+      setAiNotice(error instanceof Error ? error.message : "The review action could not be completed.");
+    } finally {
+      setSupervisionBusy(false);
+    }
   };
   const generateStarter = () => {
     setDraft((prev) => ({
@@ -4606,17 +5576,30 @@ ${draft.content}`,
         {aiNotice && <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">{aiNotice}</div>}
       <Card className="rounded-2xl shadow-sm">
           <CardContent className="p-4 space-y-3">
-            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <Select value={selectedClientId} onValueChange={(value) => { setSelectedClientId(value); setEditingNoteId(""); }}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
+            {editingNoteId && !supervisee && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Completing an unsigned AI draft for {selectedClientName}. It is not signed until you save below.</div>}
+            {supervisee && (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 space-y-1">
+                <p className="font-medium">Supervised documentation</p>
+                <p>{isIntern
+                  ? `Interns do not sign. Your note goes to ${supervisee.supervisorName}, ${supervisee.supervisorCredential} for review. They will return it with a comment or sign it. It is not final or billable until they sign.`
+                  : `Sign your note, then submit it for co-sign. ${supervisee.supervisorName}, ${supervisee.supervisorCredential} reviews and co-signs. It is not final or billable until they co-sign.`}</p>
+                {supervisionBlocked && <p className="font-medium text-red-700">Supervision status could not be confirmed. Reload the page before submitting.</p>}
+              </div>
+            )}
+            {supervisee && <Input type="date" label="Date of service" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />}
             <Input label="Note title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Note title" />
             <label className="block space-y-1"><span className="text-sm font-medium">Treatment approach / clinical focus</span>
             <Select aria-label="Treatment approach / clinical focus" value={draft.modality} onValueChange={(value) => setDraft({ ...draft, modality: value })}>
               <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="Telehealth">Telehealth</SelectItem>
+                <SelectItem value="Audio Telehealth">Audio Telehealth</SelectItem>
                 <SelectItem value="CBT">CBT</SelectItem>
                 <SelectItem value="Trauma-Focused">Trauma-Focused</SelectItem>
                 <SelectItem value="EMDR">EMDR</SelectItem>
@@ -4680,33 +5663,16 @@ ${draft.content}`,
                     <p className="text-xs text-slate-500">Saved minutes: {sessionMinutes || "Not entered"}</p>
                   </div>
                 </div>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={codeDraft.primaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, primaryDiagnosis: e.target.value })} placeholder="Primary ICD-10-CM" />
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={codeDraft.secondaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, secondaryDiagnosis: e.target.value })} placeholder="Secondary ICD-10-CM" />
-                  <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={codeDraft.tertiaryDiagnosis} onChange={(e) => setCodeDraft({ ...codeDraft, tertiaryDiagnosis: e.target.value })} placeholder="Tertiary ICD-10-CM" />
-                </div>
-                <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-                  <Select value={diagnosisTarget} onValueChange={setDiagnosisTarget}>
-                    <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                      <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                      <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-                </div>
+                <DiagnosisBillingPanel values={codeDraft} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={(field, value) => setCodeDraft(current => ({ ...current, [field]: value }))} onServiceCodeChange={value => setCodeDraft(current => ({ ...current, serviceCode: value }))} onInterpreterCodeChange={value => setCodeDraft(current => ({ ...current, interpreterCode: value }))} />
 
-                <div className="grid md:grid-cols-2 gap-3">
-                  <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="CPT / HCPCS Service Code" value={codeDraft.serviceCode} onChange={(e) => setCodeDraft({ ...codeDraft, serviceCode: e.target.value })} placeholder="CPT/HCPCS service code" />
-                  <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} label="Interpreter Code" value={codeDraft.interpreterCode} onChange={(e) => setCodeDraft({ ...codeDraft, interpreterCode: e.target.value })} placeholder="Interpreter code, if used" />
-                </div>
-                <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={item => item.code === "T1013" ? setCodeDraft({ ...codeDraft, interpreterCode: `${item.code} | ${item.type} | ${item.label}` }) : setCodeDraft({ ...codeDraft, serviceCode: `${item.code} | ${item.type} | ${item.label}` })} placeholder="Type billing code or service keyword" />
-
+                {isIntern ? (
+                  <p className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">Interns do not sign. Your supervisor reviews and signs the note.</p>
+                ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   <ProviderSignatureInput label="Provider Electronic Signature" value={codeDraft.providerSignature} onChange={(e) => setCodeDraft({ ...codeDraft, providerSignature: e.target.value })} placeholder="Provider electronic signature" />
                   <Input label="Client Electronic Signature" value={codeDraft.clientSignature} onChange={(e) => setCodeDraft({ ...codeDraft, clientSignature: e.target.value })} placeholder="Client electronic signature, if required" />
                 </div>
+                )}
               </CardContent>
             </Card>
             <Card className="rounded-2xl border border-indigo-200 bg-indigo-50/50 shadow-none">
@@ -4731,7 +5697,19 @@ ${draft.content}`,
               </CardContent>
             </Card>
             <Textarea label="Note text" value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} className="min-h-[260px] rounded-2xl" placeholder="Write note..." />
-            <Button className="rounded-2xl" onClick={save}><Save className="mr-2 h-4 w-4" />Save note</Button>
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-slate-700">Mental Status Exam (this session)</p>
+              <MentalStatusExam value={draft.mse || {}} onChange={(next) => setDraft({ ...draft, mse: next })} />
+            </div>
+            {supervisee ? (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="rounded-2xl" disabled={supervisionBlocked} onClick={saveSuperviseeDraft}><Save className="mr-2 h-4 w-4" />Save draft</Button>
+                <Button className="rounded-2xl" disabled={supervisionBlocked || supervisionBusy} onClick={submitForReview}>{isIntern ? "Submit for supervisor review" : "Sign and submit for co-sign"}</Button>
+              </div>
+            ) : (
+              <Button className="rounded-2xl" disabled={supervisionBlocked} onClick={save}><Save className="mr-2 h-4 w-4" />{editingNoteId ? "Sign and save note" : "Save note"}</Button>
+            )}
+            {supervisionBlocked && !supervisee && <p className="text-xs text-red-700">Supervision status could not be confirmed. Reload the page before signing.</p>}
           </CardContent>
         </Card>
         <Card className="rounded-2xl shadow-sm">
@@ -4740,35 +5718,103 @@ ${draft.content}`,
             <CardDescription>Most recent first for selected client</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 max-h-[620px] overflow-auto">
-            {notes.length === 0 && <p className="text-sm text-slate-500">No notes saved yet.</p>}
-            {notes.map((note) => (
+            {reviewRecord && (
+              <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-4 space-y-3">
+                <p className="font-semibold text-red-900">Supervisor review: {reviewRecord.note.title}</p>
+                <p className="text-xs text-red-800">Drafted by {reviewRecord.superviseeName}{reviewRecord.superviseeCredential ? `, ${reviewRecord.superviseeCredential}` : ""} for {selectedClientName}. Date of service {reviewRecord.dateOfService}. {reviewRecord.kind === "intern" ? "Interns do not sign. You sign as the only signer." : `Signed by ${reviewRecord.superviseeName}. Your co-signature finalizes it.`}</p>
+                <div className="rounded-xl border bg-white p-3 text-sm whitespace-pre-wrap">{reviewRecord.note.body}{reviewRecord.note.mseText ? `\n\n${reviewRecord.note.mseText}` : ""}</div>
+                <div className="rounded-xl border bg-white p-3 text-xs text-slate-700 space-y-1">
+                  <p>Chief complaint: {reviewRecord.note.codeDraft?.chiefComplaint || "Not entered"}</p>
+                  <p>Primary ICD-10-CM: {reviewRecord.note.codeDraft?.primaryDiagnosis || "Not selected"}</p>
+                  <p>Service / CPT-HCPCS: {reviewRecord.note.codeDraft?.serviceCode || "Not selected"} | Minutes: {reviewRecord.note.sessionMinutes}</p>
+                </div>
+                {reviewRecord.history.length > 1 && (
+                  <details className="rounded-xl border bg-white p-3 text-xs">
+                    <summary className="cursor-pointer font-medium">Revision history ({reviewRecord.history.length})</summary>
+                    <ul className="mt-2 space-y-1">
+                      {reviewRecord.history.map((entry, index) => (
+                        <li key={index}>{formatSupervisionTimestamp(entry.at)}: {entry.event} by {entry.byName}{entry.comment ? ` - ${entry.comment}` : ""}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <div className="space-y-2">
+                  <Textarea label="Return for revision: comment (required)" value={returnComment} onChange={(e) => setReturnComment(e.target.value)} className="min-h-[80px] rounded-2xl" placeholder="What should be revised?" />
+                  <Button type="button" variant="outline" className="rounded-2xl" disabled={supervisionBusy || !returnComment.trim()} onClick={() => supervisorAction("return")}>Return for revision</Button>
+                </div>
+                <div className="space-y-2">
+                  <ProviderSignatureInput label="Review and sign: type your full name" value={reviewSignature} onChange={(e) => setReviewSignature(e.target.value)} placeholder="Type your full name to sign" />
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={reviewAttested} onChange={(e) => setReviewAttested(e.target.checked)} /><span>I reviewed this note and attest it is accurate and complete.</span></label>
+                  <Button type="button" className="rounded-2xl" disabled={supervisionBusy || !reviewSignature.trim() || !reviewAttested} onClick={() => supervisorAction("cosign")}>{reviewRecord.kind === "intern" ? "Sign and finalize note" : "Co-sign and finalize note"}</Button>
+                </div>
+              </div>
+            )}
+            {displayNotes.length === 0 && <p className="text-sm text-slate-500">No notes saved yet.</p>}
+            {displayNotes.map((note) => {
+              const sup = note.supervision;
+              const record = recordFor(note.id);
+              const ownReturned = sup?.status === "returned" && supervisee;
+              return (
               <div key={note.id} className="rounded-2xl border p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="font-medium">{note.title}</p>
                   <div className="flex gap-2 flex-wrap justify-end">
                     <Badge className="rounded-xl">{note.modality}</Badge>
                     <Badge variant="secondary" className="rounded-xl">{note.noteType || "Medical Record Note"}</Badge>
+                    {sup && <Badge className={sup.status === "finalized" ? "rounded-xl bg-emerald-100 text-emerald-900" : "rounded-xl bg-amber-100 text-amber-900"}>{supervisionStatusLabel(sup.kind, sup.status)}</Badge>}
+                    {!note.signature && !sup && <Badge className="rounded-xl bg-amber-100 text-amber-900">Unsigned draft</Badge>}
                   </div>
                 </div>
+                {sup?.status === "finalized" && (
+                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                    {(sup.attribution || []).map((line, index) => <p key={index}>{line}</p>)}
+                  </div>
+                )}
+                {sup?.status === "returned" && (
+                  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                    <p className="font-semibold">Returned for revision</p>
+                    <p className="whitespace-pre-wrap">{sup.returnComment}</p>
+                  </div>
+                )}
                 <p className="text-sm text-slate-700 mt-3 whitespace-pre-wrap">{note.content}</p>
                 <p className="text-xs text-slate-400 mt-2">{note.createdAt}</p>
+                {record && record.history.length > 0 && (
+                  <details className="mt-2 text-xs text-slate-600">
+                    <summary className="cursor-pointer font-medium">Revision history ({record.history.length})</summary>
+                    <ul className="mt-1 space-y-1">
+                      {record.history.map((entry, index) => (
+                        <li key={index}>
+                          {formatSupervisionTimestamp(entry.at)}: {entry.event} by {entry.byName}{entry.comment ? ` - ${entry.comment}` : ""}
+                          {entry.snapshot ? <div className="mt-1 whitespace-pre-wrap rounded-lg bg-slate-50 p-2">{entry.snapshot.body}</div> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {!note.signature && !sup && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>{supervisee ? "Open to continue draft" : "Open to complete and sign"}</Button>}
+                {ownReturned && <Button type="button" size="sm" variant="outline" className="rounded-2xl mt-2" onClick={() => openDraftForCompletion(note)}>Open to revise</Button>}
+                {canReviewNotes && sup?.status === "pending" && <Button type="button" size="sm" className="rounded-2xl mt-2" onClick={() => setReviewNoteId(note.id)}>Open to review and sign</Button>}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+// Alphabetized by displayed label (after the "All Claims" filter option) per owner's
+// Sept 12, 2026 instruction. Keep alphabetized on future edits — sort by `label`, not by
+// when a payer category was added.
 const billingPayerDefinitions = [
   { id: "all", label: "All Claims", aliases: [] },
-  { id: "healthfirst", label: "Healthfirst", aliases: ["healthfirst", "health first"] },
   { id: "aetna", label: "Aetna", aliases: ["aetna"] },
   { id: "bcbs", label: "Blue Cross Blue Shield", aliases: ["blue cross", "blue shield", "bcbs", "anthem", "empire"] },
   { id: "cigna", label: "Cigna", aliases: ["cigna", "evernorth"] },
+  { id: "healthfirst", label: "Healthfirst", aliases: ["healthfirst", "health first"] },
   { id: "medicare-medicaid", label: "Medicare / Medicaid", aliases: ["medicare", "medicaid", "emmedny", "emedny"] },
-  { id: "self-pay", label: "Self-Pay", aliases: ["self pay", "self-pay", "private pay", "cash"] },
   { id: "other", label: "Other", aliases: [] },
+  { id: "self-pay", label: "Self-Pay", aliases: ["self pay", "self-pay", "private pay", "cash"] },
 ];
 const billingClaimStatuses = ["Draft", "Action Required", "Ready", "Queued", "Submitted", "Paid", "Rejected", "Denied"];
 function classifyBillingPayer(value = "") {
@@ -4817,11 +5863,27 @@ function BillingPage() {
     !intake.chargeAmount && "Charge amount",
     intake.payerIdVerificationStatus !== "Verified" && "Payer ID / electronic routing verification",
   ].filter(Boolean);
+  const clinicalReviewIssues = [
+    !intake.dateOfService && "Date of service",
+    !(Number(intake.sessionMinutes) > 0) && "Actual session minutes",
+    !intake.primaryDiagnosis && "Primary diagnosis",
+    !(intake.billingCodes || []).length && "CPT/HCPCS service",
+    !String(intake.providerSignature || "").trim() && "Provider signature",
+    !providerNpiForName(intake.providerSignature || PRACTITIONER_NAME) && "Rendering provider NPI",
+  ].filter(Boolean);
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [diagnosisTarget, setDiagnosisTarget] = useState("primaryDiagnosis");
   const [billingSearch, setBillingSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [serverClaims, setServerClaims] = useState([]);
+  const [clearinghouse, setClearinghouse] = useState(null);
+  const [transmittingClaimId, setTransmittingClaimId] = useState("");
+  useEffect(() => {
+    let active = true;
+    productionApi("/api/ehr/billing/transmit")
+      .then((data) => { if (active) setClearinghouse(data); })
+      .catch(() => { if (active) setClearinghouse({ connected: false, reason: "Clearinghouse status is unavailable." }); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     let active = true;
     productionApi("/api/ehr/billing")
@@ -4829,6 +5891,28 @@ function BillingPage() {
       .catch(() => { if (active) setServerClaims([]); });
     return () => { active = false; };
   }, []);
+  // Deep-link focus: when another page routes here with a target claimId,
+  // select that claim's client and scroll its review-queue card into view.
+  // Mirrors the ProgressNotesPage workflowTarget?.noteId effect. Additive —
+  // default behavior is unchanged when no claimId is present.
+  const focusedClaimRef = useRef("");
+  useEffect(() => {
+    const claimId = workflowTarget?.claimId;
+    if (!claimId || focusedClaimRef.current === claimId) return;
+    const target = serverClaims.find((item) => item.claimId === claimId);
+    if (!target) return;
+    focusedClaimRef.current = claimId;
+    if (target.clientId && store.users[target.clientId]?.profile.role === "client") {
+      setSelectedClientId(target.clientId);
+      setSelectedChartClientId(target.clientId);
+    }
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        const card = document.querySelector(`[data-claim-id="${claimId}"]`);
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 60);
+    }
+  }, [workflowTarget?.claimId, serverClaims]);
   const claims = useMemo(() => clients.flatMap(([clientId, bucket]) =>
     (bucket.billingClaims || []).map((claim) => ({
       ...claim,
@@ -4841,6 +5925,26 @@ function BillingPage() {
     (activePayer === "all" || claim.payerId === activePayer) &&
     (statusFilter === "all" || claim.status === statusFilter)
   );
+  // Outstanding billing deficiencies worklist, grouped by payer. Source of
+  // truth is the server claims + the shared claimDeficiencies() validator, so
+  // this names exactly the gaps the server enforces. Grouping key is the
+  // catalog payer group (stored payerGroupId, else resolved from the payer
+  // name), falling back to the ledger payer label so every outstanding item
+  // lands under some payer heading.
+  const deficiencyWorklist = useMemo(() => {
+    const groups = new Map();
+    serverClaims.forEach((claim) => {
+      const deficiencies = claimDeficiencies(claim);
+      if (deficiencies.ok) return;
+      const jurisdiction = claim.billingJurisdiction === "FL" ? "FL" : "NY";
+      const catalogGroup = payerGroupFor(jurisdiction, claim.payerName || "");
+      const key = claim.payerGroupId || catalogGroup?.id || classifyBillingPayer(claim.payerName);
+      const label = catalogGroup?.name || claim.payerName || billingPayerLabel(classifyBillingPayer(claim.payerName));
+      if (!groups.has(key)) groups.set(key, { key, label, claims: [] });
+      groups.get(key).claims.push({ claim, deficiencies });
+    });
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [serverClaims]);
   const totals = filteredClaims.reduce((summary, claim) => ({
     billed: summary.billed + (Number(claim.chargeAmount) || 0),
     paid: summary.paid + (Number(claim.paidAmount) || 0),
@@ -4860,6 +5964,14 @@ function BillingPage() {
       [field]: value,
     });
   };
+  const updatePayerId = (value) => {
+    if (!selectedClientId) return;
+    updateSpecificUserData(selectedClientId, "intake", {
+      ...(store.users[selectedClientId].intake || {}),
+      payerId: value,
+      payerIdVerificationStatus: "Verification required",
+    });
+  };
   const choosePayerProduct = (group, product) => {
     if (!selectedClientId) return;
     const current = store.users[selectedClientId].intake || {};
@@ -4876,35 +5988,27 @@ function BillingPage() {
     });
     setNotice(`${product.name} selected. Verify the insurance card, eligibility, network status, and clearinghouse payer ID before submission.`);
   };
-  const applyDiagnosisCode = (item) => {
+  const updateBillingDiagnosis = (field, value) => {
     if (!selectedClientId) return;
-    const value = `${item.code} | ${item.label}`;
     const current = store.users[selectedClientId].intake || {};
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      [diagnosisTarget]: value,
-      diagnoses: Array.from(new Set([...(current.diagnoses || []), value])),
-    });
-  };
-  const applyBillingCode = (item) => {
-    if (!selectedClientId) return;
-    const value = `${item.code} | ${item.type} | ${item.label}`;
-    const current = store.users[selectedClientId].intake || {};
-    updateSpecificUserData(selectedClientId, "intake", {
-      ...current,
-      billingCodes: Array.from(new Set([...(current.billingCodes || []), value])),
-    });
+    updateSpecificUserData(selectedClientId, "intake", { ...current, ...diagnosisPatch(current, field, value) });
   };
   const reviewAppointment = (appointment) => {
     setBillingAppointmentId(appointment.id);
     if (!selectedClientId) return;
     const current = store.users[selectedClientId].intake || {};
+    // Pre-fill telehealth place-of-service + modifier from the appointment
+    // format (Telehealth -> POS 10 + 95, Phone -> POS 02 + 93, In Person -> POS
+    // 11 + none). The provider can still override below.
+    const coding = defaultTelehealthCoding(appointment.format);
     updateSpecificUserData(selectedClientId, "intake", {
       ...current,
       dateOfService: appointment.date || current.dateOfService || "",
       sessionMinutes: appointment.sessionMinutes || current.sessionMinutes || "",
+      placeOfService: coding.placeOfService,
+      serviceModifier: coding.modifiers[0] || "",
     });
-    setNotice("Appointment date and documented session minutes were carried into billing for provider review.");
+    setNotice("Appointment date, documented session minutes, and telehealth place of service were carried into billing for provider review.");
   };
   const saveBillingSnapshot = async () => {
     if (!selectedClientId) return;
@@ -4932,13 +6036,13 @@ function BillingPage() {
       appointmentId: linkedAppointment?.id || "",
       status: ready ? "Ready" : "Action Required",
       billingCodes: current.billingCodes || [],
-      diagnoses: [current.primaryDiagnosis, current.secondaryDiagnosis, current.tertiaryDiagnosis].filter(Boolean),
+      diagnoses: selectedDiagnoses(current),
       chargeAmount: Number(current.chargeAmount) || 0,
       paidAmount: 0,
       transmissionEnabled: false,
       createdAt: new Date().toISOString(),
     };
-    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${providerSignatureText(current.providerSignature || PRACTITIONER_NAME, current.providerNpi)}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
+    const summary = `Quick Billing Snapshot\nClient: ${selectedClient?.profile?.fullName || "Client"}\nPayer: ${payerName}\nDate of service: ${current.dateOfService || "Not entered"}\nChief complaint: ${current.chiefComplaint || "Not entered"}\nSession minutes: ${current.sessionMinutes || "Not entered"}\nPrimary ICD-10-CM: ${current.primaryDiagnosis || "Not selected"}\nSecondary ICD-10-CM: ${current.secondaryDiagnosis || "Not selected"}\nTertiary ICD-10-CM: ${current.tertiaryDiagnosis || "Not selected"}\nFourth ICD-10-CM: ${current.fourthDiagnosis || "Not selected"}\nBilling codes: ${(current.billingCodes || []).join(", ") || "Not selected"}\nCharge: ${billingMoney(current.chargeAmount)}\nProvider signature: ${providerSignatureText(current.providerSignature || PRACTITIONER_NAME, current.providerNpi)}\nClient signature: ${current.clientSignature || "Not signed / not required"}`;
     updateSpecificUserData(selectedClientId, "billingClaims", (prev) => [claim, ...(prev || [])]);
     updateSpecificUserData(selectedClientId, "documents", (prev) => [
       {
@@ -4958,14 +6062,12 @@ function BillingPage() {
     // review workflow. Local state above keeps the UI responsive; the server
     // record is the source of truth for review status and submission.
     try {
-      const diagnoses = [
-        current.primaryDiagnosis && { code: String(current.primaryDiagnosis).split(" | ")[0], label: String(current.primaryDiagnosis), rank: "primary" },
-        current.secondaryDiagnosis && { code: String(current.secondaryDiagnosis).split(" | ")[0], label: String(current.secondaryDiagnosis), rank: "secondary" },
-        current.tertiaryDiagnosis && { code: String(current.tertiaryDiagnosis).split(" | ")[0], label: String(current.tertiaryDiagnosis), rank: "tertiary" },
-      ].filter(Boolean);
+      const diagnoses = claimDiagnoses(current);
+      const claimPlaceOfService = current.placeOfService || "";
+      const claimModifiers = current.serviceModifier ? [current.serviceModifier] : [];
       const serviceLines = (current.billingCodes || []).map((entry) => {
         const parts = String(entry).split(" | ");
-        return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0 };
+        return { code: parts[0] || String(entry), label: parts.slice(1).join(" | ") || String(entry), units: 1, minutes: Number(current.sessionMinutes) || undefined, chargeAmount: Number(current.chargeAmount) || 0, placeOfService: claimPlaceOfService, modifiers: claimModifiers };
       });
       // Charge is carried on the first service line so line total matches the claim.
       if (serviceLines.length > 1) serviceLines.slice(1).forEach((line) => { line.chargeAmount = 0; });
@@ -4981,13 +6083,14 @@ function BillingPage() {
           renderingProviderName: current.providerSignature || PRACTITIONER_NAME,
           renderingProviderNpi: providerNpiForName(current.providerSignature || PRACTITIONER_NAME),
           payerName,
-          payerId,
+          payerId: current.payerIdVerificationStatus === "Verified" ? String(current.payerId || "").trim() : "",
           insurancePlanName: current.insurancePlanName || "",
           sessionMinutes: Number(current.sessionMinutes) || 0,
           diagnoses,
           serviceLines,
+          placeOfService: claimPlaceOfService,
           chargeAmount: Number(current.chargeAmount) || 0,
-          providerSignature: current.providerSignature || PRACTITIONER_NAME,
+          providerSignature: String(current.providerSignature || "").trim(),
         }),
       });
       setServerClaims((prev) => [serverClaim.claim, ...prev]);
@@ -5004,6 +6107,30 @@ function BillingPage() {
     });
     setActivePayer(payerId);
     setTimeout(() => setNotice(""), 8000);
+  };
+  const runClearinghouseAction = async (serverClaim, action) => {
+    if (action === "submit" && !window.confirm(`Send this claim to ${serverClaim.payerName} through Stedi? This submits a real claim to the insurer.`)) return;
+    setTransmittingClaimId(serverClaim?.claimId || "connection-check");
+    try {
+      const result = await productionApi("/api/ehr/billing/transmit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(serverClaim ? { action, claimId: serverClaim.claimId, dateOfService: serverClaim.dateOfService } : { action }),
+      });
+      if (result.claim) setServerClaims((prev) => prev.map((item) => item.claimId === result.claim.claimId ? result.claim : item));
+      const outcome = result.result || result;
+      const edits = outcome.errors?.length ? ` Stedi edits: ${outcome.errors.join("; ")}` : "";
+      setNotice(
+        action === "submit"
+          ? (outcome.accepted ? "Claim transmitted to the clearinghouse." : `Clearinghouse rejected the claim; it was not sent to the insurer.${edits}`)
+          : (outcome.accepted ? `Stedi check passed${action === "connection-check" ? ` (${result.mode} mode)` : ""}. Nothing was sent to the insurer.` : `Stedi check found problems.${edits}`)
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The clearinghouse request failed.");
+    } finally {
+      setTransmittingClaimId("");
+    }
+    setTimeout(() => setNotice(""), 15000);
   };
   const runClaimReview = async (serverClaim, stage, decision, reason = "") => {
     try {
@@ -5057,7 +6184,18 @@ function BillingPage() {
             {jurisdictionGroups.map(group => {
               const savedAttentionCount = claims.filter(claim => claim.billingJurisdiction === billingJurisdiction && claim.payerGroupId === group.id && ["Action Required", "Rejected", "Denied"].includes(claim.status || "Draft")).length;
               const currentDraftAttention = intake.billingJurisdiction === billingJurisdiction && intake.payerGroupId === group.id && billingReviewIssues.length ? 1 : 0;
-              const attentionCount = savedAttentionCount + currentDraftAttention;
+              // Route authoritative server-claim deficiencies to this payer
+              // group too: match by stored payerGroupId, else resolve the free-
+              // text payer name through the catalog for this jurisdiction. A
+              // claim counts if it still has named deficiencies or has not yet
+              // reached ready/transmitted.
+              const serverAttentionCount = serverClaims.filter((claim) => {
+                const groupId = claim.payerGroupId || payerGroupFor(billingJurisdiction, claim.payerName || "")?.id || "";
+                if (groupId !== group.id) return false;
+                const outstanding = !claimDeficiencies(claim).ok || !["ready_to_transmit", "transmitted"].includes(claim.status || "");
+                return outstanding;
+              }).length;
+              const attentionCount = savedAttentionCount + currentDraftAttention + serverAttentionCount;
               return (
                 <Button key={group.id} type="button" className="shrink-0 rounded-2xl" size="sm" variant={selectedPayerGroup?.id === group.id ? "default" : "outline"} onClick={() => setSelectedPayerGroupId(group.id)}>
                   {group.name}<span aria-label={`${attentionCount} items need attention`} className={attentionCount ? "ml-2 inline-flex min-w-6 justify-center rounded-full bg-amber-200 px-1.5 text-stone-950" : "ml-2 inline-flex min-w-6 justify-center rounded-full bg-slate-200 px-1.5 text-slate-700"}>{attentionCount}</span>
@@ -5082,7 +6220,7 @@ function BillingPage() {
           <CardDescription>Clinical completeness is reviewed first. Billing receives a separate final review before any future submission.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border p-4"><p className="font-semibold">1. Clinical review</p><p className="mt-1 text-sm">Documentation, diagnosis support, service details, and authenticated provider signature.</p></div>
+          <div className="rounded-xl border p-4"><p className="font-semibold">1. Clinical review <Badge className={clinicalReviewIssues.length ? "ml-2 bg-red-100 text-red-800" : "ml-2 bg-emerald-100 text-emerald-800"}>{clinicalReviewIssues.length}</Badge></p><p className="mt-1 text-sm">{clinicalReviewIssues.length ? `Needs attention: ${clinicalReviewIssues.join(", ")}.` : "Documentation, diagnosis, service, and provider signature are entered. The provider confirms clinical support at review."}</p></div>
           <div className="rounded-xl border p-4"><p className="font-semibold">2. Billing review <Badge className={billingReviewIssues.length ? "ml-2 bg-red-100 text-red-800" : "ml-2 bg-emerald-100 text-emerald-800"}>{billingReviewIssues.length}</Badge></p><p className="mt-1 text-sm">{billingReviewIssues.length ? `Needs attention: ${billingReviewIssues.join(", ")}.` : "No configured billing-review omissions detected. Final payer validation is still required."}</p></div>
         </CardContent>
       </Card>
@@ -5132,6 +6270,45 @@ function BillingPage() {
           )}
         </CardContent>
       </Card>
+      <Card className="mb-4 rounded-2xl border-2 border-amber-300 shadow-sm">
+        <CardHeader>
+          <CardTitle>Outstanding billing deficiencies by payer</CardTitle>
+          <CardDescription>
+            Claims that are not yet clean, grouped by payer. Each row names exactly what is missing for an approvable claim,
+            with a button that jumps straight to the claim (or the note) to fix it — no searching charts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {deficiencyWorklist.length === 0 ? (
+            <p className="text-sm text-slate-600">No outstanding billing deficiencies. Every recorded claim has its required fields.</p>
+          ) : (
+            deficiencyWorklist.map((group) => (
+              <div key={group.key} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="font-semibold text-amber-900">{group.label}<span className="ml-2 inline-flex min-w-6 justify-center rounded-full bg-amber-200 px-1.5 text-stone-950">{group.claims.length}</span></p>
+                <div className="mt-2 space-y-2">
+                  {group.claims.map(({ claim, deficiencies }) => (
+                    <div key={claim.claimId} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                      <div className="text-sm text-slate-800">
+                        <p className="font-medium">{claim.clientName} · {claim.dateOfService || "No date of service"}</p>
+                        <p className="text-xs text-slate-500">{claim.insurancePlanName || claim.payerName || "No plan"} · {billingMoney(claim.chargeAmount)}</p>
+                        <p className="mt-1 text-xs">
+                          <span className="font-semibold text-red-700">Missing:</span> {deficiencies.all.join(", ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button size="sm" className="rounded-xl" onClick={() => setPage("billing", { clientId: claim.clientId, claimId: claim.claimId })}>Open to fix</Button>
+                        {deficiencies.clinical.includes("Authenticated provider signature") && claim.clientId && (
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setPage("notes", { clientId: claim.clientId })}>Open note to sign</Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
       <Card className="mb-4 rounded-2xl border-2 border-slate-300 shadow-sm">
         <CardHeader>
           <CardTitle>Compliance review queue</CardTitle>
@@ -5142,6 +6319,16 @@ function BillingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+            <span>
+              Clearinghouse (Stedi): {clearinghouse === null ? "checking…" : clearinghouse.connected ? `connected, ${clearinghouse.mode} mode` : clearinghouse.reason || "not connected"}
+            </span>
+            {clearinghouse?.connected && (
+              <Button size="sm" variant="outline" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(null, "connection-check")}>
+                {transmittingClaimId === "connection-check" ? "Checking…" : "Test connection (sample claim, not sent)"}
+              </Button>
+            )}
+          </div>
           {serverClaims.length === 0 ? (
             <p className="text-sm text-slate-600">No server-recorded claims yet. Save a claim draft below to start the review workflow.</p>
           ) : (
@@ -5151,8 +6338,17 @@ function BillingPage() {
                 const billingDone = claim.billingReview?.decision === "passed";
                 const rejected = claim.status === "rejected";
                 const ready = claim.status === "ready_to_transmit";
+                // Named deficiency list from the same validators the server
+                // enforces (lib/ehr/billing-model). Clinical gaps are shown
+                // until clinical review passes; billing gaps until billing
+                // review passes. Display only — the Pass/Reject gates are
+                // unchanged below.
+                const deficiencies = claimDeficiencies(claim);
+                const clinicalGaps = clinicalDone ? [] : deficiencies.clinical;
+                const billingGaps = billingDone ? [] : deficiencies.billing;
+                const stediGaps = claim.transmissions?.length ? (claim.transmissions.slice(-1)[0].errors || []) : [];
                 return (
-                  <div key={claim.claimId} className="rounded-xl border p-4">
+                  <div key={claim.claimId} data-claim-id={claim.claimId} className="rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="font-medium">{claim.clientName} · {claim.dateOfService || "No date of service"}</p>
@@ -5162,6 +6358,29 @@ function BillingPage() {
                         {String(claim.status || "draft").replace(/_/g, " ")}
                       </Badge>
                     </div>
+                    {(clinicalGaps.length > 0 || billingGaps.length > 0 || stediGaps.length > 0) && (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                        <p className="font-medium">Deficient for a clean, approvable claim — fix before it can pass:</p>
+                        {clinicalGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Clinical review</p>
+                            <ul className="list-disc pl-5">{clinicalGaps.map((item) => <li key={`cl-${item}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                        {billingGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Billing review</p>
+                            <ul className="list-disc pl-5">{billingGaps.map((item) => <li key={`bl-${item}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                        {stediGaps.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Payer (Stedi) edits</p>
+                            <ul className="list-disc pl-5">{stediGaps.map((item, index) => <li key={`st-${index}`}>{item}</li>)}</ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-lg border p-3">
                         <p className="text-sm font-semibold">1. Clinical review {clinicalDone && <span className="text-emerald-700">✓</span>}</p>
@@ -5187,9 +6406,28 @@ function BillingPage() {
                       </div>
                     </div>
                     {ready && (
+                      <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 space-y-2">
+                        <p>Both reviews passed. This claim is submission-ready.</p>
+                        {clearinghouse?.connected && clearinghouse.mode === "production" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(claim, "validate")}>Check claim with Stedi</Button>
+                            <Button size="sm" className="rounded-xl" disabled={Boolean(transmittingClaimId)} onClick={() => runClearinghouseAction(claim, "submit")}>{transmittingClaimId === claim.claimId ? "Sending…" : "Send to insurer"}</Button>
+                          </div>
+                        ) : (
+                          <p>{clearinghouse?.connected ? "The clearinghouse is in test mode. Real claims can be sent once the production Stedi key is connected." : "Electronic transmission activates once the clearinghouse is connected."}</p>
+                        )}
+                      </div>
+                    )}
+                    {claim.status === "transmitted" && (
                       <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                        Both reviews passed. This claim is submission-ready. Electronic transmission activates once a contracted clearinghouse is connected.
+                        Sent to the insurer through Stedi on {new Date(claim.transmissions?.slice(-1)[0]?.attemptedAt || claim.updatedAt).toLocaleString()} · Stedi claim {claim.transmissions?.slice(-1)[0]?.stediClaimId || "pending"} · Patient control number {claim.transmissions?.slice(-1)[0]?.patientControlNumber}
                       </p>
+                    )}
+                    {claim.transmissions?.length > 0 && claim.transmissions.slice(-1)[0].errors?.length > 0 && (
+                      <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                        <p className="font-medium">Stedi edits to fix:</p>
+                        <ul className="list-disc pl-5">{claim.transmissions.slice(-1)[0].errors.map((error, index) => <li key={index}>{error}</li>)}</ul>
+                      </div>
                     )}
                     {rejected && (
                       <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -5220,33 +6458,46 @@ function BillingPage() {
               <Input label="Date of Service" type="date" value={intake.dateOfService || ""} onChange={(e) => updateBillingField("dateOfService", e.target.value)} />
               <Input label="Charge Amount" type="number" min="0" step="0.01" value={intake.chargeAmount || ""} onChange={(e) => updateBillingField("chargeAmount", e.target.value)} placeholder="0.00" />
             </div>
+            <div className="grid md:grid-cols-2 gap-3 items-end">
+              <Input label="Clearinghouse Payer ID" value={intake.payerId || ""} onChange={(e) => updatePayerId(e.target.value)} placeholder="Payer ID from the clearinghouse payer list" />
+              <label className="flex items-center gap-2 text-sm pb-2">
+                <input type="checkbox" checked={intake.payerIdVerificationStatus === "Verified"} disabled={!String(intake.payerId || "").trim()} onChange={(e) => updateBillingField("payerIdVerificationStatus", e.target.checked ? "Verified" : "Verification required")} />
+                Payer ID verified for this plan with the clearinghouse
+              </label>
+            </div>
             <div className="grid md:grid-cols-2 gap-3">
               <Input label="Chief Complaint / Reason for Visit" value={intake.chiefComplaint || ""} onChange={(e) => updateBillingField("chiefComplaint", e.target.value)} placeholder="Chief complaint / reason for visit" />
               <Input label="Actual Session Minutes" type="number" min="1" step="1" value={intake.sessionMinutes || ""} onChange={(e) => updateBillingField("sessionMinutes", e.target.value)} placeholder="Document actual minutes" />
             </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Place of service</label>
+                <Select value={intake.placeOfService || "11"} onValueChange={(value) => updateBillingField("placeOfService", value)}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Place of service" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="11">In office (11)</SelectItem>
+                    <SelectItem value="10">Telehealth — patient home (10)</SelectItem>
+                    <SelectItem value="02">Telehealth — other than home (02)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Telehealth modifier</label>
+                <Select value={intake.serviceModifier || "none"} onValueChange={(value) => updateBillingField("serviceModifier", value === "none" ? "" : value)}>
+                  <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Modifier" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (in-office)</SelectItem>
+                    <SelectItem value="95">95 — synchronous audio + video</SelectItem>
+                    <SelectItem value="93">93 — audio only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <p className="text-xs text-slate-600">Document actual time and select the service supported by the record and payer rules. Time guidance assists review; it does not select or guarantee a billable code.</p>
-            <div className="grid md:grid-cols-3 gap-3">
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={intake.primaryDiagnosis || ""} onChange={(e) => updateBillingField("primaryDiagnosis", e.target.value)} placeholder="Primary ICD-10-CM" />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={intake.secondaryDiagnosis || ""} onChange={(e) => updateBillingField("secondaryDiagnosis", e.target.value)} placeholder="Secondary ICD-10-CM" />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Tertiary ICD-10-CM Diagnosis" value={intake.tertiaryDiagnosis || ""} onChange={(e) => updateBillingField("tertiaryDiagnosis", e.target.value)} placeholder="Tertiary ICD-10-CM" />
-            </div>
-            <div className="grid md:grid-cols-[0.8fr_1.2fr] gap-3">
-              <Select value={diagnosisTarget} onValueChange={setDiagnosisTarget}>
-                <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="primaryDiagnosis">Apply to primary diagnosis</SelectItem>
-                  <SelectItem value="secondaryDiagnosis">Apply to secondary diagnosis</SelectItem>
-                  <SelectItem value="tertiaryDiagnosis">Apply to tertiary diagnosis</SelectItem>
-                </SelectContent>
-              </Select>
-              <ClinicalCodeInput kind="diagnosis" searchOnly fallback={diagnosisCodeOptions} onSelect={applyDiagnosisCode} placeholder="Type ICD code or diagnosis keyword" />
-            </div>
-
-            <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple label="CPT / HCPCS Billing Codes" value={(intake.billingCodes || []).join(", ")} onChange={(e) => updateBillingField("billingCodes", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="CPT/HCPCS billing codes" />
-            <ClinicalCodeInput kind="billing" searchOnly fallback={billingCodeOptions} onSelect={applyBillingCode} placeholder="Type billing code or service keyword" />
+            <DiagnosisBillingPanel values={intake} diagnosisOptions={diagnosisCodeOptions} billingOptions={billingCodeOptions} onDiagnosisChange={updateBillingDiagnosis} onBillingCodesChange={codes => updateBillingField("billingCodes", codes)} otherDiagnoses={otherDiagnoses(intake)} onRemoveOtherDiagnosis={entry => updateBillingField("diagnoses", (intake.diagnoses || []).filter(item => item !== entry))} />
 
             <div className="grid md:grid-cols-2 gap-3">
-              <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || PRACTITIONER_NAME} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder="Provider electronic signature" />
+              <ProviderSignatureInput label="Provider Electronic Signature" value={intake.providerSignature || ""} onChange={(e) => updateBillingField("providerSignature", e.target.value)} placeholder={`Type provider name to sign (e.g. ${PRACTITIONER_NAME})`} />
               <Input label="Client Electronic Signature" value={intake.clientSignature || ""} onChange={(e) => updateBillingField("clientSignature", e.target.value)} placeholder="Client electronic signature, if required" />
             </div>
             <Button className="rounded-2xl" onClick={saveBillingSnapshot}><Save className="mr-2 h-4 w-4" />Save claim draft and billing snapshot</Button>
@@ -5262,13 +6513,17 @@ function BillingPage() {
             <p><span className="font-medium">Payer:</span> {intake.insurancePayer || "Not entered"} → {billingPayerLabel(classifyBillingPayer(intake.insurancePayer))}</p>
             <p><span className="font-medium">Date of service:</span> {intake.dateOfService || "Not entered"}</p>
             <p><span className="font-medium">Charge:</span> {billingMoney(intake.chargeAmount)}</p>
+            <p><span className="font-medium">Place of service:</span> {intake.placeOfService === "10" ? "Telehealth — patient home (10)" : intake.placeOfService === "02" ? "Telehealth — other than home (02)" : "In office (11)"}</p>
+            <p><span className="font-medium">Telehealth modifier:</span> {intake.serviceModifier === "95" ? "95 — synchronous audio + video" : intake.serviceModifier === "93" ? "93 — audio only" : "None"}</p>
             <p><span className="font-medium">Chief complaint:</span> {intake.chiefComplaint || "Not entered"}</p>
             <p><span className="font-medium">Session minutes:</span> {intake.sessionMinutes || "Not entered"}</p>
             <p><span className="font-medium">Primary:</span> {intake.primaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Secondary:</span> {intake.secondaryDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Tertiary:</span> {intake.tertiaryDiagnosis || "Not selected"}</p>
+            <p><span className="font-medium">Diagnosis 4:</span> {intake.fourthDiagnosis || "Not selected"}</p>
             <p><span className="font-medium">Billing codes:</span> {(intake.billingCodes || []).join(", ") || "Not selected"}</p>
-            <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || PRACTITIONER_NAME, intake.providerNpi)}</p>
+            <p><span className="font-medium">Clearinghouse payer ID:</span> {intake.payerId ? `${intake.payerId} (${intake.payerIdVerificationStatus === "Verified" ? "verified" : "not verified"})` : "Not entered"}</p>
+            <p><span className="font-medium">Provider signature:</span> {providerSignatureText(intake.providerSignature || "", intake.providerNpi)}</p>
             <p><span className="font-medium">Client signature:</span> {intake.clientSignature || "Not signed / not required"}</p>
           </CardContent>
         </Card>
@@ -5283,7 +6538,7 @@ function BillingPage() {
   const plans = selectedClientId ? store.users[selectedClientId]?.treatmentPlans || [] : [];
   const selectedClientName = selectedClientId ? store.users[selectedClientId]?.profile?.fullName || "Client" : "Client";
   const [draft, setDraft] = useState({
-    primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "",
+    primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "",
     problem: "",
     longTermGoal: "",
     shortTermGoal: "",
@@ -5293,6 +6548,21 @@ function BillingPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const pendingPlanId = useRef("");
+  const biopsychosocial = selectedClientId ? store.users[selectedClientId]?.intake || null : null;
+  const copyFromBiopsychosocial = () => {
+    if (!biopsychosocial) { setNotice("No biopsychosocial assessment is saved for this client yet."); return; }
+    setDraft(current => ({
+      ...current,
+      primaryDiagnosis: current.primaryDiagnosis || biopsychosocial.primaryDiagnosis || "",
+      secondaryDiagnosis: current.secondaryDiagnosis || biopsychosocial.secondaryDiagnosis || "",
+      tertiaryDiagnosis: current.tertiaryDiagnosis || biopsychosocial.tertiaryDiagnosis || "",
+      fourthDiagnosis: current.fourthDiagnosis || biopsychosocial.fourthDiagnosis || "",
+      problem: current.problem || biopsychosocial.presentingProblem || biopsychosocial.chiefComplaint || "",
+    }));
+    setNotice(biopsychosocial.treatmentGoals
+      ? "Diagnoses and problem copied from the biopsychosocial. Write each goal and measurable objective below; the assessment's goals are shown for reference."
+      : "Diagnoses and problem copied from the biopsychosocial. Write each goal and measurable objective below.");
+  };
   const save = async () => {
     if (saving) return;
     if (!selectedClientId || !draft.problem.trim()) { setNotice("Select a client and enter the treatment problem."); return; }
@@ -5312,7 +6582,7 @@ function BillingPage() {
       clientName: selectedClientName,
       category: "Medical Record",
     });
-    setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() });
+    setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() });
     pendingPlanId.current = ""; setNotice("Treatment plan saved to the selected chart.");
     } catch (error) { setNotice(`Plan save not confirmed. Your draft is retained for retry. ${error instanceof Error ? error.message : ""}`); }
     finally { setSaving(false); }
@@ -5323,22 +6593,24 @@ function BillingPage() {
       <div className="grid xl:grid-cols-[1fr_1fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardContent className="p-4 space-y-3">
-            <Select value={selectedClientId} disabled={saving} onValueChange={(value) => { setSelectedClientId(value); setSelectedChartClientId(value); setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() }); pendingPlanId.current = ""; setNotice(""); }}>
+            <Select value={selectedClientId} disabled={saving} onValueChange={(value) => { setSelectedClientId(value); setSelectedChartClientId(value); setDraft({ primaryDiagnosis: "", secondaryDiagnosis: "", tertiaryDiagnosis: "", fourthDiagnosis: "", plannedServiceCodes: "", problem: "", longTermGoal: "", shortTermGoal: "", intervention: "", goals: newTreatmentGoals() }); pendingPlanId.current = ""; setNotice(""); }}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select client" /></SelectTrigger>
               <SelectContent>
                 {clients.map(([id, bucket]) => <SelectItem key={id} value={id}>{bucket.profile.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
+            {biopsychosocial && <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <Button type="button" variant="outline" className="rounded-2xl" disabled={saving} onClick={copyFromBiopsychosocial}>Copy diagnoses and problem from Biopsychosocial</Button>
+              {biopsychosocial.treatmentGoals && <p className="whitespace-pre-wrap text-xs text-slate-600"><span className="font-medium text-slate-800">Biopsychosocial treatment goals (reference):</span> {biopsychosocial.treatmentGoals}</p>}
+            </div>}
+            <StructuredPicker value={draft.problem} onAppend={(v) => setDraft({ ...draft, problem: v })} groups={treatmentPlanPickerGroups.problem} disabled={saving} />
             <Input value={draft.problem} onChange={(e) => setDraft({ ...draft, problem: e.target.value })} placeholder="Problem" />
-            <fieldset disabled={saving} className="space-y-3 rounded-xl border p-3">
-              <legend className="font-medium">Treatment diagnoses and planned services</legend>
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Primary ICD-10-CM Diagnosis" value={draft.primaryDiagnosis} onChange={e => setDraft(current => ({ ...current, primaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Secondary ICD-10-CM Diagnosis" value={draft.secondaryDiagnosis} onChange={e => setDraft(current => ({ ...current, secondaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="diagnosis" fallback={diagnosisCodeOptions} label="Additional ICD-10-CM Diagnosis" value={draft.tertiaryDiagnosis} onChange={e => setDraft(current => ({ ...current, tertiaryDiagnosis: e.target.value }))} />
-              <ClinicalCodeInput kind="billing" fallback={billingCodeOptions} multiple label="Planned CPT / HCPCS services (optional)" value={draft.plannedServiceCodes} onChange={e => setDraft(current => ({ ...current, plannedServiceCodes: e.target.value }))} />
+            <DiagnosisBillingPanel title="Treatment diagnoses and planned services" values={draft} diagnosisOptions={diagnosisCodeOptions} showBilling={false} disabled={saving} onDiagnosisChange={(field, value) => setDraft(current => ({ ...current, [field]: value }))}>
+              <ClinicalCodeInput kind="billing" disabled={saving} fallback={billingCodeOptions} multiple label="Planned CPT / HCPCS services (optional)" value={draft.plannedServiceCodes} onChange={e => setDraft(current => ({ ...current, plannedServiceCodes: e.target.value }))} />
               <p className="text-xs text-slate-600">Select diagnoses supported by your assessment. Planned services do not create a charge or claim.</p>
-            </fieldset>
+            </DiagnosisBillingPanel>
             <TreatmentGoalEditor goals={draft.goals} disabled={saving} onChange={(goals) => setDraft({ ...draft, goals })} />
+            <StructuredPicker value={draft.intervention} onAppend={(v) => setDraft({ ...draft, intervention: v })} groups={treatmentPlanPickerGroups.intervention} disabled={saving} />
             <Textarea value={draft.intervention} onChange={(e) => setDraft({ ...draft, intervention: e.target.value })} className="min-h-[90px] rounded-2xl" placeholder="Intervention" />
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <span className="font-medium text-slate-800">Access policy:</span> Provider Only | Client access by formal records request and provider review.
@@ -6064,27 +7336,151 @@ function AssessmentsPage() {
     </div>
   );
 }
+function VerificationTag({ status }) {
+  const style = status === "verified" ? "bg-emerald-100 text-emerald-800" : status === "document_on_file" ? "bg-sky-100 text-sky-800" : "bg-amber-100 text-amber-800";
+  const text = status === "verified" ? "Verified" : status === "document_on_file" ? "Document on file" : "Self-reported";
+  return (
+    <span
+      className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle ${style}`}
+    >
+      {text}
+    </span>
+  );
+}
+// Minimal user-management control (no user-admin UI exists): the owner flags a
+// teammate (by sign-in email) as a supervisee. The signed-in owner becomes the supervisor.
+function SupervisionAdminCard() {
+  const { currentUser } = useAuth();
+  const [supervisees, setSupervisees] = useState([]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ email: "", displayName: "", credentialChoice: "MSW intern" });
+  const load = () => productionApi("/api/ehr/supervision/supervisees")
+    .then((data) => setSupervisees(Array.isArray(data.supervisees) ? data.supervisees : []))
+    .catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load supervisees."));
+  useEffect(() => { load(); }, []);
+  const post = async (payload, doneMessage) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const data = await productionApi("/api/ehr/supervision/supervisees", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setSupervisees(Array.isArray(data.supervisees) ? data.supervisees : []);
+      setMessage(doneMessage);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The change could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const save = () => post({
+    action: "save",
+    email: form.email,
+    displayName: form.displayName,
+    credential: form.credentialChoice,
+    kind: form.credentialChoice === "LMSW" ? "supervised_clinician" : "intern",
+  }, "Supervisee saved. They will be asked to submit notes for your review.");
+  return (
+    <Card className="rounded-2xl shadow-sm mb-4">
+      <CardHeader><CardTitle>Supervision</CardTitle><CardDescription>Mark a teammate as a supervisee and assign yourself as their supervisor.</CardDescription></CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-xs text-slate-600">Supervisees can draft notes but never finalize them. Interns (BSW or MSW students) never sign. They submit to you, and you sign as the only signer. An LMSW signs their own note and you co-sign. Billing stays blocked until you sign. The teammate must already have a sign-in account, and the email must match it.</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input label="Teammate sign-in email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
+          <Input label="Teammate display name" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="First Last" />
+          <label className="block space-y-1"><span className="block text-xs font-bold">Role / credential</span>
+            <select className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm" value={form.credentialChoice} onChange={(e) => setForm({ ...form, credentialChoice: e.target.value })}>
+              <option value="BSW intern">BSW intern</option>
+              <option value="MSW intern">MSW intern</option>
+              <option value="LMSW">LMSW (supervised)</option>
+            </select>
+          </label>
+          <p className="text-xs text-slate-600 self-end">Supervisor of record: you ({currentUser?.fullName || "signed-in owner"}, LCSW). This comes from your signed-in account.</p>
+        </div>
+        <Button type="button" className="rounded-2xl" disabled={busy || !form.email.trim() || !form.displayName.trim()} onClick={save}>Save supervisee</Button>
+        {message && <p role="status" className="text-sm text-slate-700">{message}</p>}
+        <ul className="space-y-2">
+          {supervisees.length === 0 && <li className="text-slate-500">No supervisees yet.</li>}
+          {supervisees.map((entry) => (
+            <li key={entry.email} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
+              <span>{entry.displayName} ({entry.credential}) · {entry.email} · {entry.active ? "Active" : "Removed"}</span>
+              {entry.active && <Button type="button" size="sm" variant="outline" className="rounded-2xl" disabled={busy} onClick={() => post({ action: "deactivate", email: entry.email }, "Supervisee status removed.")}>Remove supervisee status</Button>}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
 function InfrastructurePage() {
   const { currentUser } = useAuth();
   const identifiers = providerIdentifiersForName(currentUser?.fullName || "");
+  const renewalAlerts = credentialRenewalAlerts(currentUser?.fullName || "");
   return (
     <div>
       <SectionHeader title="Infrastructure" description="AWS production controls supporting authentication, encrypted chart storage, access boundaries, audit history, backups, and retention." />
+      {renewalAlerts.length > 0 && (
+        <Card className="rounded-2xl shadow-sm mb-4 border-amber-300 bg-amber-50">
+          <CardHeader><CardTitle>Credential renewal alert{renewalAlerts.length > 1 ? "s" : ""}</CardTitle><CardDescription>Stays visible until the credential is renewed and its date is updated in this record — uploading a scanned copy to the Document Library alone will not clear it.</CardDescription></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {renewalAlerts.map(alert => (
+              <p key={alert.id} className={alert.severity === "expired" ? "font-medium text-red-700" : alert.severity === "reminder" ? "text-slate-700" : "font-medium text-amber-800"}>
+                {alert.severity === "expired" ? "Expired: " : alert.severity === "reminder" ? "Reminder: " : "Renewal due soon: "}{alert.message}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       <Card className="rounded-2xl shadow-sm mb-4">
         <CardHeader><CardTitle>Provider identification</CardTitle><CardDescription>{currentUser?.fullName}</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3 text-sm">
-          <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}</p>
-          <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}</p>
-          <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}</p>
-          <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}</p>
+          <p className="md:col-span-3 text-xs text-slate-500"><VerificationTag status="verified" /> means the credential was confirmed on the issuing body's own public lookup. <VerificationTag status="document_on_file" /> means the provider supplied the issuing body's official record (letter or portal record), but it has not been matched against a public lookup. <VerificationTag status="self_reported" /> means it is provider-entered and not independently confirmed. Entries under additional credentials, education, completed training, and training in progress are self-reported unless noted otherwise.</p>
+          <p><span className="font-medium">Individual NPI:</span> {identifiers.npi || "Not configured"}{identifiers.npi && <VerificationTag status={identifiers.npiVerification} />}</p>
+          <p><span className="font-medium">CAQH provider ID:</span> {identifiers.caqhId || "Not configured"}{identifiers.caqhId && <VerificationTag status={identifiers.caqhVerification} />}</p>
+          <p><span className="font-medium">License number:</span> {identifiers.licenseNumber || "Not configured"}{identifiers.licenseNumber && <VerificationTag status={identifiers.licenseVerification} />}</p>
+          <p><span className="font-medium">CASAC credential:</span> {identifiers.casacNumber ? `${identifiers.casacNumber} — ${identifiers.casacLevel}` : "Not configured"}{identifiers.casacNumber && <VerificationTag status={identifiers.casacVerification} />}</p>
           <p><span className="font-medium">CASAC effective date:</span> {identifiers.casacEffectiveDate || "Not configured"}</p>
           <p><span className="font-medium">CASAC expiration date:</span> {identifiers.casacExpirationDate || "Not configured"}</p>
+          {(identifiers.npiVerificationNote || identifiers.caqhVerificationNote || identifiers.licenseVerificationNote || identifiers.casacVerificationNote) && (
+            <div className="md:col-span-3 text-xs text-slate-500 space-y-0.5">
+              {identifiers.npiVerificationNote && <p>NPI — {identifiers.npiVerificationNote}</p>}
+              {identifiers.caqhVerificationNote && <p>CAQH — {identifiers.caqhVerificationNote}</p>}
+              {identifiers.licenseVerificationNote && <p>License — {identifiers.licenseVerificationNote}</p>}
+              {identifiers.casacVerificationNote && <p>CASAC — {identifiers.casacVerificationNote}</p>}
+            </div>
+          )}
           {identifiers.additionalCredentials.length > 0 && <div className="md:col-span-3"><p className="font-medium">Additional professional credentials</p><ul className="list-disc pl-5">{identifiers.additionalCredentials.map(credential => <li key={credential}>{credential}</li>)}</ul></div>}
           {identifiers.education.length > 0 && <div className="md:col-span-3"><p className="font-medium">Education</p><ul className="list-disc pl-5">{identifiers.education.map(degree => <li key={degree}>{degree}</li>)}</ul></div>}
           {identifiers.completedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">Completed training</p><ul className="list-disc pl-5">{identifiers.completedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
           {identifiers.trainingInProgress.length > 0 && <div className="md:col-span-3"><p className="font-medium">Training in progress</p><ul className="list-disc pl-5">{identifiers.trainingInProgress.map(training => <li key={training}>{training}</li>)}</ul></div>}
+          {identifiers.stateMandatedTraining.length > 0 && <div className="md:col-span-3"><p className="font-medium">State-mandated training</p><ul className="list-disc pl-5">{identifiers.stateMandatedTraining.map(training => <li key={training}>{training}</li>)}</ul></div>}
+          <div className="md:col-span-3">
+            <p className="font-medium">Published</p>
+            {identifiers.publications.length > 0
+              ? <ul className="list-disc pl-5">{identifiers.publications.map(publication => <li key={publication}>{publication}</li>)}</ul>
+              : <p className="text-slate-600">{identifiers.publicationsStatus || "Not configured"}</p>}
+          </div>
         </CardContent>
       </Card>
+      <Card className="rounded-2xl shadow-sm mb-4">
+        <CardHeader><CardTitle>State licensure</CardTitle><CardDescription>Owner-reported status. Only states marked Licensed are licensed; Pending and Planned states are not.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 text-sm">
+          {(["Licensed", "Pending", "Planned"] as const).map(status => (
+            <div key={status}>
+              <p className="font-medium">{status === "Planned" ? "Planned (application not yet submitted)" : status}</p>
+              <ul className="list-disc pl-5">
+                {STATE_LICENSURE.filter(row => row.status === status).map(row => (
+                  <li key={row.code}>{row.state} ({row.code}) — {status}. {licensureLicenseText(row)}{row.note ? `. ${row.note}` : ""}{licensureDatesText(row) ? `. ${licensureDatesText(row)}` : ""}{row.verification === "document_on_file" && <VerificationTag status="document_on_file" />}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      {currentUser?.ehrRole === "owner" && <SupervisionAdminCard />}
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Authentication and access</CardTitle><CardDescription>AWS Cognito and server-enforced authorization</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>MFA-enabled Cognito accounts identify providers and clients.</p><p>Clients are linked to one authorized chart and cannot retrieve provider-only notes or records.</p><p>Secure HttpOnly session cookies protect authenticated browser sessions.</p></CardContent></Card>
         <Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Encrypted clinical records</CardTitle><CardDescription>AWS DynamoDB, S3, and KMS</CardDescription></CardHeader><CardContent className="space-y-2 text-sm text-slate-700"><p>Clinical module snapshots and document metadata persist in encrypted AWS data stores.</p><p>Private chart files use encrypted S3 storage and time-limited authorized access links.</p><p>DynamoDB point-in-time recovery and deletion protection are defined in the foundation stack.</p></CardContent></Card>
@@ -6178,6 +7574,7 @@ function DocumentLibraryPage({ advocacyMode = false }) {
   const [signatureDocId, setSignatureDocId] = useState("");
   const [signatureName, setSignatureName] = useState(currentUser?.fullName || PRACTITIONER_NAME);
   const [signatureRole, setSignatureRole] = useState("Provider");
+  const [verbalConsentReason, setVerbalConsentReason] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadType, setUploadType] = useState("Clinical Document");
   const [uploadFile, setUploadFile] = useState(null);
@@ -6289,18 +7686,47 @@ ${organization}`;
     } catch (error) { setDocumentNotice(error instanceof Error ? error.message : "Forms were not saved. Please try again."); }
     finally { setDocumentBusy(false); }
   };
-  const signDocument = async () => {
-    if (!selectedClientId || !signatureDocId) return;
+  const signingInProgressRef = useRef(false);
+  const signDocument = async (docIdOverride) => {
+    if (signingInProgressRef.current) return;
+    signingInProgressRef.current = true;
+    setDocumentBusy(true);
+    try {
+      await applySignature(docIdOverride);
+    } finally {
+      signingInProgressRef.current = false;
+      setDocumentBusy(false);
+    }
+  };
+  const consentOrderIndex = (doc) => {
+    const index = consentTemplateDefinitions.findIndex((item) => item.title === doc.title);
+    return index === -1 ? consentTemplateDefinitions.length : index;
+  };
+  const applySignature = async (docIdOverride) => {
+    // docIdOverride lets the sequential consent-signing wizard target a specific
+    // document directly without waiting on signatureDocId state to flush. The
+    // existing "Apply authenticated signature" button still calls this with no
+    // argument (or a click event, which is ignored) and falls back to signatureDocId.
+    const targetDocId = typeof docIdOverride === "string" ? docIdOverride : signatureDocId;
+    if (!selectedClientId || !targetDocId) return;
     const effectiveSignatureRole = currentUser?.role === "client" ? "Client" : signatureRole;
-    const authenticatedProvider = effectiveSignatureRole === "Provider" && currentUser?.role === "provider";
+    const providerIsAuthenticated = currentUser?.role === "provider" || currentUser?.role === "owner";
+    const authenticatedProvider = effectiveSignatureRole === "Provider" && providerIsAuthenticated;
     const authenticatedClient = effectiveSignatureRole === "Client" && currentUser?.role === "client" && selectedClientId === (currentUser.chartClientId || currentUser.id);
-    if (!authenticatedProvider && !authenticatedClient) {
-      setDocumentNotice("The selected signature role must match the currently authenticated EHR account. Guardian signatures require a separately authenticated guardian account.");
+    // In-person, provider-witnessed patient signature: the patient signs on the
+    // provider's device during an on-site visit. This is NOT recorded as the
+    // patient logging in — it is honestly recorded as a witnessed in-person
+    // signature, attributed to the patient, witnessed by the authenticated
+    // provider, with a timestamp and document-version fingerprint.
+    const witnessedInPersonClient = effectiveSignatureRole === "Client (in person)" && providerIsAuthenticated;
+    if (!authenticatedProvider && !authenticatedClient && !witnessedInPersonClient) {
+      setDocumentNotice("Select a valid signature: your own provider signature, the patient signed in on their own portal, or an in-person patient signature you witness on this device.");
       return;
     }
-    const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
+    const selectedDocument = documents.find((doc) => doc.id === targetDocId);
     if (!selectedDocument) return;
-    const signer = currentUser?.fullName || signatureName.trim();
+    const patientName = selectedClient?.profile?.fullName || signatureName.trim();
+    const signer = witnessedInPersonClient ? patientName : (currentUser?.fullName || signatureName.trim());
     const signedAt = new Date().toISOString();
     const versionSource = JSON.stringify({
       id: selectedDocument.id,
@@ -6313,12 +7739,15 @@ ${organization}`;
     const documentVersionSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     updateSpecificUserData(selectedClientId, "documents", (prev) =>
       prev.map((doc) =>
-        doc.id === signatureDocId
+        doc.id === targetDocId
           ? (() => {
-              const nextSignature = { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
+              const nextSignature = witnessedInPersonClient
+                ? { signer: patientName, signerId: selectedClientId, authenticatedRole: "client", role: "Client", signatureMethod: "In-person, witnessed on provider device", witnessedBy: currentUser?.fullName || "", witnessedById: currentUser.id, signedAt, documentVersionSha256 }
+                : { signer, signerId: currentUser.id, authenticatedRole: currentUser.role, role: effectiveSignatureRole, ...(authenticatedProvider ? { providerNpi: providerNpiForName(signer), providerLicense: providerIdentifiersForName(signer).licenseNumber } : {}), signedAt, documentVersionSha256 };
+              const signerAuthRole = witnessedInPersonClient ? "client" : currentUser.role;
               const previousSignatures = Array.isArray(doc.signatures)
-                ? doc.signatures.filter((entry) => entry.authenticatedRole !== currentUser.role)
-                : doc.signature && doc.signature.authenticatedRole !== currentUser.role ? [doc.signature] : [];
+                ? doc.signatures.filter((entry) => entry.authenticatedRole !== signerAuthRole)
+                : doc.signature && doc.signature.authenticatedRole !== signerAuthRole ? [doc.signature] : [];
               const signatures = [...previousSignatures, nextSignature];
               const signedByClient = signatures.some((entry) => entry.authenticatedRole === "client");
               const signedByProvider = signatures.some((entry) => entry.authenticatedRole === "provider" || entry.authenticatedRole === "owner");
@@ -6334,11 +7763,61 @@ ${organization}`;
     );
     appendAuditLog({ action: "Authenticated electronic signature applied", details: `${effectiveSignatureRole} signature applied by authenticated user ${signer} to document version ${documentVersionSha256}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Signature" });
     setSignatureName(signer);
+    // Keep the signer positioned on the signature panel and auto-advance to the
+    // next document that still needs this signer's signature, so multiple
+    // consents can be signed in a row without the page jumping to the bottom
+    // or the signer having to re-scroll and re-pick each form.
+    const justSignedAuthRole = witnessedInPersonClient ? "client" : currentUser.role;
+    const stillNeedsSignature = (doc) => {
+      if (doc.id === targetDocId) return false;
+      const sigs = Array.isArray(doc.signatures) ? doc.signatures : (doc.signature ? [doc.signature] : []);
+      return !sigs.some((entry) => entry && entry.authenticatedRole === justSignedAuthRole);
+    };
+    const nextDoc = [...visibleDocuments].sort((a, b) => consentOrderIndex(a) - consentOrderIndex(b)).find(stillNeedsSignature);
+    setSignatureDocId(nextDoc ? nextDoc.id : "");
+    window.setTimeout(() => document.getElementById("document-signatures")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
     try {
       await flushClientModuleSaves(selectedClientId);
-      setDocumentNotice(`Authenticated ${effectiveSignatureRole.toLowerCase()} signature saved. Refresh Signed Documents to view your copy.`);
+      setDocumentNotice(nextDoc
+        ? `Signature saved. Next form ready to sign: “${nextDoc.title}”.`
+        : `Signature saved. All forms in this list have your signature. Refresh Signed Documents to view copies.`);
     } catch (error) {
       setDocumentNotice("Signature could not be saved. Please retry before leaving this page.");
+    }
+  };
+  // Documented VERBAL consent path — for on-site situations where the patient
+  // consents verbally and a digital signature cannot be captured at that moment
+  // (e.g., signature capture unavailable, accessibility need). This does NOT
+  // forge a patient signature. It records a provider attestation: who obtained
+  // consent, when, that the method was verbal, and the reason. It is
+  // audit-logged and clearly labeled as verbal consent on the document.
+  const recordVerbalConsent = async () => {
+    if (!selectedClientId || !signatureDocId) { setDocumentNotice("Select the consent form to record verbal consent for."); return; }
+    if (currentUser?.role !== "provider" && currentUser?.role !== "owner") {
+      setDocumentNotice("Only the treating provider can attest that verbal consent was obtained.");
+      return;
+    }
+    const selectedDocument = documents.find((doc) => doc.id === signatureDocId);
+    if (!selectedDocument) return;
+    const obtainedBy = currentUser?.fullName || signatureName.trim();
+    const obtainedAt = new Date().toISOString();
+    const reason = (verbalConsentReason || "").trim() || "Digital signature could not be captured at the time of service; consent obtained verbally with patient present.";
+    updateSpecificUserData(selectedClientId, "documents", (prev) =>
+      prev.map((doc) => doc.id === signatureDocId ? {
+        ...doc,
+        status: [doc.signature, ...(Array.isArray(doc.signatures) ? doc.signatures : [])].some((entry) => entry && entry.authenticatedRole === "client")
+          ? doc.status
+          : "Verbal consent obtained — provider attested",
+        verbalConsent: { method: "Verbal", obtainedBy, obtainedById: currentUser.id, obtainedByRole: currentUser.role, obtainedAt, reason },
+      } : doc)
+    );
+    appendAuditLog({ action: "Recorded verbal consent (provider attestation)", details: `Verbal consent for “${selectedDocument.title}” obtained by ${obtainedBy} at ${obtainedAt}. Reason: ${reason}`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Consent" });
+    setVerbalConsentReason("");
+    try {
+      await flushClientModuleSaves(selectedClientId);
+      setDocumentNotice(`Verbal consent recorded for “${selectedDocument.title}”. A digital signature can still be added later when available.`);
+    } catch (error) {
+      setDocumentNotice("Verbal consent could not be saved. Please retry before leaving this page.");
     }
   };
   const uploadDocument = async () => {
@@ -6349,35 +7828,20 @@ ${organization}`;
     setDocumentBusy(true);
     setDocumentNotice("Encrypting and uploading the document to AWS…");
     try {
-      const authorization = await productionApi("/api/ehr/documents/presign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          clientId: selectedClientId,
-          documentType: uploadType,
-          fileName: uploadFile.name,
-          contentType: uploadFile.type || "application/octet-stream",
-        }),
-      });
-      const uploadResponse = await fetch(authorization.uploadUrl, {
-        method: "PUT",
-        headers: authorization.uploadHeaders,
-        body: uploadFile,
-      });
-      if (!uploadResponse.ok) throw new Error("The encrypted AWS file upload failed.");
+      const uploaded = await uploadChartFile({ clientId: selectedClientId, documentType: uploadType, file: uploadFile, title: uploadTitle.trim() });
       const uploadedAt = new Date().toISOString();
       updateSpecificUserData(selectedClientId, "documents", (prev) => [
         {
-          id: authorization.documentId,
+          id: uploaded.documentId,
           title: uploadTitle.trim(),
           type: uploadType,
           status: "Uploaded",
           viewedAt: "",
           signature: null,
-          uploadedFileName: uploadFile.name,
-          contentType: uploadFile.type || "application/octet-stream",
-          sizeBytes: uploadFile.size,
-          storageKey: authorization.key,
+          uploadedFileName: uploaded.file.name,
+          contentType: uploaded.file.type || "application/octet-stream",
+          sizeBytes: uploaded.file.size,
+          storageKey: uploaded.key,
           uploadedByRole: currentUser.role,
           clientVisible: currentUser.role === "client",
           createdAt: uploadedAt,
@@ -6457,7 +7921,7 @@ ${organization}`;
     }
     if (workflow.anchor === "document-signatures") setSignatureDocId(doc.id);
     if (workflow.anchor === "advocacy-letter-builder") setAdvocacyTemplateType(doc.title.split(" | ")[1] || "General Outside Resource Support");
-    window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    window.setTimeout(() => document.getElementById(workflow.anchor)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
   };
   const saveAdvocacyLetter = async () => {
     if (!selectedClientId || documentBusy) return;
@@ -6520,12 +7984,38 @@ ${organization}`;
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     appendAuditLog({ action: "Downloaded advocacy letter", details: `${doc.title} was downloaded as ${doc.signature ? "a signed copy" : "an unsigned draft"}.`, clientId: selectedClientId, clientName: selectedClient?.profile?.fullName || "Client", category: "Document Access" });
   };
+  // Sequential, in-order consent signing for the patient intake package.
+  // consentTemplateDefinitions is the practice's fixed, intentional signing
+  // order (treatment consent first, crisis policy last); the patient must
+  // sign each one in that order before the next unlocks, then sees a single
+  // review screen listing every signature once the packet is complete.
+  const hasClientSignature = (doc) => {
+    const signatures = Array.isArray(doc?.signatures) ? doc.signatures : doc?.signature ? [doc.signature] : [];
+    return signatures.some((entry) => entry && (entry.authenticatedRole === "client" || entry.role === "Client") && entry.signedAt);
+  };
+  const consentSigningOrder = consentTemplateDefinitions.map((item) => item.title);
+  const orderedConsentDocuments = consentSigningOrder
+    .map((title) => visibleDocuments.find((doc) => doc.title === title))
+    .filter(Boolean);
+  const firstUnsignedConsentIndex = orderedConsentDocuments.findIndex((doc) => !hasClientSignature(doc));
+  const activeConsentDocument = firstUnsignedConsentIndex === -1 ? null : orderedConsentDocuments[firstUnsignedConsentIndex];
+  const consentPackageComplete = orderedConsentDocuments.length > 0 && firstUnsignedConsentIndex === -1;
+  const isSequentialClientConsentView = currentUser.role === "client" && !libraryMode && !advocacyMode;
+  const signatureDocumentsInOrder = [...visibleDocuments].sort((a, b) => consentOrderIndex(a) - consentOrderIndex(b));
+  const signatureDocument = visibleDocuments.find((doc) => doc.id === signatureDocId) || null;
+  const signatureDocumentPosition = signatureDocument ? signatureDocumentsInOrder.findIndex((doc) => doc.id === signatureDocument.id) + 1 : 0;
+  const currentSignerAuthRole = currentUser.role === "client" || signatureRole === "Client (in person)" ? "client" : currentUser.role;
+  const signatureDocumentSignedByCurrentSigner = !!signatureDocument && (Array.isArray(signatureDocument.signatures) ? signatureDocument.signatures : signatureDocument.signature ? [signatureDocument.signature] : []).some((entry) => entry && entry.authenticatedRole === currentSignerAuthRole);
+  useEffect(() => {
+    if (isSequentialClientConsentView && activeConsentDocument?.id) void viewDocument(activeConsentDocument);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSequentialClientConsentView, activeConsentDocument?.id]);
   return (
     <div>
       <SectionHeader title={advocacyMode ? "Advocacy Letters" : libraryMode ? "Chart Document Library" : "Patient Intake & Consents"} description={advocacyMode ? "Create, review, sign, and retain client-specific advocacy and care-coordination letters." : libraryMode ? "Clinical documents, letters, and other chart records." : "Patient-completed intake and practice consent forms. This packet is separate from the clinical assessment and does not create a billing entry."} />
       {!advocacyMode && <Button variant="outline" className="mb-4" onClick={() => { setLibraryMode(!libraryMode); setSignatureDocId(""); }}>{libraryMode ? "Return to Intake & Consents" : "Other chart documents"}</Button>}
       {documentNotice && <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800">{documentNotice}</div>}
-      {currentUser.role === "client" && <SignedDocuments clientId={selectedClientId} />}
+      {selectedClientId && !advocacyMode && <SignedDocuments clientId={selectedClientId} />}
       {currentUser.role === "client" && !libraryMode && (
         <Card className="mb-4 rounded-2xl shadow-sm">
           <CardHeader>
@@ -6559,6 +8049,71 @@ ${organization}`;
         <p>Patients complete this packet after signing into their secure portal. Use Client Management to add a patient or send their portal invitation.</p>
         <Button variant="outline" onClick={() => setPage("clients")}>Open patient invitations</Button>
       </CardContent></Card>}
+      {isSequentialClientConsentView && (
+        <div className="space-y-4">
+          <Card className="rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle>Sign your intake package</CardTitle>
+              <CardDescription>
+                {orderedConsentDocuments.length === 0
+                  ? "Your provider hasn't added the practice consent forms yet."
+                  : consentPackageComplete
+                    ? "All forms are signed. Review your signatures below."
+                    : `Step ${firstUnsignedConsentIndex + 1} of ${orderedConsentDocuments.length} — sign each form in order.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ol className="space-y-2">
+                {orderedConsentDocuments.map((doc, index) => {
+                  const signed = hasClientSignature(doc);
+                  const isActive = !signed && index === firstUnsignedConsentIndex;
+                  const isLocked = !signed && index > firstUnsignedConsentIndex;
+                  return (
+                    <li key={doc.id} className={`flex items-center justify-between gap-3 rounded-2xl border p-3 ${isActive ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${signed ? "bg-emerald-600 text-white" : isActive ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-500"}`}>{signed ? "✓" : index + 1}</span>
+                        <span className={isLocked ? "text-slate-400" : "text-slate-900"}>{doc.title}</span>
+                      </div>
+                      <Badge className="rounded-xl">{signed ? "Signed" : isActive ? "Current" : "Locked"}</Badge>
+                    </li>
+                  );
+                })}
+              </ol>
+              {activeConsentDocument && (
+                <div className="rounded-2xl border border-slate-300 p-4 space-y-3">
+                  <p className="font-medium">{activeConsentDocument.title}</p>
+                  {activeConsentDocument.generatedLetterText && (
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-sm text-slate-600">{activeConsentDocument.generatedLetterText}</p>
+                  )}
+                  <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Type your full legal name to sign" />
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Signing applies your authenticated patient-portal identity, a timestamp, and a document-version fingerprint. This uses your currently signed-in account.</div>
+                  <Button className="rounded-2xl" disabled={documentBusy} onClick={() => signDocument(activeConsentDocument.id)}>Sign and continue</Button>
+                </div>
+              )}
+              {consentPackageComplete && (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 space-y-3">
+                  <p className="font-medium text-emerald-900">Intake package complete — review your signatures</p>
+                  <div className="space-y-2">
+                    {orderedConsentDocuments.map((doc) => {
+                      const clientSignature = (Array.isArray(doc.signatures) ? doc.signatures : doc.signature ? [doc.signature] : []).find((entry) => entry && (entry.authenticatedRole === "client" || entry.role === "Client"));
+                      const providerSignature = (Array.isArray(doc.signatures) ? doc.signatures : []).find((entry) => entry && (entry.authenticatedRole === "provider" || entry.authenticatedRole === "owner"));
+                      return (
+                        <div key={doc.id} className="rounded-xl border border-emerald-200 bg-white p-3 text-sm">
+                          <p className="font-medium text-slate-900">{doc.title}</p>
+                          <p className="text-slate-600">Your signature: {clientSignature ? `${documentSignatureText(clientSignature)} | ${clientSignature.signedAt}` : "Not signed"}</p>
+                          <p className="text-slate-500">Provider countersignature: {providerSignature ? `${documentSignatureText(providerSignature)} | ${providerSignature.signedAt}` : "Pending provider review"}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-emerald-800">A signed copy of each form is saved to your Signed Documents above.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {!isSequentialClientConsentView && (
       <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-4">
         <Card className="rounded-2xl shadow-sm">
           <CardHeader><CardTitle>{advocacyMode ? "Advocacy letters" : libraryMode ? "Chart documents" : "Practice consent forms"}</CardTitle><CardDescription>{advocacyMode ? "Client-specific templates, drafts, and signed letters" : libraryMode ? "Client-specific document set" : "Review and sign each applicable form"}</CardDescription></CardHeader>
@@ -6577,7 +8132,9 @@ ${organization}`;
                   <p>Viewed: {doc.viewedAt || "Not viewed"}</p>
                   <p>File: {doc.uploadedFileName || "No file uploaded"}</p>
                   <p>Signature: {doc.signature ? `${doc.signature.role || "Signer"}: ${documentSignatureText(doc.signature)} | ${doc.signature.signedAt}` : "Not signed"}</p>
-                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {documentSignatureText(entry)} | {entry.signedAt}</p>)}
+                  {(doc.signatures || []).map((entry) => <p key={`${entry.signerId}-${entry.authenticatedRole}`}>{entry.role}: {documentSignatureText(entry)} | {entry.signedAt}{entry.signatureMethod ? ` | ${entry.signatureMethod}${entry.witnessedBy ? `, witnessed by ${entry.witnessedBy}` : ""}` : ""}</p>)}
+                  {doc.verbalConsent && <p className="text-amber-800">Verbal consent: obtained by {doc.verbalConsent.obtainedBy} | {doc.verbalConsent.obtainedAt}{doc.verbalConsent.reason ? ` | ${doc.verbalConsent.reason}` : ""}</p>}
+                  {doc.uploadPending && <p className="text-amber-800">Image upload pending — the typed details were saved; re-upload the image when able.</p>}
                   {doc.generatedLetterText && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 whitespace-pre-line text-slate-600">{doc.generatedLetterText}</p>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -6601,18 +8158,34 @@ ${organization}`;
                 <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Select document to sign" /></SelectTrigger>
                 <SelectContent>{visibleDocuments.map((doc) => <SelectItem key={doc.id} value={doc.id}>{doc.title}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(currentUser?.fullName || PRACTITIONER_NAME); }}>
+              <Select value={currentUser.role === "client" ? "Client" : signatureRole} onValueChange={(value) => { setSignatureRole(value); setSignatureName(value === "Client (in person)" ? (selectedClient?.profile?.fullName || "") : (currentUser?.fullName || PRACTITIONER_NAME)); }}>
                 <SelectTrigger className="rounded-2xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {currentUser.role === "provider" && <SelectItem value="Provider">Provider signature</SelectItem>}
+                  {(currentUser.role === "provider" || currentUser.role === "owner") && <SelectItem value="Provider">Provider signature</SelectItem>}
+                  {(currentUser.role === "provider" || currentUser.role === "owner") && <SelectItem value="Client (in person)">Patient signature — signed in person on this device (I witness)</SelectItem>}
                   {currentUser.role === "client" && <SelectItem value="Client">Client / patient signature</SelectItem>}
                 </SelectContent>
               </Select>
+              {signatureDocument && (
+                <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-600">Form {signatureDocumentPosition} of {signatureDocumentsInOrder.length}{signatureDocumentSignedByCurrentSigner ? " — already signed by this signer" : ""}</p>
+                  <p className="font-semibold text-slate-900">{signatureDocument.title}</p>
+                  <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-sm text-slate-800">{signatureDocument.generatedLetterText || "Open the document from the list to review it before signing."}</div>
+                </div>
+              )}
               <Input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder="Signer full name" />
               {currentUser.role === "provider" && <Input label="Provider NPI" value={providerNpiForName(currentUser.fullName || "")} readOnly placeholder="Provider NPI not configured" />}
               {currentUser.role === "provider" && <Input label="Provider license number" value={providerIdentifiersForName(currentUser.fullName || "").licenseNumber} readOnly placeholder="Provider license not configured" />}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">The signature uses the currently authenticated EHR identity. Providers sign from provider accounts; clients sign from their linked client accounts.</div>
-              <Button className="rounded-2xl" disabled={documentBusy} onClick={signDocument}>Apply authenticated signature</Button>
+              <Button className="rounded-2xl" disabled={documentBusy || !signatureDocId} onClick={() => signDocument()}>{documentBusy ? "Saving signature…" : "Sign this form and continue"}</Button>
+              {(currentUser.role === "provider" || currentUser.role === "owner") && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <p className="text-sm font-semibold text-slate-800">Verbal consent (on-site)</p>
+                  <p className="text-xs text-slate-600">Use when the patient consents verbally and a digital signature cannot be captured at that moment. Records a provider attestation with a timestamp — it does not create a patient signature. A digital signature can still be added later.</p>
+                  <Input value={verbalConsentReason} onChange={(e) => setVerbalConsentReason(e.target.value)} placeholder="Reason (e.g., signature capture unavailable on-site)" />
+                  <Button variant="outline" className="rounded-2xl" disabled={documentBusy} onClick={recordVerbalConsent}>Record verbal consent obtained</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
           {libraryMode && !advocacyMode && <Card id="document-upload" className="rounded-2xl shadow-sm scroll-mt-4">
@@ -6671,6 +8244,7 @@ ${organization}`;
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

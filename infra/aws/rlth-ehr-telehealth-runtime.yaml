@@ -25,6 +25,16 @@ Resources:
               - chime:CreateAttendee
               - chime:DeleteAttendee
             Resource: !Sub 'arn:${AWS::Partition}:chime:*:${AWS::AccountId}:meeting/*'
+          # Caption translation (app/api/ehr/telehealth: interpreter-languages, translate-caption)
+          # and optional spoken translation. These services do not support resource-level scoping.
+          - Sid: CaptionTranslation
+            Effect: Allow
+            Action:
+              - translate:TranslateText
+              - translate:ListLanguages
+              - polly:DescribeVoices
+              - polly:SynthesizeSpeech
+            Resource: '*'
 Outputs:
   Activation:
     Value: Set EHR_NATIVE_TELEHEALTH_ENABLED=true and EHR_TELEHEALTH_REGION=us-east-1 in Amplify, then redeploy after synthetic testing readiness review.

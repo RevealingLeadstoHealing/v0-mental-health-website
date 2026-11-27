@@ -3,7 +3,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError, requireEhrActor, requireRole } from "../../../../../lib/ehr/auth";
 import { requireClientAccess } from "../../../../../lib/ehr/authorization";
-import { appendAuditEvent, getSavedScribeJob, putClinicalRecord } from "../../../../../lib/ehr/dynamodb-store";
+import { appendAuditEvent, createClinicalRecordWithId, getSavedScribeJob, putClinicalRecord } from "../../../../../lib/ehr/dynamodb-store";
 import { resolveScribeJobBinding } from "../../../../../lib/ehr/scribe-job-binding";
 import { readableTranscript } from "../../../../../lib/ehr/scribe-presentation";
 import { getHealthScribeJob, healthScribeBucket, healthScribeS3, readS3Json, startHealthScribeJob } from "../../../../../lib/ehr/healthscribe";
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const jobName = `rlth-${actor.practiceId}-${clientId}-${randomUUID()}`.replace(/[^0-9A-Za-z._-]/g, "-").slice(0, 190);
     // Persist the chart binding before starting AWS work so a lost response cannot orphan ownership.
     const savedJob = { clientId, recordId: jobName, recordType: "healthscribe-job", payload: { jobName, mediaKey, noteTemplate, providerReviewRequired: true } };
-    await putClinicalRecord(actor, { ...savedJob, status: "requested" });
+    await createClinicalRecordWithId(actor, { ...savedJob, status: "requested" });
     await startHealthScribeJob({ jobName, mediaKey, noteTemplate: noteTemplate as "GIRPP" | "BIRP" | "SIRP" | "DAP" | "BEHAVIORAL_SOAP", practiceId: actor.practiceId, clientId });
     await putClinicalRecord(actor, { ...savedJob, status: "in-progress" });
     await appendAuditEvent(actor, { action: "Started AWS HealthScribe job", category: "AI Scribe", clientId, entityType: "healthscribe-job", entityId: jobName, summary: `Behavioral-health ${noteTemplate} preliminary documentation job started.` });

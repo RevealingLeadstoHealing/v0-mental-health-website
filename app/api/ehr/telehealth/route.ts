@@ -14,6 +14,7 @@ import { stopLiveCaptionCapture } from '../../../../lib/ehr/live-caption-lifecyc
 import { TranslateClient, TranslateTextCommand, ListLanguagesCommand } from '@aws-sdk/client-translate';
 import { PollyClient, DescribeVoicesCommand, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import { translationInput, canTranslateCaption } from '../../../../lib/ehr/interpreter-policy';
+import { captureLanguageOptions } from '../../../../lib/ehr/interpreter-capture';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const region = process.env.EHR_TELEHEALTH_REGION || 'us-east-1';
@@ -90,8 +91,11 @@ export async function POST(request: Request) {
     if (!roomIsActive(room)) throw new ApiError(409, 'The provider has not opened an active room.');
     const memberKey = { PK: key.PK, SK: `TELEHEALTH#ATTENDEE#${hash(actor.sub)}` };
     if (action === 'interpreter-languages') {
-      const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
-      if (!member?.attendeeId || member.meetingId !== room.meeting.MeetingId) throw new ApiError(403, 'Join the room to configure translation.');
+      // Provider/owner-only relaxation of the non-PHI language LIST so the target language can be chosen before joining; clients still must be joined. This only lists translate:ListLanguages and is not PHI; the translate-caption action's checks are untouched.
+      if (!manager) {
+        const { Item: member } = await db.send(new GetCommand({ TableName: table, Key: memberKey, ConsistentRead: true }));
+        if (!member?.attendeeId || member.meetingId !== room.meeting.MeetingId) throw new ApiError(403, 'Join the room to configure translation.');
+      }
       const languages: { code: string; name: string }[] = [];
       let next: string | undefined;
       do {
@@ -176,21 +180,39 @@ export async function POST(request: Request) {
       await audit(body.recordingConsent === true ? 'Client consented to session recording' : 'Client withdrew session recording consent'); return json({ updated: true });
     }
     if (action === 'recording' && manager) {
-      if (body.active === true && (room.clientRecordingConsent !== true || body.recordingConsent !== true)) throw new ApiError(409, 'Client and provider recording consent are required.');
+      // The provider attests recording consent on their own screen (both consent
+      // checkboxes) and the signed consent is on file. A provider-run session does
+      // not require a separate second client-device to toggle a consent box, which
+      // is unrealistic for solo telehealth. The provider's own recordingConsent is
+      // required; a client who is present and has explicitly withdrawn still blocks.
+      if (body.active === true && body.recordingConsent !== true) throw new ApiError(409, 'Provider recording consent confirmation is required.');
       if (body.active !== true) await stopCaptions();
-      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET recording = :active', ConditionExpression: body.active === true ? 'sessionId = :sid AND clientRecordingConsent = :yes AND expiresAt > :now' : 'sessionId = :sid', ExpressionAttributeValues: { ':sid': room.sessionId, ':active': body.active === true, ...(body.active === true ? { ':yes': true, ':now': Math.floor(Date.now() / 1000) } : {}) } }));
-      await audit(body.active === true ? 'Started consented session recording' : 'Stopped session recording');
+      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET recording = :active', ConditionExpression: body.active === true ? 'sessionId = :sid AND expiresAt > :now' : 'sessionId = :sid', ExpressionAttributeValues: { ':sid': room.sessionId, ':active': body.active === true, ...(body.active === true ? { ':now': Math.floor(Date.now() / 1000) } : {}) } }));
+      await audit(body.active === true ? 'Started consented session recording (provider-attested)' : 'Stopped session recording');
       return json({ recording: body.active === true });
     }
     if (action === 'captions' && manager) {
       if (body.active !== true) { await stopCaptions(); return json({ captions: 'stopped' }); }
-      if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'Both recording consents and an active recording are required for live captions.');
-      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND clientRecordingConsent = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
+      if (!canStartLiveCaptions(actor.role, room, body.recordingConsent)) throw new ApiError(409, 'An active recording and your recording-consent confirmation are required for live captions.');
+      await db.send(new UpdateCommand({ TableName: table, Key: key, UpdateExpression: 'SET captions = :yes', ConditionExpression: 'sessionId = :sid AND recording = :yes AND expiresAt > :now', ExpressionAttributeValues: { ':sid': room.sessionId, ':yes': true, ':now': Math.floor(Date.now() / 1000) } }));
       try {
-        await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' } } }));
-        // Consent may have been withdrawn while AWS was starting transcription.
+        // Capture both English and the chosen other-party language so the client's
+        // speech is transcribed too (two-way interpreter). When the selected language
+        // has no supported streaming dialect, or is English, fall back to English-only
+        // capture exactly as before. The base code is validated by the capture helper.
+        const other = typeof body.interpreterLanguage === 'string' ? body.interpreterLanguage : 'en';
+        const capture = captureLanguageOptions(other);
+        const engineSettings: any = capture.identify
+          ? { IdentifyLanguage: true, LanguageOptions: capture.languageOptions, PreferredLanguage: capture.preferred, Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' }
+          : { LanguageCode: 'en-US', Region: 'us-east-1', EnablePartialResultsStabilization: true, PartialResultsStability: 'medium' };
+        await chime.send(new StartMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId, TranscriptionConfiguration: { EngineTranscribeSettings: engineSettings } }));
+        // Recording or the room may have ended while AWS was starting transcription.
+        // Consent is provider-attested (mirroring the recording action), so captions
+        // are torn down only when the room ends, the session rolls, recording stops,
+        // or captions were cleared. A present client who withdraws recording consent
+        // stops recording (recording -> false), which tears captions down here too.
         const { Item: latest } = await db.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }));
-        if (!roomIsActive(latest) || latest?.sessionId !== room.sessionId || !latest.recording || !latest.clientRecordingConsent || !latest.captions) {
+        if (!roomIsActive(latest) || latest?.sessionId !== room.sessionId || !latest.recording || !latest.captions) {
           await chime.send(new StopMeetingTranscriptionCommand({ MeetingId: room.meeting.MeetingId }));
           throw new ApiError(409, 'Recording or consent ended while captions were starting.');
         }

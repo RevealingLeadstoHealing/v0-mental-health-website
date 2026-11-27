@@ -1,0 +1,27 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "label": "Self-view never binds on join",
+      "confidence": "confirmed",
+      "severity": "blocking",
+      "file": "app/ehr/native-telehealth-room.tsx",
+      "detail": "startSelfView() assigns srcObject while the self-view <video> is unmounted (render gate `connected && selfViewOn`, but connected is still false when startSelfView runs in join()). selfView.current is null, the assignment is skipped, and nothing re-binds the stream once the element mounts on connect. The headline 'join shows your own video' fix does not display video. Fix: bind via a callback ref or a useEffect keyed on connected && selfViewOn."
+    },
+    {
+      "label": "Camera double-open contention",
+      "confidence": "likely",
+      "severity": "should-fix",
+      "file": "app/ehr/native-telehealth-room.tsx",
+      "detail": "startSelfView() holds its own getUserMedia video handle while Chime's startVideoInput opens the same camera; on single-open devices this throws NotReadableError and is misreported to the provider as 'the other participant will not see your video'. Share one MediaStream track with Chime, or release the self-view handle before startVideoInput, or distinguish the device-busy error message."
+    },
+    {
+      "label": "Guard misses the HealthScribe upload window",
+      "confidence": "possible",
+      "severity": "investigate",
+      "file": "app/ehr/full-production-interface.tsx",
+      "detail": "The leave-Telehealth guard warns on recording, live room, and IN_PROGRESS transcription, but the post-recording upload state (uploading/retryAudio) lives inside NativeTelehealthRoom and is not visible to the page-level guard. Leaving mid-upload could drop the recording. Confirm whether upload can be in flight after IN_PROGRESS clears and, if so, extend the guard."
+    }
+  ],
+  "reviewDoc": "c:\\Users\\revea\\v0-mental-health-website\\.agents\\tasks\\telehealth-billing-final\\review.md"
+}

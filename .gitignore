@@ -4,3 +4,6 @@ node_modules/
 .env
 .vercel/
 out/
+
+# Local scratch output from AWS checks (never commit)
+.agents/tmp/
