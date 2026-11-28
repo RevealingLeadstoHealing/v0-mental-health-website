@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   clearRateLimitState,
   isRateLimited,
+  readContactForm,
   sanitizeText,
   turnstileConfigured,
   validateContactForm,
@@ -65,7 +66,43 @@ test("rate limiting allows 5 submissions per hour per IP, then blocks", () => {
   clearRateLimitState();
 });
 
-test("Turnstile is skipped when no secret is configured", async () => {
+test("Turnstile rejects tokens when no secret is configured", async () => {
   assert.equal(turnstileConfigured(), false);
-  assert.equal(await verifyTurnstileToken("any-token"), false);
+  assert.equal(await verifyTurnstileToken("any-token", ""), false);
+});
+
+test("Turnstile reads the secret directly from Amplify environment variables", () => {
+  const previous = process.env.TURNSTILE_SECRET_KEY;
+  process.env.TURNSTILE_SECRET_KEY = "direct-amplify-secret";
+  assert.equal(turnstileConfigured(), true);
+  process.env.TURNSTILE_SECRET_KEY = "   ";
+  assert.equal(turnstileConfigured(), false);
+  if (previous === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+  else process.env.TURNSTILE_SECRET_KEY = previous;
+});
+
+test("Turnstile accepts only successful Cloudflare verification", async (t) => {
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ success: true })));
+  assert.equal(await verifyTurnstileToken("valid-token", "secret"), true);
+  fetchMock.mock.mockImplementation(async () => new Response(JSON.stringify({ success: false })));
+  assert.equal(await verifyTurnstileToken("invalid-token", "secret"), false);
+  fetchMock.mock.mockImplementation(async () => { throw new Error("offline"); });
+  assert.equal(await verifyTurnstileToken("token", "secret"), false);
+  assert.equal(await verifyTurnstileToken("", "secret"), false);
+});
+
+test("contact form rejects oversized, duplicate and unsupported submissions", async () => {
+  const request = (body: string, type = "application/x-www-form-urlencoded") =>
+    new Request("https://example.com/api/contact", { method: "POST", headers: { "content-type": type }, body });
+  assert.equal((await readContactForm(request("name=Jane&message=Hello")))?.get("name"), "Jane");
+  assert.equal(await readContactForm(request("name=Jane&name=Other")), null);
+  assert.equal(await readContactForm(request("message=" + "a".repeat(96 * 1024))), null);
+  assert.equal(await readContactForm(request("{}", "application/json")), null);
+});
+
+test("contact fields cannot inject email headers or exceed their limits", () => {
+  assert.doesNotMatch(validateContactForm({ ...good, name: "Jane\nBcc: spam" }).sanitized.name, /\n/);
+  assert.equal(validateContactForm({ ...good, email: "a".repeat(250) + "@example.com" }).ok, false);
+  assert.equal(validateContactForm({ ...good, name: "a".repeat(101) }).ok, false);
+  assert.equal(validateContactForm({ ...good, phone: "1".repeat(41) }).ok, false);
 });
