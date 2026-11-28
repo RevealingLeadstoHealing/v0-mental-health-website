@@ -163,7 +163,7 @@ export function clientIpFromHeaders(headers: {
 }
 
 export function turnstileConfigured(): boolean {
-  return Boolean(process.env.TURNSTILE_SECRET_ARN || process.env.TURNSTILE_SECRET_KEY);
+  return Boolean(process.env.TURNSTILE_SECRET_KEY?.trim());
 }
 
 export async function verifyTurnstileToken(

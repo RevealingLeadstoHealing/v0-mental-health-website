@@ -71,6 +71,16 @@ test("Turnstile rejects tokens when no secret is configured", async () => {
   assert.equal(await verifyTurnstileToken("any-token", ""), false);
 });
 
+test("Turnstile reads the secret directly from Amplify environment variables", () => {
+  const previous = process.env.TURNSTILE_SECRET_KEY;
+  process.env.TURNSTILE_SECRET_KEY = "direct-amplify-secret";
+  assert.equal(turnstileConfigured(), true);
+  process.env.TURNSTILE_SECRET_KEY = "   ";
+  assert.equal(turnstileConfigured(), false);
+  if (previous === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+  else process.env.TURNSTILE_SECRET_KEY = previous;
+});
+
 test("Turnstile accepts only successful Cloudflare verification", async (t) => {
   const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ success: true })));
   assert.equal(await verifyTurnstileToken("valid-token", "secret"), true);

@@ -42,19 +42,13 @@ or a valid CAPTCHA response is missing.
    hostname, including both the `www` and non-`www` names if both are used.
    Copy the **site key** and **secret key** from that same widget. Do not use
    Cloudflare's test keys for production.
-2. For an Amplify-hosted public site, create an AWS Secrets Manager secret in
-   the application's AWS region containing only the secret key as a plain
-   string, not JSON. Give the Amplify **SSR compute role** (not just the build
-   role) `secretsmanager:GetSecretValue` permission on that one secret, and
-   `kms:Decrypt` on its key if a customer-managed KMS key is used.
-3. In the public site's Amplify environment settings, set
-   `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to the site key and
-   `TURNSTILE_SECRET_ARN` to the secret's full ARN. The build forwards only
-   these non-secret values to the server; never put the secret value in
-   `amplify.yml`, `.env.production`, or a `NEXT_PUBLIC_` variable. Redeploy.
-   If the public site is instead hosted on Vercel, set the site key and the
-   server-only `TURNSTILE_SECRET_KEY` in that project's environment settings
-   and redeploy; the AWS WAF instructions below do not protect Vercel.
+2. In the public site's AWS Amplify environment settings, set
+   `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to the Cloudflare site key and
+   `TURNSTILE_SECRET_KEY` to the Cloudflare secret key. The site key is public;
+   the secret key is server-only and must never use a `NEXT_PUBLIC_` name.
+   Redeploy after verifying both names and values.
+   If the public site is instead hosted on Vercel, set the same two variable
+   names in that project's environment settings and redeploy.
    The patched image library requires Node.js 20.9 or newer in the build and
    server runtime.
 4. Open the deployed contact page and confirm the widget appears and completes.
@@ -64,19 +58,10 @@ or a valid CAPTCHA response is missing.
    Check server logs if verification fails, and confirm SES is allowed to send
    to the configured addresses. Do not put secret keys in logs or source code.
 
-The existing in-process limit is only a best-effort backup: proxy headers can
-be forged and server instances do not share counters. For an Amplify-hosted
-public site, add a shared AWS WAF rate-based rule for POSTs to `/api/contact`.
-`infra/aws/contact-waf.yaml` provides a separate global (CloudFront-scope) web
-ACL with a 100-request, five-minute per-IP threshold. Deploy it in `us-east-1`
-and associate it with the **public site's** Amplify app using Amplify's firewall
-settings. If that app already has a web ACL, add the rule to the existing ACL
-instead of replacing its protections. The WAF limit is approximate, may take
-time to apply, costs extra, and affects all branches and domains on that app.
-Confirm WAF sees individual visitor IPs: if a proxy sits in front of Amplify,
-it may see shared proxy IPs and block legitimate visitors; configure trusted
-proxy handling before enabling the rule. Monitor and adjust the threshold.
-The template is not deployed or associated by committing it.
+AWS WAF setup is not required for the Turnstile fix to work. The contact route
+also retains its built-in per-IP submission limit and hidden honeypot. Those
+server-instance checks are a backup and do not require AWS Secrets Manager or
+WAF configuration.
 
 ## PHI activation gate
 

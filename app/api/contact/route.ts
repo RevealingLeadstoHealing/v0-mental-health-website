@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sendContactFormEmail } from "../../../lib/site/send-contact-email";
-import { loadTurnstileSecret } from "../../../lib/site/turnstile-secret";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, hasAwsRuntimeCredentials } from "../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../lib/rlth-aws-foundation";
@@ -166,7 +165,7 @@ export async function POST(request: NextRequest) {
     const clean = validation.sanitized;
 
     // Missing or invalid configuration must never bypass verification.
-    if (!turnstileToken || !await verifyTurnstileToken(turnstileToken, await loadTurnstileSecret())) {
+    if (!turnstileToken || !await verifyTurnstileToken(turnstileToken, process.env.TURNSTILE_SECRET_KEY || "")) {
       if (!turnstileConfigured()) console.error("Contact form Turnstile is not configured");
       return error();
     }
