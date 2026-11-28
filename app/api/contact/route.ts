@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sendContactFormEmail } from "../../../lib/site/send-contact-email";
+import { loadTurnstileSecret } from "../../../lib/site/turnstile-secret";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, hasAwsRuntimeCredentials } from "../../../lib/ehr/aws-runtime";
 import { rlthAwsFoundation } from "../../../lib/rlth-aws-foundation";
@@ -8,6 +9,7 @@ import {
   TURNSTILE_FIELD,
   clientIpFromHeaders,
   isRateLimited,
+  readContactForm,
   turnstileConfigured,
   validateContactForm,
   verifyTurnstileToken,
@@ -37,8 +39,8 @@ export async function GET() {
 // consultation-alert — with thousands of spam emails, which got SES
 // sending paused. Nothing below is sent or logged until the submission
 // passes, in order: per-IP rate limiting, the honeypot check, strict
-// server-side validation/sanitization, and Cloudflare Turnstile when its
-// keys are configured. Rejected submissions never reach SES and never
+// server-side validation/sanitization, and Cloudflare Turnstile.
+// Rejected submissions never reach SES and never
 // create a DynamoDB/EHR alert.
 //
 // Every consultation request that PASSES those checks also gets logged as
@@ -135,7 +137,8 @@ export async function POST(request: NextRequest) {
     let wantsCopy = false;
 
     try {
-      const form = await request.formData();
+      const form = await readContactForm(request);
+      if (!form) return error();
       name = String(form.get("name") || "");
       email = String(form.get("email") || "");
       phone = String(form.get("phone") || "");
@@ -162,14 +165,10 @@ export async function POST(request: NextRequest) {
     }
     const clean = validation.sanitized;
 
-    // 4. Cloudflare Turnstile, fail-closed ONLY when keys are configured.
-    // Until NEXT_PUBLIC_TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are set
-    // in Cloudflare + Amplify, layers 1-3 above are the active protection.
-    if (turnstileConfigured()) {
-      const human = await verifyTurnstileToken(turnstileToken);
-      if (!human) {
-        return error();
-      }
+    // Missing or invalid configuration must never bypass verification.
+    if (!turnstileToken || !await verifyTurnstileToken(turnstileToken, await loadTurnstileSecret())) {
+      if (!turnstileConfigured()) console.error("Contact form Turnstile is not configured");
+      return error();
     }
 
     // 5. No AWS runtime credentials at all: fail fast instead of hanging
@@ -208,7 +207,8 @@ export async function POST(request: NextRequest) {
     // "email-pending-ses" / "email-error" (SES not yet out of sandbox, etc.)
     // with no EHR alert recorded either.
     return error();
-  } catch {
+  } catch (cause) {
+    console.error("Contact form request failed", cause instanceof Error ? cause.name : "unknown error");
     return error();
   }
 }

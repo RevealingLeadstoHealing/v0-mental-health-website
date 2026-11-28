@@ -2,11 +2,7 @@ import { SiteHeader, SiteFooter, EHR_LOGIN_URL } from "../site-chrome";
 import AccessQrCode from "../ehr/access-qr-code";
 import Script from "next/script";
 
-// Cloudflare Turnstile (anti-spam, 2026-11-26): the widget only renders
-// when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set. Until Kay / the deployer
-// creates keys in Cloudflare and sets them in Amplify, the form relies on
-// the honeypot, rate limiting and server-side validation in
-// app/api/contact/route.ts.
+// The public site key is embedded at build time.
 const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export const metadata = { title: "Contact | Revealing Leads to Healing Wellness Services, LLC" };
